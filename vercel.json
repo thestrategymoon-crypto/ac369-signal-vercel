@@ -1,9 +1,7 @@
 {
   "version": 2,
+  "regions": ["sin1"],
   "rewrites": [
-    { "source": "/api/binance", "destination": "/api/binance" },
-    { "source": "/api/futures", "destination": "/api/futures" },
-    { "source": "/", "destination": "/public/index.html" },
     { "source": "/((?!api/).*)", "destination": "/public/index.html" }
   ]
 }
