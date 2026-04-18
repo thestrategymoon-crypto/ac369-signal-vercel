@@ -397,8 +397,8 @@ function R(l,v,c="",m=false){return`<div class="row"><span class="rl">${l}</span
 function ZR(l,p,t,s){const c=t==="S"?"var(--g)":"var(--r)";const ss=s>=3?"●●●":s===2?"●●○":"●○○";return`<div class="zr"><span style="font-size:9px;width:19px;flex-shrink:0;font-weight:700;color:${c}">${t}${l}</span><span style="font-size:12px;color:#e2eaf3;font-weight:700;font-family:'IBM Plex Mono',monospace;flex:1">${fmt(p)}</span><span style="font-size:9px;opacity:.5;color:${c}">${ss}</span></div>`}
 function MI(l,a,v){const c=a?"var(--g)":"var(--r)";return`<div class="mai"><div style="font-size:8px;color:var(--dmr);letter-spacing:1px;margin-bottom:4px;text-transform:uppercase">${l}</div><div style="display:flex;align-items:center;margin-bottom:2px"><span style="width:6px;height:6px;border-radius:50%;background:${c};margin-right:5px;display:inline-block"></span><span style="font-size:9px;font-weight:700;color:${c}">${a?"Di Atas":"Di Bawah"}</span></div><div style="font-size:9px;color:var(--dim);font-family:'IBM Plex Mono',monospace">${v?fmt(v):"—"}</div></div>`}
 function $(i){return document.getElementById(i)}
-function sh(i){$(i)?.classList.remove('hidden')}
-function hd(i){$(i)?.classList.add('hidden')}
+function sh(i){var _el=$(i);if(_el){_el.style.display='';_el.classList.remove('hidden');}}
+function hd(i){var _el=$(i);if(_el){_el.style.display='none';_el.classList.add('hidden');}}
 
 // ═══ ANALYZE ═════════════════════════════════════
 async function AN(sym){
@@ -776,59 +776,40 @@ if(ck.length)$('wb').innerHTML=`<div class="sh">Per Koin</div><div style="displa
 setInterval(()=>{if(document.getElementById('tab-tracker').classList.contains('active'))RF();},300000);
 RT();
 
-// ═══ SH/HD OVERRIDE ═══
-function sh(id){var e=document.getElementById(id);if(!e)return;if(e.style.display==='none')e.style.display='';else e.classList.remove('hidden');}
-function hd(id){var e=document.getElementById(id);if(!e)return;e.style.display='none';}
+// SH/HD handled above
 
 // ═══ INSTITUTIONAL SUITE ═══
 
 // Safari compatibility test
 
 // ═══ NAVIGATION ═══════════════════════════════════
-function T(t) {
-  document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});
-  document.querySelectorAll('.nb').forEach(function(b){b.classList.remove('active');});
-  document.getElementById('tab-'+t).classList.add('active');
-  var idx = {liq:0,cvd:1,fg:2,sent:3,comb:4}[t];
-  if(idx !== undefined) document.querySelectorAll('.nb')[idx].classList.add('active');
-}
+
+// [removed duplicate T]
+
 function $(i){return document.getElementById(i);}
-function sh(i){var e=$(i); if(e) e.classList.remove('hidden');}
-function hd(i){var e=$(i); if(e) e.classList.add('hidden');}
+
+// [removed duplicate sh]
+
+
+// [removed duplicate hd]
+
 
 // ═══ FORMAT HELPERS ═══════════════════════════════
-function fmt(n) {
-  if(!n && n!==0) return 'N/A';
-  var a = Math.abs(n);
-  if(a>=1e9) return '$'+(n/1e9).toFixed(2)+'B';
-  if(a>=1e6) return '$'+(n/1e6).toFixed(1)+'M';
-  if(a>=1000) return '$'+n.toLocaleString('en-US',{maximumFractionDigits:1});
-  if(a>=1) return '$'+n.toFixed(2);
-  if(a>=0.01) return '$'+n.toFixed(4);
-  return '$'+n.toFixed(6);
-}
-function pct(n,d){ d=d||2; return (n>=0?'+':'')+n.toFixed(d)+'%'; }
+
+// [removed duplicate fmt]
+
+
+// [removed duplicate pct]
+
 function fmtK(n){ return Math.abs(n)>=1e6?(n/1e6).toFixed(1)+'M':Math.abs(n)>=1000?(n/1000).toFixed(0)+'K':n.toFixed(0); }
 
 // ═══ API CALLS ═══════════════════════════════════
-async function bFetch(path, params) {
-  params = params || {};
-  var p = Object.assign({path: path}, params);
-  var qs = new URLSearchParams(p).toString();
-  var res = await fetch('/api/binance?' + qs);
-  if(!res.ok) throw new Error('Binance API error ' + res.status);
-  return res.json();
-}
-async function fFetch(endpoint, params) {
-  params = params || {};
-  try {
-    var p = Object.assign({endpoint: endpoint}, params);
-    var qs = new URLSearchParams(p).toString();
-    var res = await fetch('/api/futures?' + qs);
-    if(!res.ok) return null;
-    return res.json();
-  } catch(e) { return null; }
-}
+
+// [removed duplicate bFetch]
+
+
+// [removed duplicate fFetch]
+
 async function dFetch(source, params) {
   params = params || {};
   var p = Object.assign({source: source}, params);
@@ -1776,7 +1757,7 @@ function guideHtml(items) {
     </div>
     <button id="liq-btn" onclick="runLiq()" style="width:100%;padding:13px;background:rgba(255,69,96,.08);border:1px solid rgba(255,69,96,.35);border-radius:10px;color:#ff4560;font-size:10px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:'IBM Plex Mono',monospace">LOAD LIQUIDATION MAP</button>
   </div>
-  <div id="liq-load" style="display:none;text-align:center;padding:32px;background:rgba(6,8,18,.95);border:1px solid rgba(255,255,255,.06);border-radius:14px;margin-bottom:12px"><div style="color:#ff4560;font-size:10px;letter-spacing:3px">LOADING...</div></div>
+  <div id="liq-load" class="hidden" style="text-align:center;padding:32px;background:rgba(6,8,18,.95);border:1px solid rgba(255,255,255,.06);border-radius:14px;margin-bottom:12px"><div style="color:#ff4560;font-size:10px;letter-spacing:3px">LOADING...</div></div>
   <div id="liq-out"></div>
 </div>
 
@@ -1792,7 +1773,7 @@ function guideHtml(items) {
     </div>
     <button id="cvd-btn" onclick="runCVD()" style="width:100%;padding:13px;background:rgba(0,204,255,.08);border:1px solid rgba(0,204,255,.35);border-radius:10px;color:#00ccff;font-size:10px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:'IBM Plex Mono',monospace">LOAD CVD ANALYSIS</button>
   </div>
-  <div id="cvd-load" style="display:none;text-align:center;padding:32px;background:rgba(6,8,18,.95);border:1px solid rgba(255,255,255,.06);border-radius:14px;margin-bottom:12px"><div style="color:#00ccff;font-size:10px;letter-spacing:3px">LOADING...</div></div>
+  <div id="cvd-load" class="hidden" style="text-align:center;padding:32px;background:rgba(6,8,18,.95);border:1px solid rgba(255,255,255,.06);border-radius:14px;margin-bottom:12px"><div style="color:#00ccff;font-size:10px;letter-spacing:3px">LOADING...</div></div>
   <div id="cvd-out"></div>
 </div>
 
@@ -1802,7 +1783,7 @@ function guideHtml(items) {
     <p style="font-size:11px;color:#4b5d6e;margin-bottom:14px;line-height:1.8">Extreme Fear = waktu terbaik beli secara historis. Extreme Greed = waktu ambil profit.</p>
     <button id="fg-btn" onclick="runFG()" style="width:100%;padding:13px;background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.35);border-radius:10px;color:#f5c518;font-size:10px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:'IBM Plex Mono',monospace">LOAD FEAR AND GREED DATA</button>
   </div>
-  <div id="fg-load" style="display:none;text-align:center;padding:32px;background:rgba(6,8,18,.95);border:1px solid rgba(255,255,255,.06);border-radius:14px;margin-bottom:12px"><div style="color:#f5c518;font-size:10px;letter-spacing:3px">LOADING...</div></div>
+  <div id="fg-load" class="hidden" style="text-align:center;padding:32px;background:rgba(6,8,18,.95);border:1px solid rgba(255,255,255,.06);border-radius:14px;margin-bottom:12px"><div style="color:#f5c518;font-size:10px;letter-spacing:3px">LOADING...</div></div>
   <div id="fg-out"></div>
 </div>
 
@@ -1812,7 +1793,7 @@ function guideHtml(items) {
     <p style="font-size:11px;color:#4b5d6e;margin-bottom:14px;line-height:1.8">Breadth: % koin naik vs turun, volume bias, trending coins, global market data.</p>
     <button id="sent-btn" onclick="runSent()" style="width:100%;padding:13px;background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.35);border-radius:10px;color:#a855f7;font-size:10px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:'IBM Plex Mono',monospace">LOAD SENTIMENT DATA</button>
   </div>
-  <div id="sent-load" style="display:none;text-align:center;padding:32px;background:rgba(6,8,18,.95);border:1px solid rgba(255,255,255,.06);border-radius:14px;margin-bottom:12px"><div style="color:#a855f7;font-size:10px;letter-spacing:3px">LOADING...</div></div>
+  <div id="sent-load" class="hidden" style="text-align:center;padding:32px;background:rgba(6,8,18,.95);border:1px solid rgba(255,255,255,.06);border-radius:14px;margin-bottom:12px"><div style="color:#a855f7;font-size:10px;letter-spacing:3px">LOADING...</div></div>
   <div id="sent-out"></div>
 </div>
 
@@ -1822,7 +1803,7 @@ function guideHtml(items) {
     <p style="font-size:11px;color:#4b5d6e;margin-bottom:14px;line-height:1.8">Gabungan semua layer: Fear+Greed + Market Breadth + BTC Microstructure + TA. Score 0-100.</p>
     <button id="comb-btn" onclick="runComb()" style="width:100%;padding:14px;background:linear-gradient(135deg,rgba(255,215,0,.1),rgba(0,255,135,.08));border:1px solid rgba(255,215,0,.4);border-radius:10px;color:#ffd700;font-size:11px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:'IBM Plex Mono',monospace">FULL INSTITUTIONAL SCAN</button>
   </div>
-  <div id="comb-load" style="display:none">
+  <div id="comb-load" class="hidden">
     <div class="card" style="text-align:center;padding:32px">
       <div id="comb-txt" style="color:#ffd700;font-size:9px;letter-spacing:3px;margin-bottom:10px">SCANNING...</div>
       <div style="background:rgba(255,255,255,.04);border-radius:3px;height:4px;overflow:hidden"><div id="comb-bar" style="height:100%;background:linear-gradient(90deg,#ffd700,#00ff87);border-radius:3px;transition:width .4s;width:0%"></div></div>
