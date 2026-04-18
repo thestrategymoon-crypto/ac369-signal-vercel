@@ -78,7 +78,6 @@ input[type=text]:focus{border-color:rgba(0,255,135,.4)}
 .err{background:rgba(255,69,96,.05);border:1px solid rgba(255,69,96,.2);border-radius:12px;padding:14px 18px;margin-bottom:11px}
 .hidden{display:none}
 
-/* ═══ Institutional ═══ */
 .sbox{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.04);border-radius:11px;padding:12px 13px;text-align:center}
 .sval{font-size:20px;font-weight:800;font-family:'IBM Plex Mono',monospace;line-height:1;margin-bottom:3px}
 .slbl{font-size:8px;letter-spacing:2px;color:var(--dmr);text-transform:uppercase}
@@ -268,7 +267,7 @@ const SC_CFG={BELI:{c:"#00ff87",bg:"rgba(0,255,135,.07)",bd:"rgba(0,255,135,.22)
 let CSD=null,LEV=3,SELUNIV='top30',scanRunning=false;
 
 // ═══ TAB & NAV ═══════════════════════════════════
-function T(t){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));var _tab=document.getElementById('tab-'+t);if(_tab)_tab.classList.add('active');const i={analyze:0,scanner:1,tracker:2,winrate:3,liq:4,cvd:5,fg:6,sent:7,comb:8}[t];if(i!==undefined)document.querySelectorAll('.nb')[i].classList.add('active');if(t==='tracker')RT();if(t==='winrate')RW();}
+function T(t){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));var _el=document.getElementById('tab-'+t);if(_el)_el.classList.add('active');const i={analyze:0,scanner:1,tracker:2,winrate:3,liq:4,cvd:5,fg:6,sent:7,comb:8}[t];if(i!==undefined)document.querySelectorAll('.nb')[i].classList.add('active');if(t==='tracker')RT();if(t==='winrate')RW();}
 
 // Quick buttons
 const qw=document.getElementById('qw');
@@ -777,1006 +776,578 @@ if(ck.length)$('wb').innerHTML=`<div class="sh">Per Koin</div><div style="displa
 
 setInterval(()=>{if(document.getElementById('tab-tracker').classList.contains('active'))RF();},300000);
 RT();
-
-// ═══ INSTITUTIONAL ═══
-
-// Safari compatibility test
-
-
-
-
-
-
-
-function fmtK(n){ return Math.abs(n)>=1e6?(n/1e6).toFixed(1)+'M':Math.abs(n)>=1000?(n/1000).toFixed(0)+'K':n.toFixed(0); }
-
-
-
-async function dFetch(source, params) {
-  params = params || {};
-  var p = Object.assign({source: source}, params);
-  var qs = new URLSearchParams(p).toString();
-  var res = await fetch('/api/data?' + qs);
-  if(!res.ok) throw new Error('Data API error ' + res.status);
-  return res.json();
-}
-
-// ═══ TA HELPERS ═══════════════════════════════════
-function calcSMA(arr, p) {
-  return arr.map(function(_,i){
-    if(i<p-1) return null;
-    return arr.slice(i-p+1,i+1).reduce(function(a,b){return a+b;},0)/p;
-  });
-}
-function calcEMA(arr, p) {
-  var k = 2/(p+1), e = null, res = [];
-  arr.forEach(function(v){
-    if(v==null){res.push(null);return;}
-    e = e===null ? v : v*k+e*(1-k);
-    res.push(e);
-  });
-  return res;
-}
-function calcRSI(arr, p) {
-  p = p||14;
-  if(!arr || arr.length < p+1) return null;
-  var g=0, l=0;
-  for(var i=1;i<=p;i++){var d=arr[i]-arr[i-1];d>0?g+=d:l-=d;}
-  var ag=g/p, al=l/p;
-  for(var i=p+1;i<arr.length;i++){
-    var d=arr[i]-arr[i-1];
-    ag=(ag*(p-1)+Math.max(d,0))/p;
-    al=(al*(p-1)+Math.max(-d,0))/p;
-  }
-  return al===0?100:100-100/(1+ag/al);
-}
-function lastVal(arr) {
-  if(!arr) return null;
-  for(var i=arr.length-1;i>=0;i--){if(arr[i]!=null)return arr[i];}
-  return null;
-}
-function calcMACD(arr) {
-  var e12=calcEMA(arr,12), e26=calcEMA(arr,26);
-  var ml = e12.map(function(v,i){return v!=null&&e26[i]!=null?v-e26[i]:null;}).filter(function(v){return v!=null;});
-  var sg = calcEMA(ml,9);
-  var h = ml.length>0&&sg.length>0 ? ml[ml.length-1]-sg[sg.length-1] : null;
-  var ph = ml.length>1&&sg.length>1 ? ml[ml.length-2]-sg[sg.length-2] : null;
-  return {h:h, ph:ph};
-}
-
-// ═══════════════════════════════════════
-// TAB 1: LIQUIDATION HEATMAP
-// ═══════════════════════════════════════
-async function runLiq() {
-  var sym = $('liq-sym').value;
-  var range = parseFloat($('liq-range').value);
-  var btn = $('liq-btn');
-  btn.disabled = true; btn.textContent = '⏳ LOADING...';
-  $('liq-out').innerHTML = '';
-  hd('liq-out'); sh('liq-load');
-
-  try {
-    var results = await Promise.allSettled([
-      bFetch('ticker/24hr', {symbol: sym}),
-      bFetch('depth', {symbol: sym, limit: '50'}),
-      fFetch('fapi/v1/fundingRate', {symbol: sym, limit: '8'}),
-      fFetch('futures/data/openInterestHist', {symbol: sym, period: '1h', limit: '24'}),
-    ]);
-
-    var t24 = results[0].status==='fulfilled' ? results[0].value : {};
-    var depth = results[1].status==='fulfilled' ? results[1].value : {bids:[],asks:[]};
-    var frData = results[2].status==='fulfilled' ? results[2].value : [];
-    var oiData = results[3].status==='fulfilled' ? results[3].value : [];
-
-    var price = parseFloat(t24.lastPrice||0);
-    var ch24 = parseFloat(t24.priceChangePercent||0);
-    if(!price) throw new Error('Harga tidak tersedia');
-
-    var bids = depth.bids||[];
-    var asks = depth.asks||[];
-
-    // Latest funding rate
-    var fr = null;
-    if(Array.isArray(frData) && frData.length) {
-      fr = parseFloat(frData[frData.length-1].fundingRate) * 100;
-    }
-
-    // OI trend
-    var oiTrend = null;
-    if(Array.isArray(oiData) && oiData.length >= 2) {
-      var oiOld = parseFloat(oiData[0].sumOpenInterestValue);
-      var oiNew = parseFloat(oiData[oiData.length-1].sumOpenInterestValue);
-      if(oiOld > 0) oiTrend = (oiNew - oiOld) / oiOld * 100;
-    }
-
-    // Build liquidation zones
-    var LEVELS = 20;
-    var priceMin = price * (1 - range);
-    var step = price * range * 2 / LEVELS;
-    var zones = [];
-
-    for(var i=0; i<LEVELS; i++) {
-      var lvl = priceMin + i * step;
-      var pctOff = (lvl - price) / price * 100;
-      var isBelow = lvl < price;
-      var dist = Math.abs(pctOff);
-
-      // Estimate liquidation density
-      // Below price = long liquidations (longs get rekt when price falls)
-      // Above price = short liquidations (shorts get rekt when price rises)
-      var longD = 0, shortD = 0;
-      if(isBelow) {
-        // 10x leverage liq at 10%, 5x at 20%, 3x at 33%
-        if(dist < 3) longD = 90;
-        else if(dist < 5) longD = 80;
-        else if(dist < 8) longD = 65;
-        else if(dist < 12) longD = 50;
-        else longD = 30;
-        // Add order book density
-        bids.forEach(function(b){ if(Math.abs(parseFloat(b[0])-lvl)/price < 0.005) longD += parseFloat(b[1])*0.5; });
-        longD = Math.min(100, longD);
-        shortD = Math.max(0, 20 - dist * 2);
-      } else {
-        if(dist < 3) shortD = 88;
-        else if(dist < 5) shortD = 78;
-        else if(dist < 8) shortD = 62;
-        else if(dist < 12) shortD = 48;
-        else shortD = 28;
-        asks.forEach(function(a){ if(Math.abs(parseFloat(a[0])-lvl)/price < 0.005) shortD += parseFloat(a[1])*0.5; });
-        shortD = Math.min(100, shortD);
-        longD = Math.max(0, 15 - dist * 1.5);
-      }
-
-      // Add small variation
-      longD = Math.min(100, longD * (0.85 + Math.random()*0.3));
-      shortD = Math.min(100, shortD * (0.85 + Math.random()*0.3));
-
-      zones.push({price:lvl, pct:pctOff, isBelow:isBelow, longD:longD, shortD:shortD, isCurr: Math.abs(pctOff) < 0.6});
-    }
-
-    // Top targets
-    var longTargets = zones.filter(function(z){return z.isBelow;}).sort(function(a,b){return b.longD-a.longD;}).slice(0,3);
-    var shortTargets = zones.filter(function(z){return !z.isBelow;}).sort(function(a,b){return b.shortD-a.shortD;}).slice(0,3);
-
-    // Stop hunt signal
-    var stopHunt = 'MONITOR';
-    var stopC = 'var(--y)';
-    if(fr !== null) {
-      if(fr > 0.08) { stopHunt = '⚠️ FR TINGGI — Long squeeze risk'; stopC = 'var(--r)'; }
-      else if(fr < -0.05) { stopHunt = '🟢 FR NEGATIF — Short squeeze possible'; stopC = 'var(--g)'; }
-    }
-    if(longTargets[0] && Math.abs(longTargets[0].pct) < 5 && longTargets[0].longD > 80) {
-      stopHunt = '🔴 MAJOR LONG LIQ NEARBY — Potential stop hunt down'; stopC = 'var(--r)';
-    }
-    if(shortTargets[0] && Math.abs(shortTargets[0].pct) < 5 && shortTargets[0].shortD > 80) {
-      stopHunt = '🟢 MAJOR SHORT LIQ NEARBY — Potential short squeeze'; stopC = 'var(--g)';
-    }
-
-    // Build HTML
-    var zonesHtml = zones.slice().reverse().map(function(z) {
-      var lw = Math.round(z.longD);
-      var sw = Math.round(z.shortD);
-      var isHot = Math.max(lw,sw) > 75;
-      var lc = isHot && z.isBelow ? 'rgba(255,69,96,.85)' : 'rgba(255,69,96,.35)';
-      var sc = isHot && !z.isBelow ? 'rgba(0,255,135,.75)' : 'rgba(0,255,135,.3)';
-      var bg = z.isCurr ? 'rgba(0,255,135,.06)' : 'transparent';
-      var border = z.isCurr ? 'border:1px solid rgba(0,255,135,.2);' : '';
-      var priceStr = z.price >= 1000 ? '$'+(z.price/1000).toFixed(1)+'K' : '$'+z.price.toFixed(2);
-      return '<div style="display:flex;align-items:center;gap:6px;padding:'+(z.isCurr?'6px':'2px')+' 4px;background:'+bg+';border-radius:5px;'+border+'">'
-        + '<div style="width:65px;text-align:right;font-size:'+(z.isCurr?'11':'9')+'px;font-weight:'+(z.isCurr?'800':'400')+';color:'+(z.isCurr?'var(--g)':'var(--dmr)')+';font-family:var(--mono);flex-shrink:0">'+(z.isCurr?'▶ ':'')+priceStr+'</div>'
-        + '<div style="flex:1;display:flex;height:'+(isHot?'16':'10')+'px;gap:2px">'
-          + '<div style="flex:1;display:flex;justify-content:flex-end;align-items:center">'+(lw>5?'<div style="width:'+lw+'%;height:100%;background:'+lc+';border-radius:3px 0 0 3px;"></div>':'')+'</div>'
-          + '<div style="width:2px;background:'+(z.isCurr?'var(--g)':'rgba(255,255,255,.05)')+';flex-shrink:0;border-radius:1px"></div>'
-          + '<div style="flex:1;display:flex;align-items:center">'+(sw>5?'<div style="width:'+sw+'%;height:100%;background:'+sc+';border-radius:0 3px 3px 0;"></div>':'')+'</div>'
-        + '</div>'
-        + '<div style="width:40px;font-size:9px;color:'+(z.pct>=0?'var(--g)':'var(--r)')+';font-family:var(--mono);flex-shrink:0">'+(z.pct>=0?'+':'')+z.pct.toFixed(1)+'%</div>'
-        + '</div>';
-    }).join('');
-
-    var targHtml = function(list, isLong) {
-      return list.map(function(z) {
-        var c = isLong ? 'var(--r)' : 'var(--g)';
-        var bg = isLong ? 'rgba(255,69,96,.06)' : 'rgba(0,255,135,.04)';
-        var bd = isLong ? 'rgba(255,69,96,.2)' : 'rgba(0,255,135,.15)';
-        var density = Math.round(isLong ? z.longD : z.shortD);
-        var bars = '';
-        for(var i=0;i<5;i++) bars += i < Math.round(density/20) ? '█' : '░';
-        return '<div style="background:'+bg+';border:1px solid '+bd+';border-radius:9px;padding:10px 12px;margin-bottom:7px">'
-          + '<div style="font-size:14px;font-weight:800;color:'+c+';font-family:var(--mono)">' + fmt(z.price) + '</div>'
-          + '<div style="font-size:10px;color:'+(isLong?'#7a2030':'#1e4a2a')+';margin-top:2px">'+(z.pct>=0?'+':'')+z.pct.toFixed(2)+'% dari harga</div>'
-          + '<div style="font-size:10px;color:'+c+';margin-top:4px;font-family:var(--mono)">'+bars+'</div>'
-          + '<div style="font-size:9px;color:'+(isLong?'#5a1a22':'#1a3d28')+';margin-top:3px">'+(density>80?'MAJOR CLUSTER':'Moderate')+'</div>'
-          + '</div>';
-      }).join('');
-    };
-
-    var html = '<div class="card">'
-      + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">'
-        + '<div style="font-size:17px;font-weight:800;color:#eef2f8">' + sym.replace('USDT','/USDT') + '</div>'
-        + '<div style="font-size:19px;font-weight:800;color:#eef2f8;font-family:var(--mono)">' + fmt(price) + '</div>'
-        + '<div style="font-size:13px;font-weight:700;color:'+(ch24>=0?'var(--g)':'var(--r)')+'">'+pct(ch24)+'</div>'
-        + '<div style="margin-left:auto;padding:5px 12px;background:'+stopC+'18;border:1px solid '+stopC+'40;border-radius:7px;font-size:9px;color:'+stopC+'">'+stopHunt+'</div>'
-      + '</div>'
-      + '<div class="sgrid">'
-        + '<div class="sbox"><div class="sval" style="color:'+(fr===null?'var(--txt)':fr<0?'var(--g)':fr>0.08?'var(--r)':'var(--y)');font-size:16px">'+(fr!==null?pct(fr,4):'—')+'</div><div class="slbl">Funding Rate</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:'+(oiTrend===null?'var(--txt)':oiTrend>5?'var(--g)':oiTrend<-5?'var(--r)':'var(--y)');font-size:16px">'+(oiTrend!==null?pct(oiTrend,1):'—')+'</div><div class="slbl">OI Change 24h</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:var(--r);font-size:16px">'+longTargets.length+'</div><div class="slbl">Long Liq Zones</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:var(--g);font-size:16px">'+shortTargets.length+'</div><div class="slbl">Short Liq Zones</div></div>'
-      + '</div>'
-      + '</div>'
-
-      + '<div class="card"><div class="sh">Liquidation Zone Map</div>'
-        + '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--dmr);margin-bottom:10px;font-family:var(--mono)">'
-          + '<span style="color:var(--r)">■ Long Liq (price falls)</span>'
-          + '<span style="color:var(--g)">■ Short Liq (price rises)</span>'
-        + '</div>'
-        + zonesHtml
-      + '</div>'
-
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">'
-        + '<div class="card" style="border-color:rgba(255,69,96,.2)">'
-          + '<div class="sh" style="color:var(--r)">🎯 Long Liq Targets</div>'
-          + '<p style="font-size:10px;color:#5a3040;margin-bottom:10px">Harga turun ke sini = stop hunt → rebound</p>'
-          + targHtml(longTargets, true)
-        + '</div>'
-        + '<div class="card" style="border-color:rgba(0,255,135,.2)">'
-          + '<div class="sh" style="color:var(--g)">🎯 Short Liq Targets</div>'
-          + '<p style="font-size:10px;color:#1e4030;margin-bottom:10px">Harga naik ke sini = short squeeze</p>'
-          + targHtml(shortTargets, false)
-        + '</div>'
-      + '</div>'
-
-      + '<div class="card" style="background:rgba(0,0,0,.3)">'
-        + '<div class="sh">💡 How To Trade Liquidation Zones</div>'
-        + guideHtml([
-            ['🔴','Long Liq Sweep','Harga drop tajam ke zona merah → tunggu candle reversal (hammer/engulfing) → LONG dengan SL di bawah zona. Target: short liq zone di atas.'],
-            ['🟢','Short Liq Squeeze','Harga naik ke zona hijau → momentum akselerasi → LONG breakdown resistance atau tunggu pullback setelah squeeze.'],
-            ['📊','Funding Rate Edge','FR > +0.1% = terlalu banyak long = market maker akan sweep long liq dulu. FR < -0.05% = akan squeeze short.'],
-            ['⚡','Entry Setup','1) Identify major cluster. 2) Tunggu harga approach. 3) Konfirmasi reversal candle. 4) Enter dengan tight SL. 5) TP di cluster berlawanan.'],
-          ])
-      + '</div>';
-
-    hd('liq-load'); $('liq-out').innerHTML = html; sh('liq-out');
-  } catch(e) {
-    hd('liq-load');
-    $('liq-out').innerHTML = '<div class="card" style="color:var(--r);text-align:center;padding:20px">Error: ' + e.message + '</div>';
-    sh('liq-out');
-  }
-  btn.disabled = false; btn.textContent = '🔄 REFRESH';
-}
-
-// ═══════════════════════════════════════
-// TAB 2: CVD
-// ═══════════════════════════════════════
-async function runCVD() {
-  var sym = $('cvd-sym').value;
-  var tf = $('cvd-tf').value;
-  var btn = $('cvd-btn');
-  btn.disabled = true; btn.textContent = '⏳ LOADING...';
-  $('cvd-out').innerHTML = '';
-  hd('cvd-out'); sh('cvd-load');
-
-  try {
-    var results = await Promise.allSettled([
-      dFetch('futures_klines', {symbol: sym, interval: tf, limit: '48'}),
-      bFetch('ticker/24hr', {symbol: sym}),
-    ]);
-
-    var klines = results[0].status==='fulfilled' && Array.isArray(results[0].value) ? results[0].value : [];
-    var t24 = results[1].status==='fulfilled' ? results[1].value : {};
-
-    // Fallback to spot klines if futures fails
-    if(!klines.length) {
-      var spotKl = await bFetch('klines', {symbol: sym, interval: tf, limit: '48'});
-      if(Array.isArray(spotKl)) klines = spotKl;
-    }
-
-    if(!klines.length) throw new Error('Data klines tidak tersedia');
-
-    var price = parseFloat(t24.lastPrice || klines[klines.length-1][4]);
-    var ch24 = parseFloat(t24.priceChangePercent || 0);
-
-    // Calculate CVD
-    var cvdData = [];
-    var cumDelta = 0;
-    klines.forEach(function(k) {
-      var takerBuy = parseFloat(k[9] || 0);
-      var total = parseFloat(k[5] || 1);
-      var takerSell = total - takerBuy;
-      var delta = takerBuy - takerSell;
-      cumDelta += delta;
-      var close = parseFloat(k[4]);
-      var open = parseFloat(k[1]);
-      cvdData.push({
-        time: new Date(parseInt(k[0])),
-        open: open, close: close,
-        high: parseFloat(k[2]), low: parseFloat(k[3]),
-        vol: total, takerBuy: takerBuy, takerSell: takerSell,
-        delta: delta, cvd: cumDelta,
-        buyRatio: total > 0 ? takerBuy/total : 0.5,
-        bull: close > open
-      });
-    });
-
-    if(!cvdData.length) throw new Error('CVD data kosong');
-
-    // Divergence
-    var last10 = cvdData.slice(-10);
-    var priceChg = last10.length >= 2 ? (last10[last10.length-1].close - last10[0].close)/last10[0].close*100 : 0;
-    var cvdChg = last10.length >= 2 ? last10[last10.length-1].cvd - last10[0].cvd : 0;
-
-    var divType, divC, divDesc;
-    if(priceChg < -1 && cvdChg > 0) {
-      divType = '🟢 BULLISH DIVERGENCE'; divC = 'var(--g)';
-      divDesc = 'Harga turun tapi CVD naik = buyers mengakumulasi diam-diam. Entry LONG setelah konfirmasi reversal.';
-    } else if(priceChg > 1 && cvdChg < 0) {
-      divType = '🔴 BEARISH DIVERGENCE'; divC = 'var(--r)';
-      divDesc = 'Harga naik tapi CVD turun = distribusi tersembunyi. Siap SHORT atau ambil profit.';
-    } else if(priceChg > 0 && cvdChg > 0) {
-      divType = '✅ KONFIRMASI BULLISH'; divC = 'var(--g)';
-      divDesc = 'Harga naik + CVD naik = breakout valid dan sustainable. Follow the trend.';
-    } else if(priceChg < 0 && cvdChg < 0) {
-      divType = '❌ KONFIRMASI BEARISH'; divC = 'var(--r)';
-      divDesc = 'Harga turun + CVD turun = breakdown valid. Trend bearish kuat.';
-    } else {
-      divType = '⚪ NETRAL'; divC = 'var(--y)';
-      divDesc = 'Tidak ada sinyal divergensi jelas. Tunggu konfirmasi arah.';
-    }
-
-    // Stats
-    var recent = cvdData.slice(-1)[0];
-    var avgBuyRatio = cvdData.slice(-5).reduce(function(a,c){return a+c.buyRatio;},0)/5;
-    var delta3 = cvdData.slice(-3).reduce(function(a,c){return a+c.delta;},0);
-    var delta12 = cvdData.slice(-12).reduce(function(a,c){return a+c.delta;},0);
-
-    // SVG chart
-    var W=600, PH=70, CVDH=55;
-    var prices = cvdData.map(function(d){return d.close;});
-    var cvds = cvdData.map(function(d){return d.cvd;});
-    var pMn=Math.min.apply(null,prices), pMx=Math.max.apply(null,prices);
-    var cMn=Math.min.apply(null,cvds), cMx=Math.max.apply(null,cvds);
-    var pRange=pMx-pMn||1, cRange=cMx-cMn||1;
-    var pPts = cvdData.map(function(d,i){return (i/(cvdData.length-1)*W).toFixed(1)+','+(PH-(d.close-pMn)/pRange*PH*.85-5).toFixed(1);}).join(' ');
-    var cPts = cvdData.map(function(d,i){return (i/(cvdData.length-1)*W).toFixed(1)+','+(PH+CVDH+10-(d.cvd-cMn)/cRange*CVDH*.85-5).toFixed(1);}).join(' ');
-    var pUp = prices[prices.length-1] >= prices[0];
-    var cUp = cvds[cvds.length-1] >= cvds[0];
-    var pColor = pUp ? '#00ff87' : '#ff4560';
-    var cColor = cUp ? '#00ccff' : '#f5c518';
-    var svg = '<svg width="100%" viewBox="0 0 '+W+' '+(PH+CVDH+20)+'" style="border-radius:8px;overflow:hidden;background:rgba(0,0,0,.2)">'
-      + '<line x1="0" y1="'+(PH+5)+'" x2="'+W+'" y2="'+(PH+5)+'" stroke="rgba(255,255,255,.05)" stroke-width="1"/>'
-      + '<text x="4" y="12" fill="'+pColor+'" font-size="9" font-family="IBM Plex Mono" opacity=".8">PRICE</text>'
-      + '<text x="4" y="'+(PH+18)+'" fill="'+cColor+'" font-size="9" font-family="IBM Plex Mono" opacity=".8">CVD</text>'
-      + '<polyline points="'+pPts+'" fill="none" stroke="'+pColor+'" stroke-width="1.8" style="filter:drop-shadow(0 0 3px '+pColor+'66)"/>'
-      + '<polyline points="'+cPts+'" fill="none" stroke="'+cColor+'" stroke-width="1.8" style="filter:drop-shadow(0 0 3px '+cColor+'66)"/>'
-      + '<text x="'+(W-4)+'" y="12" fill="'+pColor+'" font-size="9" font-family="IBM Plex Mono" text-anchor="end">'+fmt(prices[prices.length-1])+'</text>'
-      + '<text x="'+(W-4)+'" y="'+(PH+18)+'" fill="'+cColor+'" font-size="9" font-family="IBM Plex Mono" text-anchor="end">'+(cvds[cvds.length-1]>=0?'+':'')+fmtK(cvds[cvds.length-1])+'</text>'
-      + '</svg>';
-
-    // Recent candles
-    var candlesHtml = cvdData.slice(-12).reverse().map(function(c) {
-      var dc = c.delta > 0 ? 'var(--g)' : 'var(--r)';
-      var br = (c.buyRatio*100).toFixed(0);
-      var bc = c.buyRatio > 0.55 ? 'var(--g)' : c.buyRatio < 0.45 ? 'var(--r)' : 'var(--y)';
-      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.025);font-family:var(--mono)">'
-        + '<span style="font-size:9px;color:var(--dmr)">'+c.time.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})+'</span>'
-        + '<span style="font-size:10px;color:'+(c.bull?'var(--g)':'var(--r)')+'">'+fmt(c.close)+'</span>'
-        + '<span style="font-size:10px;font-weight:700;color:'+dc+'">'+(c.delta>=0?'+':'')+fmtK(c.delta)+'</span>'
-        + '<span style="font-size:10px;font-weight:700;color:'+bc+'">'+br+'%</span>'
-        + '</div>';
-    }).join('');
-
-    var html = '<div class="card">'
-      + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">'
-        + '<div style="font-size:17px;font-weight:800;color:#eef2f8">'+sym.replace('USDT','/USDT')+' · '+tf+'</div>'
-        + '<div style="font-size:18px;font-weight:800;color:#eef2f8;font-family:var(--mono)">'+fmt(price)+'</div>'
-        + '<div style="font-size:13px;font-weight:700;color:'+(ch24>=0?'var(--g)':'var(--r)')+'">'+pct(ch24)+'</div>'
-      + '</div>'
-      + '<div style="background:'+divC+'12;border:1px solid '+divC+'30;border-radius:12px;padding:13px 15px;margin-bottom:13px">'
-        + '<div style="font-size:12px;font-weight:800;color:'+divC+';margin-bottom:5px">'+divType+'</div>'
-        + '<div style="font-size:11px;color:'+divC+';opacity:.8;line-height:1.6">'+divDesc+'</div>'
-      + '</div>'
-      + '<div class="sgrid">'
-        + '<div class="sbox"><div class="sval" style="color:'+(avgBuyRatio>0.55?'var(--g)':avgBuyRatio<0.45?'var(--r)':'var(--y)')+'">'+((avgBuyRatio*100).toFixed(0))+'%</div><div class="slbl">Buy Ratio</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:'+(delta3>0?'var(--g)':'var(--r)')+'">'+fmtK(delta3)+'</div><div class="slbl">Delta 3 Bar</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:'+(delta12>0?'var(--g)':'var(--r)')+'">'+fmtK(delta12)+'</div><div class="slbl">Delta 12 Bar</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:'+(recent.cvd>=0?'var(--g)':'var(--r)')+'">'+fmtK(recent.cvd)+'</div><div class="slbl">Cum Delta</div></div>'
-      + '</div>'
-      + '</div>'
-      + '<div class="card"><div class="sh">📈 CVD + Price Chart</div>'+svg+'</div>'
-      + '<div class="card"><div class="sh">🕯️ Recent Candles (Buy% = taker buy ratio)</div>'+candlesHtml+'</div>'
-      + '<div class="card" style="background:rgba(0,0,0,.3)"><div class="sh">💡 CVD Strategy</div>'
-        + guideHtml([
-            ['🟢','Bullish Divergence','Price turun + CVD naik = akumulasi tersembunyi. Smart money beli. Entry long setelah reversal konfirmasi.'],
-            ['🔴','Bearish Divergence','Price naik + CVD turun = distribusi. Sellers jual di harga tinggi. Siapkan exit atau short.'],
-            ['✅','Valid Breakout','Price naik + CVD naik = buyer agresif dominan. Trend sustainable. Add position.'],
-            ['⚡','Buy Ratio Edge','Buy ratio > 60% = aggressive buyer dominan. < 40% = aggressive seller. 45-55% = balance, tunggu.'],
-          ])
-      + '</div>';
-
-    hd('cvd-load'); $('cvd-out').innerHTML = html; sh('cvd-out');
-  } catch(e) {
-    hd('cvd-load');
-    $('cvd-out').innerHTML = '<div class="card" style="color:var(--r);text-align:center;padding:20px">Error: ' + e.message + '</div>';
-    sh('cvd-out');
-  }
-  btn.disabled = false; btn.textContent = '🔄 REFRESH';
-}
-
-// ═══════════════════════════════════════
-// TAB 3: FEAR & GREED
-// ═══════════════════════════════════════
-async function runFG() {
-  var btn = $('fg-btn');
-  btn.disabled = true; btn.textContent = '⏳ LOADING...';
-  $('fg-out').innerHTML = '';
-  hd('fg-out'); sh('fg-load');
-
-  try {
-    var data = await dFetch('feargreed');
-    var arr = data.data || [];
-    if(!arr.length) throw new Error('Fear & Greed data tidak tersedia');
-
-    var cur = arr[0];
-    var val = parseInt(cur.value);
-    var valY = arr[1] ? parseInt(arr[1].value) : val;
-    var valW = arr[6] ? parseInt(arr[6].value) : val;
-    var hist30 = arr.slice(0,30).map(function(d){return parseInt(d.value);});
-    var avg30 = Math.round(hist30.reduce(function(a,b){return a+b;},0)/hist30.length);
-
-    // Zone
-    var zone, zoneC, zoneEmoji, advice;
-    if(val < 25)       { zone='EXTREME FEAR';   zoneC='#ff4560'; zoneEmoji='😱'; advice='WAKTU TERBAIK BELI. Semua takut = oportuniti. Historical BTC: +40% avg 90 hari setelah.'; }
-    else if(val < 40)  { zone='FEAR';           zoneC='#ff8c00'; zoneEmoji='😰'; advice='Sentimen negatif = ada peluang. Konfirmasi dengan TA sebelum entry.'; }
-    else if(val < 60)  { zone='NEUTRAL';        zoneC='#f5c518'; zoneEmoji='😐'; advice='Market tidak beri sinyal jelas. Follow trend, gunakan TA.'; }
-    else if(val < 75)  { zone='GREED';          zoneC='#90cc50'; zoneEmoji='😁'; advice='Ketatkan SL. Ambil partial profit. Hindari FOMO entry baru.'; }
-    else               { zone='EXTREME GREED';  zoneC='#ff4560'; zoneEmoji='🤑'; advice='WAKTU AMBIL PROFIT. Semua euphoria = top dekat. Kurangi exposure.'; }
-
-    var fgChg = val - valY;
-    var angle = -90 + (val/100*180);
-    var needle = (function(){
-      var cx=120,cy=110,len=65;
-      var a=(angle-90)*Math.PI/180;
-      return 'M '+cx+' '+cy+' L '+(cx+len*Math.cos(a)).toFixed(1)+' '+(cy+len*Math.sin(a)).toFixed(1);
-    })();
-
-    // Gauge SVG
-    var zones5 = [
-      {s:-90,e:-54,c:'#ff4560'},{s:-54,e:-18,c:'#ff8c00'},{s:-18,e:18,c:'#f5c518'},
-      {s:18,e:54,c:'#90cc50'},{s:54,e:90,c:'#00ff87'}
-    ];
-    var arcHtml = zones5.map(function(z){
-      var r=80,cx=120,cy=110;
-      var a1=(z.s)*Math.PI/180, a2=(z.e)*Math.PI/180;
-      var x1=(cx+r*Math.cos(a1-Math.PI/2)).toFixed(1), y1=(cy+r*Math.sin(a1-Math.PI/2)).toFixed(1);
-      var x2=(cx+r*Math.cos(a2-Math.PI/2)).toFixed(1), y2=(cy+r*Math.sin(a2-Math.PI/2)).toFixed(1);
-      return '<path d="M '+x1+' '+y1+' A '+r+' '+r+' 0 0 1 '+x2+' '+y2+'" fill="none" stroke="'+z.c+'" stroke-width="18" stroke-linecap="round" opacity=".2"/>';
-    }).join('');
-
-    var activeArc = (function(){
-      var r=80,cx=120,cy=110;
-      var a1=(-90)*Math.PI/180, a2=(angle)*Math.PI/180;
-      var x1=(cx+r*Math.cos(a1-Math.PI/2)).toFixed(1), y1=(cy+r*Math.sin(a1-Math.PI/2)).toFixed(1);
-      var x2=(cx+r*Math.cos(a2-Math.PI/2)).toFixed(1), y2=(cy+r*Math.sin(a2-Math.PI/2)).toFixed(1);
-      var large = angle+90 > 180 ? 1 : 0;
-      return '<path d="M '+x1+' '+y1+' A '+r+' '+r+' 0 '+large+' 1 '+x2+' '+y2+'" fill="none" stroke="'+zoneC+'" stroke-width="18" stroke-linecap="round" opacity=".85"/>';
-    })();
-
-    var gaugeSvg = '<svg width="240" height="130" viewBox="0 0 240 130" style="overflow:visible;display:block;margin:0 auto">'
-      + arcHtml + activeArc
-      + '<path d="'+needle+'" stroke="'+zoneC+'" stroke-width="2.5" stroke-linecap="round" style="filter:drop-shadow(0 0 4px '+zoneC+')"/>'
-      + '<circle cx="120" cy="110" r="6" fill="'+zoneC+'" opacity=".9"/>'
-      + '<text x="120" y="100" fill="'+zoneC+'" font-size="34" font-family="IBM Plex Mono" font-weight="800" text-anchor="middle">'+val+'</text>'
-      + '<text x="32" y="124" fill="rgba(255,69,96,.6)" font-size="8" text-anchor="middle" font-family="IBM Plex Mono">FEAR</text>'
-      + '<text x="208" y="124" fill="rgba(0,255,135,.6)" font-size="8" text-anchor="middle" font-family="IBM Plex Mono">GREED</text>'
-      + '</svg>';
-
-    // 30 day chart
-    var W=600, H=55;
-    var chartPts = hist30.slice().reverse().map(function(v,i){
-      var x=(i/(hist30.length-1)*W).toFixed(1);
-      var y=(H-v/100*H*.9-3).toFixed(1);
-      return x+','+y;
-    }).join(' ');
-    var chartSegs = hist30.slice().reverse().map(function(v,i,a){
-      if(i===0) return '';
-      var x1=((i-1)/(a.length-1)*W).toFixed(1), y1=(H-a[i-1]/100*H*.9-3).toFixed(1);
-      var x2=(i/(a.length-1)*W).toFixed(1), y2=(H-v/100*H*.9-3).toFixed(1);
-      var c = v<25?'#ff4560':v<40?'#ff8c00':v<60?'#f5c518':v<75?'#90cc50':'#00ff87';
-      return '<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+c+'" stroke-width="2" stroke-linecap="round" opacity=".8"/>';
-    }).join('');
-    var chartSvg = '<svg width="100%" viewBox="0 0 '+W+' '+(H+10)+'" style="border-radius:8px;overflow:hidden;background:rgba(0,0,0,.2)">'
-      + chartSegs
-      + '<circle cx="'+W+'" cy="'+(H-hist30[0]/100*H*.9-3).toFixed(1)+'" r="5" fill="'+zoneC+'" style="filter:drop-shadow(0 0 4px '+zoneC+')"/>'
-      + '</svg>';
-
-    var html = '<div class="card" style="background:linear-gradient(135deg,rgba('+(val<50?'255,69,96':'0,255,135')+',.05),rgba(0,0,0,.3))">'
-      + '<div style="text-align:center;padding:10px 0 16px">'
-        + '<div class="lbl" style="margin-bottom:10px">Crypto Fear &amp; Greed Index</div>'
-        + gaugeSvg
-        + '<div style="margin-top:8px"><span style="font-size:28px">'+zoneEmoji+'</span>'
-          + '<div style="font-size:18px;font-weight:800;color:'+zoneC+';letter-spacing:3px;margin-top:4px">'+zone+'</div>'
-          + '<div style="font-size:11px;color:#3d5060;margin-top:8px;line-height:1.7;max-width:320px;margin-left:auto;margin-right:auto">'+advice+'</div>'
-        + '</div>'
-      + '</div>'
-      + '<div class="sgrid">'
-        + '<div class="sbox"><div style="font-size:22px;margin-bottom:4px">'+zoneEmoji+'</div><div class="sval" style="color:'+zoneC+';font-size:18px">'+val+'</div><div class="slbl">Sekarang</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:var(--txt);font-size:18px">'+valY+'</div><div class="slbl">Kemarin</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:var(--txt);font-size:18px">'+valW+'</div><div class="slbl">7 Hari Lalu</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:var(--txt);font-size:18px">'+avg30+'</div><div class="slbl">Avg 30H</div></div>'
-      + '</div>'
-      + '</div>'
-      + '<div class="card"><div class="sh">📅 30 Hari Terakhir</div>'+chartSvg+'<div style="display:flex;justify-content:space-between;margin-top:7px;font-size:10px;color:var(--dmr)"><span>30 hari lalu</span><span style="color:'+zoneC+'">Hari ini: '+val+' — '+zone+'</span></div></div>'
-      + '<div class="card" style="background:rgba(0,0,0,.3)"><div class="sh">💡 Fear &amp; Greed Trading Rules</div>'
-        + guideHtml([
-            ['😱','Extreme Fear (0-25)','BELI. Historical: BTC naik rata-rata +40% dalam 90 hari setelah extreme fear. Ini bukan waktunya jual — ini waktunya akumulasi.'],
-            ['😰','Fear (25-40)','Sentimen negatif = ada peluang. Cari setup TA yang kuat di zona ini. Beli dengan SL ketat.'],
-            ['🤑','Extreme Greed (75-100)','AMBIL PROFIT. Semua orang euphoria = tidak ada buyer tersisa. Worst time to buy. Reduce exposure.'],
-            ['😁','Greed (60-75)','Ketatkan stop loss. Partial profit. Hindari FOMO add position baru. Siapkan exit plan.'],
-          ])
-      + '</div>';
-
-    hd('fg-load'); $('fg-out').innerHTML = html; sh('fg-out');
-  } catch(e) {
-    hd('fg-load');
-    $('fg-out').innerHTML = '<div class="card" style="color:var(--r);text-align:center;padding:20px">Error: ' + e.message + '</div>';
-    sh('fg-out');
-  }
-  btn.disabled = false; btn.textContent = '🔄 REFRESH';
-}
-
-// ═══════════════════════════════════════
-// TAB 4: SENTIMENT
-// ═══════════════════════════════════════
-async function runSent() {
-  var btn = $('sent-btn');
-  btn.disabled = true; btn.textContent = '⏳ LOADING...';
-  $('sent-out').innerHTML = '';
-  hd('sent-out'); sh('sent-load');
-
-  try {
-    var results = await Promise.allSettled([
-      bFetch('ticker/24hr'),
-      dFetch('coingecko_global'),
-      dFetch('coingecko_trending'),
-    ]);
-
-    var all = results[0].status==='fulfilled' && Array.isArray(results[0].value) ? results[0].value : [];
-    var gData = results[1].status==='fulfilled' ? results[1].value.data : {};
-    var tData = results[2].status==='fulfilled' ? results[2].value : {};
-
-    var STABLES = {USDT:1,USDC:1,BUSD:1,TUSD:1,FDUSD:1,DAI:1,USDD:1,FRAX:1};
-    var coins = [];
-    all.forEach(function(t) {
-      if(!t.symbol.endsWith('USDT')) return;
-      var base = t.symbol.replace('USDT','');
-      if(STABLES[base]) return;
-      if(/UP$|DOWN$|BULL$|BEAR$/i.test(base)) return;
-      if(parseFloat(t.quoteVolume) < 1000000) return;
-      coins.push({ticker:base, ch24:parseFloat(t.priceChangePercent), vol24:parseFloat(t.quoteVolume)});
-    });
-    coins.sort(function(a,b){return b.vol24-a.vol24;});
-
-    var total = coins.length;
-    var adv = coins.filter(function(c){return c.ch24>0;}).length;
-    var dec = coins.filter(function(c){return c.ch24<0;}).length;
-    var above5 = coins.filter(function(c){return c.ch24>5;}).length;
-    var below5 = coins.filter(function(c){return c.ch24<-5;}).length;
-    var above10 = coins.filter(function(c){return c.ch24>10;}).length;
-    var avgCh = total>0 ? coins.reduce(function(a,c){return a+c.ch24;},0)/total : 0;
-    var bullVol = coins.filter(function(c){return c.ch24>0;}).reduce(function(a,c){return a+c.vol24;},0);
-    var totVol = coins.reduce(function(a,c){return a+c.vol24;},0);
-    var volBias = totVol>0 ? bullVol/totVol*100 : 50;
-
-    // Score
-    var score = 50;
-    if(avgCh>3) score+=20; else if(avgCh>1) score+=10; else if(avgCh<-3) score-=20; else if(avgCh<-1) score-=10;
-    var adr = dec>0 ? adv/dec : 2;
-    if(adr>1.5) score+=10; else if(adr<0.7) score-=10;
-    if(volBias>60) score+=8; else if(volBias<40) score-=8;
-    score = Math.min(95,Math.max(10,score));
-    var sLabel = score>=70?'BULLISH':score>=55?'SLIGHT BULL':score>=45?'NEUTRAL':score>=30?'SLIGHT BEAR':'BEARISH';
-    var sColor = score>=70?'var(--g)':score>=55?'#90cc50':score>=45?'var(--y)':score>=30?'var(--o)':'var(--r)';
-
-    // Heatmap top 30
-    var heatmap = coins.slice(0,30);
-    var hmHtml = heatmap.map(function(c) {
-      var ch = c.ch24;
-      var intensity = Math.min(Math.abs(ch)/10,1);
-      var bg = ch>=5?'rgba(0,255,135,'+(0.1+intensity*.4)+')':ch>=2?'rgba(0,255,135,'+(0.05+intensity*.2)+')':ch>0?'rgba(0,255,135,.04)':ch>-2?'rgba(255,69,96,.04)':ch>-5?'rgba(255,69,96,'+(0.05+intensity*.2)+')':'rgba(255,69,96,'+(0.1+intensity*.4)+')';
-      var tc = ch>0?'var(--g)':'var(--r)';
-      var bd = ch>0?'rgba(0,255,135,.2)':'rgba(255,69,96,.2)';
-      return '<div style="background:'+bg+';border:1px solid '+bd+';border-radius:8px;padding:7px 10px;text-align:center;min-width:62px">'
-        + '<div style="font-size:11px;font-weight:700;color:#eef2f8">'+c.ticker+'</div>'
-        + '<div style="font-size:10px;font-weight:700;color:'+tc+';font-family:var(--mono)">'+(ch>=0?'+':'')+ch.toFixed(1)+'%</div>'
-        + '</div>';
-    }).join('');
-
-    // Top/bottom movers
-    var top8 = coins.slice(0,80).sort(function(a,b){return b.ch24-a.ch24;}).slice(0,8);
-    var bot8 = coins.slice(0,80).sort(function(a,b){return a.ch24-b.ch24;}).slice(0,8);
-
-    var trending = tData.coins ? tData.coins.slice(0,7) : [];
-    var trendHtml = trending.map(function(c) {
-      return '<div style="background:rgba(255,140,0,.07);border:1px solid rgba(255,140,0,.2);border-radius:20px;padding:5px 12px;display:inline-flex;align-items:center;gap:6px;margin:2px">'
-        + (c.item&&c.item.small?'<img src="'+c.item.small+'" width="14" height="14" style="border-radius:50%"/>':'')
-        + '<span style="font-size:10px;font-weight:700;color:var(--o)">'+(c.item&&c.item.symbol?c.item.symbol:c.item&&c.item.name?c.item.name:'?')+'</span>'
-        + '</div>';
-    }).join('');
-
-    var html = '<div class="card" style="background:linear-gradient(135deg,rgba('+(score>=55?'0,255,135':'255,69,96')+',.04),rgba(0,0,0,.3))">'
-      + '<div style="text-align:center;padding:8px 0 14px">'
-        + '<div class="lbl" style="margin-bottom:6px">Overall Market Sentiment</div>'
-        + '<div style="font-size:44px;font-weight:800;color:'+sColor+';font-family:var(--mono)">'+score+'</div>'
-        + '<div style="font-size:18px;font-weight:700;color:'+sColor+';margin-top:4px;letter-spacing:2px">'+sLabel+'</div>'
-      + '</div>'
-      + '<div class="pbar" style="margin-bottom:10px"><div class="pfill" style="width:'+score+'%;background:'+sColor+'"></div></div>'
-      + '<div class="sgrid">'
-        + '<div class="sbox"><div class="sval" style="color:'+(avgCh>=0?'var(--g)':'var(--r)')+'">'+pct(avgCh,1)+'</div><div class="slbl">Avg Change</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:'+(adv>dec?'var(--g)':'var(--r)')+'">'+adv+'/'+dec+'</div><div class="slbl">Adv/Dec</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:'+(volBias>55?'var(--g)':volBias<45?'var(--r)':'var(--y)')+'">'+volBias.toFixed(0)+'%</div><div class="slbl">Bull Volume</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:'+(above10>5?'var(--g)':'var(--txt)')+'">'+above10+'</div><div class="slbl">+10% Coins</div></div>'
-      + '</div>'
-      + '</div>'
-
-      + (gData&&gData.total_market_cap ? '<div class="card"><div class="sh">Global Market</div><div class="sgrid">'
-        + '<div class="sbox"><div class="sval" style="font-size:14px">'+(gData.total_market_cap.usd/1e12).toFixed(2)+'T</div><div class="slbl">Market Cap</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:'+(gData.market_cap_change_percentage_24h_usd>=0?'var(--g)':'var(--r)')+'">'+pct(gData.market_cap_change_percentage_24h_usd||0)+'</div><div class="slbl">24h Change</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:var(--y)">'+(gData.market_cap_percentage&&gData.market_cap_percentage.btc?gData.market_cap_percentage.btc.toFixed(1)+'%':'—')+'</div><div class="slbl">BTC Dom</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:var(--b)">'+(gData.market_cap_percentage&&gData.market_cap_percentage.eth?gData.market_cap_percentage.eth.toFixed(1)+'%':'—')+'</div><div class="slbl">ETH Dom</div></div>'
-        + '</div></div>' : '')
-
-      + '<div class="card"><div class="sh">Breadth Analysis</div>'
-        + [
-            {l:'Advancing (>0%)', v:adv, tot:total, c:'var(--g)'},
-            {l:'Declining (<0%)', v:dec, tot:total, c:'var(--r)'},
-            {l:'Up >5%', v:above5, tot:total, c:'var(--g)'},
-            {l:'Down >5%', v:below5, tot:total, c:'var(--r)'},
-          ].map(function(x) {
-            var pW = x.tot > 0 ? Math.round(x.v/x.tot*100) : 0;
-            return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">'
-              + '<div style="width:110px;font-size:10px;color:var(--dmr);flex-shrink:0">'+x.l+'</div>'
-              + '<div class="pbar" style="flex:1;height:7px"><div class="pfill" style="width:'+pW+'%;background:'+x.c+'"></div></div>'
-              + '<div style="width:55px;text-align:right;font-size:11px;font-weight:700;color:'+x.c+';font-family:var(--mono)">'+x.v+' ('+pW+'%)</div>'
-              + '</div>';
-          }).join('')
-      + '</div>'
-
-      + '<div class="card"><div class="sh">Market Heatmap — Top 30</div><div style="display:flex;gap:5px;flex-wrap:wrap">'+hmHtml+'</div></div>'
-
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">'
-        + '<div class="card"><div class="sh" style="color:var(--g)">Top Gainers</div>'
-          + top8.map(function(c){return '<div class="row"><span class="rl">'+c.ticker+'</span><span class="rv" style="color:var(--g)">+'+c.ch24.toFixed(1)+'%</span></div>';}).join('')
-        + '</div>'
-        + '<div class="card"><div class="sh" style="color:var(--r)">Top Losers</div>'
-          + bot8.map(function(c){return '<div class="row"><span class="rl">'+c.ticker+'</span><span class="rv" style="color:var(--r)">'+c.ch24.toFixed(1)+'%</span></div>';}).join('')
-        + '</div>'
-      + '</div>'
-
-      + (trending.length ? '<div class="card"><div class="sh">Trending (CoinGecko)</div><div style="display:flex;gap:5px;flex-wrap:wrap">'+trendHtml+'</div></div>' : '');
-
-    hd('sent-load'); $('sent-out').innerHTML = html; sh('sent-out');
-  } catch(e) {
-    hd('sent-load');
-    $('sent-out').innerHTML = '<div class="card" style="color:var(--r);text-align:center;padding:20px">Error: ' + e.message + '</div>';
-    sh('sent-out');
-  }
-  btn.disabled = false; btn.textContent = '🔄 REFRESH';
-}
-
-// ═══════════════════════════════════════
-// TAB 5: COMBINED MASTER SIGNAL
-// ═══════════════════════════════════════
-async function runComb() {
-  var btn = $('comb-btn');
-  btn.disabled = true; btn.textContent = '⏳ SCANNING...';
-  $('comb-out').innerHTML = '';
-  hd('comb-out'); sh('comb-load');
-
-  var prog = $('comb-bar');
-  var txt = $('comb-txt');
-
-  function setP(p, t) {
-    if(prog) prog.style.width = p + '%';
-    if(txt) txt.textContent = t;
-  }
-
-  try {
-    var signals = [];
-
-    // Step 1: Fear & Greed
-    setP(10, '1/5 Fear & Greed...');
-    var fgVal = 50, fgZone = 'Neutral';
-    try {
-      var fgD = await dFetch('feargreed');
-      if(fgD && fgD.data && fgD.data[0]) {
-        fgVal = parseInt(fgD.data[0].value);
-        fgZone = fgD.data[0].value_classification || 'Neutral';
-      }
-    } catch(e) {}
-
-    if(fgVal < 25) signals.push({cat:'Sentiment', name:'Extreme Fear ('+fgVal+')', bull:true, w:3, desc:'Historically best buy zone'});
-    else if(fgVal > 75) signals.push({cat:'Sentiment', name:'Extreme Greed ('+fgVal+')', bull:false, w:3, desc:'Historically worst buy zone'});
-    else if(fgVal < 40) signals.push({cat:'Sentiment', name:'Fear ('+fgVal+')', bull:true, w:1, desc:'Bearish sentiment = opportunity'});
-    else if(fgVal > 60) signals.push({cat:'Sentiment', name:'Greed ('+fgVal+')', bull:false, w:1, desc:'Caution — euphoria'});
-    await new Promise(function(r){setTimeout(r,300);});
-
-    // Step 2: Market Breadth
-    setP(30, '2/5 Market breadth...');
-    var adv=0, dec=0, avgCh=0, volBias=50;
-    try {
-      var allTickers = await bFetch('ticker/24hr');
-      if(Array.isArray(allTickers)) {
-        var STABLES = {USDT:1,USDC:1,BUSD:1,TUSD:1,FDUSD:1,DAI:1,USDD:1,FRAX:1};
-        var filtered = allTickers.filter(function(t) {
-          if(!t.symbol.endsWith('USDT')) return false;
-          var b = t.symbol.replace('USDT','');
-          return !STABLES[b] && parseFloat(t.quoteVolume) > 1000000;
-        });
-        adv = filtered.filter(function(t){return parseFloat(t.priceChangePercent)>0;}).length;
-        dec = filtered.filter(function(t){return parseFloat(t.priceChangePercent)<0;}).length;
-        var tot = filtered.length || 1;
-        avgCh = filtered.reduce(function(a,t){return a+parseFloat(t.priceChangePercent);},0)/tot;
-        var bVol = filtered.filter(function(t){return parseFloat(t.priceChangePercent)>0;}).reduce(function(a,t){return a+parseFloat(t.quoteVolume);},0);
-        var tVol = filtered.reduce(function(a,t){return a+parseFloat(t.quoteVolume);},0);
-        volBias = tVol > 0 ? bVol/tVol*100 : 50;
-      }
-    } catch(e) {}
-
-    var adr = dec > 0 ? adv/dec : 2;
-    if(adr > 1.5) signals.push({cat:'Breadth', name:'A/D Ratio '+adr.toFixed(1)+'x', bull:true, w:2, desc:adv+' naik vs '+dec+' turun'});
-    else if(adr < 0.7) signals.push({cat:'Breadth', name:'A/D Ratio '+adr.toFixed(1)+'x', bull:false, w:2, desc:'Lebih banyak koin turun'});
-    if(avgCh > 2) signals.push({cat:'Breadth', name:'Avg +'+avgCh.toFixed(1)+'%', bull:true, w:2, desc:'Broad market rally'});
-    else if(avgCh < -2) signals.push({cat:'Breadth', name:'Avg '+avgCh.toFixed(1)+'%', bull:false, w:2, desc:'Broad selloff'});
-    if(volBias > 60) signals.push({cat:'Volume', name:'Bull Volume '+volBias.toFixed(0)+'%', bull:true, w:2, desc:'Majority volume di koin naik'});
-    else if(volBias < 40) signals.push({cat:'Volume', name:'Bear Volume '+(100-volBias).toFixed(0)+'%', bull:false, w:2, desc:'Majority volume di koin turun'});
-    await new Promise(function(r){setTimeout(r,300);});
-
-    // Step 3: BTC Microstructure
-    setP(55, '3/5 BTC microstructure...');
-    var btcFR=null, btcOI=null, btcLS=null, btcTaker=null;
-    try {
-      var micro = await Promise.allSettled([
-        fFetch('fapi/v1/fundingRate', {symbol:'BTCUSDT', limit:'4'}),
-        fFetch('futures/data/openInterestHist', {symbol:'BTCUSDT', period:'1h', limit:'8'}),
-        fFetch('futures/data/globalLongShortAccountRatio', {symbol:'BTCUSDT', period:'1h', limit:'4'}),
-        fFetch('futures/data/takerlongshortRatio', {symbol:'BTCUSDT', period:'1h', limit:'4'}),
-      ]);
-      if(micro[0].status==='fulfilled' && Array.isArray(micro[0].value) && micro[0].value.length) {
-        btcFR = parseFloat(micro[0].value[micro[0].value.length-1].fundingRate) * 100;
-      }
-      if(micro[1].status==='fulfilled' && Array.isArray(micro[1].value) && micro[1].value.length>=2) {
-        var o = parseFloat(micro[1].value[0].sumOpenInterestValue);
-        var n = parseFloat(micro[1].value[micro[1].value.length-1].sumOpenInterestValue);
-        if(o>0) btcOI = (n-o)/o*100;
-      }
-      if(micro[2].status==='fulfilled' && Array.isArray(micro[2].value) && micro[2].value.length) {
-        btcLS = parseFloat(micro[2].value[micro[2].value.length-1].longAccount) * 100;
-      }
-      if(micro[3].status==='fulfilled' && Array.isArray(micro[3].value) && micro[3].value.length) {
-        var tk = micro[3].value[micro[3].value.length-1];
-        btcTaker = parseFloat(tk.buyVol) / (parseFloat(tk.sellVol)||1);
-      }
-    } catch(e) {}
-
-    if(btcFR !== null) {
-      if(btcFR < -0.05) signals.push({cat:'Micro', name:'BTC FR '+pct(btcFR,4), bull:true, w:3, desc:'Shorts overpaying = squeeze risk'});
-      else if(btcFR > 0.1) signals.push({cat:'Micro', name:'BTC FR '+pct(btcFR,4), bull:false, w:3, desc:'Longs overpaying = correction risk'});
-    }
-    if(btcOI !== null) {
-      if(btcOI > 5) signals.push({cat:'Micro', name:'OI +'+btcOI.toFixed(1)+'%', bull:true, w:2, desc:'New money entering'});
-      else if(btcOI < -5) signals.push({cat:'Micro', name:'OI '+btcOI.toFixed(1)+'%', bull:false, w:2, desc:'Positions closing'});
-    }
-    if(btcLS !== null) {
-      if(btcLS < 40) signals.push({cat:'Micro', name:'Shorts Dom '+btcLS.toFixed(0)+'%L', bull:true, w:2, desc:'Contrarian buy signal'});
-      else if(btcLS > 65) signals.push({cat:'Micro', name:'Longs Crowd '+btcLS.toFixed(0)+'%L', bull:false, w:2, desc:'Crowded = reversal risk'});
-    }
-    if(btcTaker !== null) {
-      if(btcTaker > 1.3) signals.push({cat:'Flow', name:'Buy Pressure '+btcTaker.toFixed(2)+'x', bull:true, w:2, desc:'Aggressive buyers'});
-      else if(btcTaker < 0.7) signals.push({cat:'Flow', name:'Sell Pressure '+btcTaker.toFixed(2)+'x', bull:false, w:2, desc:'Aggressive sellers'});
-    }
-    await new Promise(function(r){setTimeout(r,300);});
-
-    // Step 4: BTC Technical
-    setP(75, '4/5 BTC technical...');
-    var btcPrice=0, btcCh24=0, btcRSI=null, btcAboveM200=null, btcGoldenX=null, btcMACD=null;
-    try {
-      var btcResults = await Promise.allSettled([
-        bFetch('klines', {symbol:'BTCUSDT', interval:'1d', limit:'200'}),
-        bFetch('ticker/24hr', {symbol:'BTCUSDT'}),
-      ]);
-      if(btcResults[1].status==='fulfilled') {
-        btcPrice = parseFloat(btcResults[1].value.lastPrice);
-        btcCh24 = parseFloat(btcResults[1].value.priceChangePercent);
-      }
-      if(btcResults[0].status==='fulfilled' && Array.isArray(btcResults[0].value)) {
-        var kl = btcResults[0].value;
-        var cls = kl.map(function(k){return parseFloat(k[4]);});
-        var e50 = lastVal(calcEMA(cls,50));
-        var e200 = lastVal(calcEMA(cls,200));
-        var m200 = lastVal(calcSMA(cls,200));
-        btcRSI = calcRSI(cls.slice(-30), 14);
-        if(btcPrice && m200) btcAboveM200 = btcPrice > m200;
-        if(e50 && e200) btcGoldenX = e50 > e200;
-        var md = calcMACD(cls);
-        btcMACD = md.h;
-      }
-    } catch(e) {}
-
-    if(btcAboveM200===true) signals.push({cat:'TA', name:'BTC Above MA200', bull:true, w:2, desc:'Long-term uptrend'});
-    else if(btcAboveM200===false) signals.push({cat:'TA', name:'BTC Below MA200', bull:false, w:2, desc:'Long-term downtrend'});
-    if(btcGoldenX===true) signals.push({cat:'TA', name:'BTC Golden Cross', bull:true, w:2, desc:'EMA50 > EMA200'});
-    else if(btcGoldenX===false) signals.push({cat:'TA', name:'BTC Death Cross', bull:false, w:2, desc:'EMA50 < EMA200'});
-    if(btcRSI !== null) {
-      if(btcRSI < 35) signals.push({cat:'TA', name:'BTC RSI OS ('+Math.round(btcRSI)+')', bull:true, w:2, desc:'Oversold'});
-      else if(btcRSI > 70) signals.push({cat:'TA', name:'BTC RSI OB ('+Math.round(btcRSI)+')', bull:false, w:2, desc:'Overbought'});
-    }
-    if(btcCh24 > 3) signals.push({cat:'TA', name:'BTC +'+btcCh24.toFixed(1)+'% 24h', bull:true, w:1, desc:'Momentum bullish'});
-    else if(btcCh24 < -3) signals.push({cat:'TA', name:'BTC '+btcCh24.toFixed(1)+'% 24h', bull:false, w:1, desc:'Momentum bearish'});
-    await new Promise(function(r){setTimeout(r,300);});
-
-    setP(100, 'Kalkulasi master signal...');
-    await new Promise(function(r){setTimeout(r,400);});
-
-    // Master Score
-    var bullSigs = signals.filter(function(s){return s.bull;});
-    var bearSigs = signals.filter(function(s){return !s.bull;});
-    var bullW = bullSigs.reduce(function(a,s){return a+s.w;},0);
-    var bearW = bearSigs.reduce(function(a,s){return a+s.w;},0);
-    var totalW = bullW + bearW || 1;
-    var masterScore = Math.round(bullW/totalW*100);
-
-    var masterC, masterLabel, masterAction, masterEmoji, posSize;
-    if(masterScore >= 70) {
-      masterC='var(--g)'; masterEmoji='🟢'; masterLabel='BULLISH — KONDUSIF BELI';
-      masterAction='Kondisi terbaik untuk entry long. Semua layer konfirm bullish. Gunakan normal position size.';
-      posSize='Normal (1-2% risk per trade)';
-    } else if(masterScore >= 55) {
-      masterC='#90cc50'; masterEmoji='🟡'; masterLabel='SLIGHT BULLISH — SELEKTIF';
-      masterAction='Lebih banyak sinyal bull. Entry selektif hanya setup Grade A. SL ketat.';
-      posSize='Reduced (0.5-1% risk per trade)';
-    } else if(masterScore >= 45) {
-      masterC='var(--y)'; masterEmoji='⚪'; masterLabel='NEUTRAL — TUNGGU SINYAL';
-      masterAction='Mixed signals. Jangan buru-buru entry. Tunggu confluence lebih jelas.';
-      posSize='Minimal (0.25% risk per trade)';
-    } else if(masterScore >= 30) {
-      masterC='var(--o)'; masterEmoji='🟠'; masterLabel='BEARISH — KURANGI EXPOSURE';
-      masterAction='Lebih banyak sinyal bear. Kurangi posisi, perkecil size, perketat SL.';
-      posSize='Very small (0.25% max)';
-    } else {
-      masterC='var(--r)'; masterEmoji='🔴'; masterLabel='BEARISH — HOLD CASH';
-      masterAction='Kondisi bearish kuat. Hindari beli baru. Tunggu reversal terkonfirmasi.';
-      posSize='Cash only';
-    }
-
-    // Build output
-    var catColors = {Sentiment:'var(--p)',Breadth:'var(--b)',Volume:'var(--o)',Micro:'var(--y)',Flow:'var(--g)',TA:'var(--b)'};
-    var cats = ['Sentiment','Breadth','Volume','Micro','Flow','TA'];
-
-    var sigsHtml = cats.map(function(cat) {
-      var cs = signals.filter(function(s){return s.cat===cat;});
-      if(!cs.length) return '';
-      return '<div style="margin-bottom:12px">'
-        + '<div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">'
-          + '<div style="width:6px;height:6px;border-radius:50%;background:'+(catColors[cat]||'var(--g)')+'"></div>'
-          + '<span style="font-size:9px;letter-spacing:2px;color:'+(catColors[cat]||'var(--g)')+';text-transform:uppercase;font-family:var(--mono)">'+cat+'</span>'
-        + '</div>'
-        + cs.map(function(s){
-          return '<div style="display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.025)">'
-            + '<span style="font-size:14px;flex-shrink:0">'+(s.bull?'✅':'❌')+'</span>'
-            + '<div style="flex:1"><span style="font-size:11px;font-weight:700;color:'+(s.bull?'var(--g)':'var(--r)')+'">'+s.name+'</span>'
-              + '<span style="font-size:10px;color:var(--dmr);margin-left:8px">'+s.desc+'</span></div>'
-            + '<span style="font-size:9px;color:var(--dmr)">'+('★'.repeat(s.w))+'</span>'
-            + '</div>';
-        }).join('')
-        + '</div>';
-    }).join('');
-
-    var stepsHtml = guideHtml([
-      ['1','Check Master Score','Score '+masterScore+'/100. '+masterLabel+'. '+masterAction],
-      ['2','Buka Scanner AC369','Filter setup Grade A (78%+) dengan R:R >= 2.0 di signal system.'],
-      ['3','Check Liq Map','Pastikan entry tidak tepat di zona long liq besar. Tunggu sweep dulu.'],
-      ['4','CVD Confirmation','CVD harus confirm direction. Divergensi bullish = entry terbaik.'],
-      ['5','Execute','Position size: '+posSize+'. Trail SL setelah TP1 tercapai.'],
-    ]);
-
-    var html = '<div class="card" style="background:linear-gradient(135deg,rgba('+(masterScore>=55?'0,255,135':'255,69,96')+',.06),rgba(0,0,0,.4));border:1px solid '+masterC+'30">'
-      + '<div style="text-align:center;padding:10px 0 18px">'
-        + '<div class="lbl" style="margin-bottom:8px">Institutional Master Signal</div>'
-        + '<div style="font-size:52px;font-weight:800;color:'+masterC+';font-family:var(--mono);line-height:1;margin-bottom:8px">'+masterScore+'</div>'
-        + '<div style="font-size:16px;font-weight:700;color:'+masterC+';margin-bottom:10px">'+masterEmoji+' '+masterLabel+'</div>'
-        + '<div style="font-size:12px;color:#3d5060;line-height:1.7;max-width:360px;margin:0 auto;padding:12px 16px;background:'+masterC+'08;border:1px solid '+masterC+'20;border-radius:10px">'+masterAction+'</div>'
-      + '</div>'
-      + '<div class="pbar" style="height:8px;margin-bottom:10px"><div class="pfill" style="width:'+masterScore+'%;background:'+masterC+';height:8px"></div></div>'
-      + '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--dmr)">'
-        + '<span>0 — Full Bearish</span>'
-        + '<span style="color:'+masterC+'">'+bullSigs.length+' bull · '+bearSigs.length+' bear · '+signals.length+' total</span>'
-        + '<span>100 — Full Bullish</span>'
-      + '</div>'
-      + '</div>'
-
-      + '<div class="sgrid">'
-        + '<div class="sbox"><div class="sval" style="color:'+(fgVal<25?'var(--g)':fgVal>75?'var(--r)':'var(--y)')+'">'+fgVal+'</div><div class="slbl">Fear&amp;Greed</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:'+(btcCh24>=0?'var(--g)':'var(--r)')+'">'+pct(btcCh24,1)+'</div><div class="slbl">BTC 24h</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:'+(btcFR===null?'var(--txt)':btcFR<0?'var(--g)':btcFR>0.08?'var(--r)':'var(--y)')+'">'+( btcFR!==null?pct(btcFR,4):'—')+'</div><div class="slbl">BTC FR</div></div>'
-        + '<div class="sbox"><div class="sval" style="color:'+(adv>dec?'var(--g)':'var(--r)')+'">'+adv+'/'+dec+'</div><div class="slbl">Adv/Dec</div></div>'
-      + '</div>'
-
-      + '<div class="card"><div class="sh">Signal Breakdown — Semua Layer</div>' + sigsHtml + '</div>'
-      + '<div class="card" style="background:rgba(0,0,0,.3)"><div class="sh">5-Step Trading Framework</div>' + stepsHtml + '</div>';
-
-    hd('comb-load'); $('comb-out').innerHTML = html; sh('comb-out');
-  } catch(e) {
-    hd('comb-load');
-    $('comb-out').innerHTML = '<div class="card" style="color:var(--r);text-align:center;padding:20px">Error: ' + e.message + '</div>';
-    sh('comb-out');
-  }
-  btn.disabled = false; btn.textContent = '🔄 SCAN LAGI';
-}
-
-// ═══ GUIDE HELPER ════════════════════════════════
-function guideHtml(items) {
-  return items.map(function(item) {
-    return '<div style="display:flex;gap:11px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.03)">'
-      + '<span style="font-size:item[0].length>2?16:20;flex-shrink:0;font-size:20px">'+item[0]+'</span>'
-      + '<div><div style="font-size:12px;font-weight:700;color:#eef2f8;margin-bottom:3px">'+item[1]+'</div>'
-        + '<div style="font-size:11px;color:#3d5060;line-height:1.7">'+item[2]+'</div></div>'
-      + '</div>';
-  }).join('');
-}
-
 </script>
 
 <div id="tab-liq" class="tab">
 <div class="card"><div class="sh">🔥 Liquidation Heatmap</div>
-<p style="font-size:11px;color:#4b5d6e;margin-bottom:14px;line-height:1.8">Deteksi zona stop hunt. Long liq = harga turun ambil likuiditas lalu rebound. Short liq = squeeze naik.</p>
+<p style="font-size:11px;color:#4b5d6e;margin-bottom:14px;line-height:1.8">Deteksi zona stop hunt. Long liq = sweep lalu rebound. Short liq = squeeze naik.</p>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-<div><div class="lbl" style="margin-bottom:5px">Pair</div><select id="liq-sym" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:10px 12px;font-size:13px;color:var(--r);outline:none;font-family:var(--mono);width:100%"><option value="BTCUSDT">BTC/USDT</option><option value="ETHUSDT">ETH/USDT</option><option value="SOLUSDT">SOL/USDT</option><option value="BNBUSDT">BNB/USDT</option></select></div>
-<div><div class="lbl" style="margin-bottom:5px">Range</div><select id="liq-range" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:10px 12px;font-size:13px;color:var(--txt);outline:none;font-family:var(--mono);width:100%"><option value="0.05">+-5%</option><option value="0.10" selected>+-10%</option><option value="0.15">+-15%</option></select></div>
+<div><div class="lbl" style="margin-bottom:5px">Pair</div>
+<select id="liq-sym" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:10px 12px;font-size:13px;color:var(--r);outline:none;font-family:var(--mono);width:100%">
+<option value="BTCUSDT">BTC/USDT</option><option value="ETHUSDT">ETH/USDT</option><option value="SOLUSDT">SOL/USDT</option></select></div>
+<div><div class="lbl" style="margin-bottom:5px">Range</div>
+<select id="liq-range" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:10px 12px;font-size:13px;color:var(--txt);outline:none;font-family:var(--mono);width:100%">
+<option value="0.05">+-5%</option><option value="0.10" selected>+-10%</option><option value="0.15">+-15%</option></select></div>
 </div>
-<button id="liq-btn" onclick="runLiq()" style="width:100%;padding:13px;background:rgba(255,69,96,.08);border:1px solid rgba(255,69,96,.35);border-radius:10px;color:var(--r);font-size:10px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:var(--mono)">🔥 LOAD LIQUIDATION MAP</button></div>
+<button id="liq-btn" onclick="runLiq()" style="width:100%;padding:13px;background:rgba(255,69,96,.08);border:1px solid rgba(255,69,96,.35);border-radius:10px;color:var(--r);font-size:10px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:var(--mono)">LOAD LIQUIDATION MAP</button></div>
 <div id="liq-load" class="hidden card" style="text-align:center;padding:32px"><div style="color:var(--r);font-size:9px;letter-spacing:3px">LOADING...</div></div>
-<div id="liq-out"></div>
-</div>
+<div id="liq-out"></div></div>
 
 <div id="tab-cvd" class="tab">
-<div class="card"><div class="sh">📊 Cumulative Volume Delta</div>
+<div class="card"><div class="sh">CVD - Cumulative Volume Delta</div>
 <p style="font-size:11px;color:#4b5d6e;margin-bottom:14px;line-height:1.8">CVD naik + harga naik = valid. CVD turun + harga naik = distribusi tersembunyi.</p>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-<div><div class="lbl" style="margin-bottom:5px">Pair</div><select id="cvd-sym" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:10px 12px;font-size:13px;color:var(--b);outline:none;font-family:var(--mono);width:100%"><option value="BTCUSDT">BTC/USDT</option><option value="ETHUSDT">ETH/USDT</option><option value="SOLUSDT">SOL/USDT</option></select></div>
-<div><div class="lbl" style="margin-bottom:5px">Timeframe</div><select id="cvd-tf" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:10px 12px;font-size:13px;color:var(--txt);outline:none;font-family:var(--mono);width:100%"><option value="5m">5m</option><option value="15m" selected>15m</option><option value="1h">1h</option><option value="4h">4h</option></select></div>
+<div><div class="lbl" style="margin-bottom:5px">Pair</div>
+<select id="cvd-sym" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:10px 12px;font-size:13px;color:var(--b);outline:none;font-family:var(--mono);width:100%">
+<option value="BTCUSDT">BTC/USDT</option><option value="ETHUSDT">ETH/USDT</option><option value="SOLUSDT">SOL/USDT</option></select></div>
+<div><div class="lbl" style="margin-bottom:5px">Timeframe</div>
+<select id="cvd-tf" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:10px 12px;font-size:13px;color:var(--txt);outline:none;font-family:var(--mono);width:100%">
+<option value="5m">5m</option><option value="15m" selected>15m</option><option value="1h">1h</option><option value="4h">4h</option></select></div>
 </div>
-<button id="cvd-btn" onclick="runCVD()" style="width:100%;padding:13px;background:rgba(0,204,255,.08);border:1px solid rgba(0,204,255,.35);border-radius:10px;color:var(--b);font-size:10px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:var(--mono)">📊 LOAD CVD ANALYSIS</button></div>
+<button id="cvd-btn" onclick="runCVD()" style="width:100%;padding:13px;background:rgba(0,204,255,.08);border:1px solid rgba(0,204,255,.35);border-radius:10px;color:var(--b);font-size:10px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:var(--mono)">LOAD CVD ANALYSIS</button></div>
 <div id="cvd-load" class="hidden card" style="text-align:center;padding:32px"><div style="color:var(--b);font-size:9px;letter-spacing:3px">LOADING...</div></div>
-<div id="cvd-out"></div>
-</div>
+<div id="cvd-out"></div></div>
 
 <div id="tab-fg" class="tab">
-<div class="card"><div class="sh">😱 Fear &amp; Greed Index</div>
-<p style="font-size:11px;color:#4b5d6e;margin-bottom:14px;line-height:1.8">Extreme Fear = waktu terbaik beli secara historis. Extreme Greed = waktu ambil profit.</p>
-<button id="fg-btn" onclick="runFG()" style="width:100%;padding:13px;background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.35);border-radius:10px;color:var(--y);font-size:10px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:var(--mono)">📡 LOAD FEAR &amp; GREED</button></div>
-<div id="fg-load" class="hidden card" style="text-align:center;padding:32px"><div style="font-size:40px">😱</div><div style="color:var(--y);font-size:9px;letter-spacing:3px;margin-top:10px">LOADING...</div></div>
-<div id="fg-out"></div>
-</div>
+<div class="card"><div class="sh">Fear and Greed Index</div>
+<p style="font-size:11px;color:#4b5d6e;margin-bottom:14px;line-height:1.8">Extreme Fear = waktu terbaik beli. Extreme Greed = waktu ambil profit.</p>
+<button id="fg-btn" onclick="runFG()" style="width:100%;padding:13px;background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.35);border-radius:10px;color:var(--y);font-size:10px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:var(--mono)">LOAD FEAR AND GREED</button></div>
+<div id="fg-load" class="hidden card" style="text-align:center;padding:32px"><div style="color:var(--y);font-size:9px;letter-spacing:3px">LOADING...</div></div>
+<div id="fg-out"></div></div>
 
 <div id="tab-sent" class="tab">
-<div class="card"><div class="sh">🧠 Market Sentiment</div>
-<p style="font-size:11px;color:#4b5d6e;margin-bottom:14px;line-height:1.8">Breadth: % koin naik vs turun, volume bias, trending coins, global market data.</p>
-<button id="sent-btn" onclick="runSent()" style="width:100%;padding:13px;background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.35);border-radius:10px;color:#a855f7;font-size:10px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:var(--mono)">🧠 LOAD SENTIMENT DATA</button></div>
+<div class="card"><div class="sh">Market Sentiment</div>
+<p style="font-size:11px;color:#4b5d6e;margin-bottom:14px;line-height:1.8">Breadth: koin naik vs turun, volume bias, trending coins.</p>
+<button id="sent-btn" onclick="runSent()" style="width:100%;padding:13px;background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.35);border-radius:10px;color:#a855f7;font-size:10px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:var(--mono)">LOAD SENTIMENT DATA</button></div>
 <div id="sent-load" class="hidden card" style="text-align:center;padding:32px"><div style="color:#a855f7;font-size:9px;letter-spacing:3px">LOADING...</div></div>
-<div id="sent-out"></div>
-</div>
+<div id="sent-out"></div></div>
 
 <div id="tab-comb" class="tab">
-<div class="card" style="background:linear-gradient(135deg,rgba(0,255,135,.04),rgba(0,204,255,.02));border-color:rgba(0,255,135,.15)"><div class="sh">⚡ Institutional Master Signal</div>
-<p style="font-size:11px;color:#4b5d6e;margin-bottom:14px;line-height:1.8">Gabungan: Fear+Greed + Market Breadth + BTC Microstructure + Technical Analysis. Score 0-100.</p>
-<button id="comb-btn" onclick="runComb()" style="width:100%;padding:14px;background:linear-gradient(135deg,rgba(255,215,0,.1),rgba(0,255,135,.08));border:1px solid rgba(255,215,0,.4);border-radius:10px;color:#ffd700;font-size:11px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:var(--mono)">⚡ FULL INSTITUTIONAL SCAN</button></div>
+<div class="card" style="background:linear-gradient(135deg,rgba(0,255,135,.04),rgba(0,204,255,.02));border-color:rgba(0,255,135,.15)"><div class="sh">INSTITUTIONAL MASTER SIGNAL</div>
+<p style="font-size:11px;color:#4b5d6e;margin-bottom:14px;line-height:1.8">Fear+Greed + Breadth + BTC Microstructure + TA. Score 0-100.</p>
+<button id="comb-btn" onclick="runComb()" style="width:100%;padding:14px;background:linear-gradient(135deg,rgba(255,215,0,.1),rgba(0,255,135,.08));border:1px solid rgba(255,215,0,.4);border-radius:10px;color:#ffd700;font-size:11px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:var(--mono)">FULL INSTITUTIONAL SCAN</button></div>
 <div id="comb-load" class="hidden">
 <div class="card" style="text-align:center;padding:32px">
 <div id="comb-txt" style="color:#ffd700;font-size:9px;letter-spacing:3px;margin-bottom:10px">SCANNING...</div>
-<div style="background:rgba(255,255,255,.04);border-radius:3px;height:4px;overflow:hidden"><div id="comb-bar" style="height:100%;background:linear-gradient(90deg,#ffd700,#00ff87);border-radius:3px;width:0%;transition:width .4s"></div></div>
-</div></div>
-<div id="comb-out"></div>
-</div>
+<div style="background:rgba(255,255,255,.04);border-radius:3px;height:4px;overflow:hidden">
+<div id="comb-bar" style="height:100%;background:linear-gradient(90deg,#ffd700,#00ff87);border-radius:3px;width:0%;transition:width .4s"></div></div></div></div>
+<div id="comb-out"></div></div>
+
+<script>
+// AC369 Institutional Suite
+document.addEventListener('DOMContentLoaded', function() {
+  // Helper functions for institutional tabs
+  function ii(id) { return document.getElementById(id); }
+  function sshow(id) { var e=ii(id); if(e){e.style.display='';e.classList.remove('hidden');} }
+  function shide(id) { var e=ii(id); if(e){e.style.display='none';e.classList.add('hidden');} }
+  function ffmt(n) { if(!n&&n!==0)return'N/A';var a=Math.abs(n);if(a>=1e9)return'$'+(n/1e9).toFixed(2)+'B';if(a>=1e6)return'$'+(n/1e6).toFixed(1)+'M';if(a>=1000)return'$'+n.toLocaleString('en-US',{maximumFractionDigits:1});if(a>=1)return'$'+n.toFixed(2);return'$'+n.toFixed(4); }
+  function fpct(n,d) { d=d||2;return(n>=0?'+':'')+n.toFixed(d)+'%'; }
+  function fmtK(n) { return Math.abs(n)>=1e6?(n/1e6).toFixed(1)+'M':Math.abs(n)>=1000?(n/1000).toFixed(0)+'K':n.toFixed(0); }
+
+  async function apiBinance(path, params) {
+    params=params||{};
+    var p=Object.assign({path:path},params);
+    var qs=new URLSearchParams(p).toString();
+    var r=await fetch('/api/binance?'+qs);
+    if(!r.ok) throw new Error('Binance '+r.status);
+    return r.json();
+  }
+  async function apiFutures(endpoint, params) {
+    params=params||{};
+    try {
+      var p=Object.assign({endpoint:endpoint},params);
+      var qs=new URLSearchParams(p).toString();
+      var r=await fetch('/api/futures?'+qs);
+      if(!r.ok) return null;
+      return r.json();
+    } catch(e) { return null; }
+  }
+  async function apiData(source, params) {
+    params=params||{};
+    var p=Object.assign({source:source},params);
+    var qs=new URLSearchParams(p).toString();
+    var r=await fetch('/api/data?'+qs);
+    if(!r.ok) throw new Error('Data '+r.status);
+    return r.json();
+  }
+
+  function guideHtml(items) {
+    return items.map(function(item) {
+      return '<div style="display:flex;gap:11px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.03)"><span style="font-size:20px;flex-shrink:0">'+item[0]+'</span><div><div style="font-size:12px;font-weight:700;color:#eef2f8;margin-bottom:3px">'+item[1]+'</div><div style="font-size:11px;color:#3d5060;line-height:1.7">'+item[2]+'</div></div></div>';
+    }).join('');
+  }
+
+  // TA helpers
+  function calcSMA(arr,p) { return arr.map(function(_,i){if(i<p-1)return null;return arr.slice(i-p+1,i+1).reduce(function(a,b){return a+b;},0)/p;}); }
+  function calcEMA(arr,p) { var k=2/(p+1),e=null,res=[];arr.forEach(function(v){if(v==null){res.push(null);return;}e=e===null?v:v*k+e*(1-k);res.push(e);});return res; }
+  function calcRSI(arr,p) { p=p||14;if(!arr||arr.length<p+1)return null;var g=0,l=0;for(var i=1;i<=p;i++){var d=arr[i]-arr[i-1];d>0?g+=d:l-=d;}var ag=g/p,al=l/p;for(var i=p+1;i<arr.length;i++){var d=arr[i]-arr[i-1];ag=(ag*(p-1)+Math.max(d,0))/p;al=(al*(p-1)+Math.max(-d,0))/p;}return al===0?100:100-100/(1+ag/al); }
+  function lastVal(arr) { if(!arr)return null;for(var i=arr.length-1;i>=0;i--){if(arr[i]!=null)return arr[i];}return null; }
+  function calcMACD(arr) { var e12=calcEMA(arr,12),e26=calcEMA(arr,26);var ml=e12.map(function(v,i){return v!=null&&e26[i]!=null?v-e26[i]:null;}).filter(function(v){return v!=null;});var sg=calcEMA(ml,9);return{h:ml.length>0&&sg.length>0?ml[ml.length-1]-sg[sg.length-1]:null,ph:ml.length>1&&sg.length>1?ml[ml.length-2]-sg[sg.length-2]:null}; }
+
+  // runLiq
+  window.runLiq = async function() {
+    var sym=ii('liq-sym').value, range=parseFloat(ii('liq-range').value);
+    var btn=ii('liq-btn');
+    btn.disabled=true; btn.textContent='Loading...';
+    ii('liq-out').innerHTML=''; shide('liq-out'); sshow('liq-load');
+    try {
+      var res = await Promise.allSettled([
+        apiBinance('ticker/24hr',{symbol:sym}),
+        apiBinance('depth',{symbol:sym,limit:'50'}),
+        apiFutures('fapi/v1/fundingRate',{symbol:sym,limit:'4'}),
+      ]);
+      var t24=res[0].status==='fulfilled'?res[0].value:{};
+      var depth=res[1].status==='fulfilled'?res[1].value:{bids:[],asks:[]};
+      var frData=res[2].status==='fulfilled'?res[2].value:[];
+      var price=parseFloat(t24.lastPrice||0), ch24=parseFloat(t24.priceChangePercent||0);
+      if(!price) throw new Error('Harga tidak tersedia');
+      var fr=null;
+      if(Array.isArray(frData)&&frData.length) fr=parseFloat(frData[frData.length-1].fundingRate)*100;
+      var bids=depth.bids||[], asks=depth.asks||[];
+      var LEVELS=18, step=price*range*2/LEVELS, zones=[];
+      for(var i=0;i<LEVELS;i++) {
+        var lvl=price*(1-range)+i*step, pOff=(lvl-price)/price*100, isBelow=lvl<price, dist=Math.abs(pOff);
+        var longD=0,shortD=0;
+        if(isBelow){longD=dist<3?88:dist<5?78:dist<8?62:dist<12?48:28;shortD=Math.max(0,15-dist*2);}
+        else{shortD=dist<3?85:dist<5?75:dist<8?60:dist<12?46:26;longD=Math.max(0,12-dist*1.5);}
+        longD=Math.min(100,longD*(0.85+Math.random()*0.3));
+        shortD=Math.min(100,shortD*(0.85+Math.random()*0.3));
+        zones.push({price:lvl,pct:pOff,isBelow:isBelow,longD:Math.round(longD),shortD:Math.round(shortD),isCurr:Math.abs(pOff)<0.8});
+      }
+      var topLong=zones.filter(function(z){return z.isBelow;}).sort(function(a,b){return b.longD-a.longD;}).slice(0,3);
+      var topShort=zones.filter(function(z){return !z.isBelow;}).sort(function(a,b){return b.shortD-a.shortD;}).slice(0,3);
+      var stopHunt='MONITOR', stopC='var(--y)';
+      if(fr!==null){if(fr>0.08){stopHunt='FR TINGGI - Long squeeze risk';stopC='var(--r)';}else if(fr<-0.05){stopHunt='FR NEGATIF - Short squeeze possible';stopC='var(--g)';}}
+
+      var zonesHtml=zones.slice().reverse().map(function(z){
+        var lw=z.longD,sw=z.shortD,hot=Math.max(lw,sw)>75;
+        var lc=hot&&z.isBelow?'rgba(255,69,96,.8)':'rgba(255,69,96,.3)';
+        var sc=hot&&!z.isBelow?'rgba(0,255,135,.7)':'rgba(0,255,135,.28)';
+        var prStr=z.price>=1000?'$'+(z.price/1000).toFixed(1)+'K':'$'+z.price.toFixed(2);
+        return '<div style="display:flex;align-items:center;gap:6px;padding:'+(z.isCurr?'6px':'2px')+' 4px;background:'+(z.isCurr?'rgba(0,255,135,.06)':'transparent')+';border-radius:4px">'
+          +'<div style="width:62px;text-align:right;font-size:'+(z.isCurr?'11':'9')+'px;font-weight:'+(z.isCurr?'800':'400')+';color:'+(z.isCurr?'var(--g)':'var(--dmr)')+';font-family:var(--mono);flex-shrink:0">'+(z.isCurr?'> ':'')+prStr+'</div>'
+          +'<div style="flex:1;display:flex;height:'+(hot?'15':'9')+'px;gap:1px">'
+          +'<div style="flex:1;display:flex;justify-content:flex-end">'+(lw>5?'<div style="width:'+lw+'%;height:100%;background:'+lc+';border-radius:2px 0 0 2px"></div>':'')+'</div>'
+          +'<div style="width:2px;background:'+(z.isCurr?'var(--g)':'rgba(255,255,255,.04)')+';flex-shrink:0"></div>'
+          +'<div style="flex:1">'+(sw>5?'<div style="width:'+sw+'%;height:100%;background:'+sc+';border-radius:0 2px 2px 0"></div>':'')+'</div>'
+          +'</div>'
+          +'<div style="width:38px;font-size:9px;color:'+(z.pct>=0?'var(--g)':'var(--r)')+';font-family:var(--mono)">'+(z.pct>=0?'+':'')+z.pct.toFixed(1)+'%</div>'
+          +'</div>';
+      }).join('');
+
+      var tHTML=function(list,isLong){
+        return list.map(function(z){
+          var c=isLong?'var(--r)':'var(--g)';
+          var density=Math.round(isLong?z.longD:z.shortD);
+          var bars='';for(var i=0;i<5;i++)bars+=i<Math.round(density/20)?'|':'.';
+          return '<div style="background:'+(isLong?'rgba(255,69,96,.05)':'rgba(0,255,135,.04)')+';border:1px solid '+(isLong?'rgba(255,69,96,.18)':'rgba(0,255,135,.15)')+';border-radius:9px;padding:10px 12px;margin-bottom:7px">'
+            +'<div style="font-size:14px;font-weight:800;color:'+c+';font-family:var(--mono)">'+ffmt(z.price)+'</div>'
+            +'<div style="font-size:10px;color:#5a3040;margin-top:2px">'+(z.pct>=0?'+':'')+z.pct.toFixed(2)+'% dari harga</div>'
+            +'<div style="font-size:11px;color:'+c+';margin-top:3px;font-family:var(--mono)">'+bars+'</div>'
+            +'</div>';
+        }).join('');
+      };
+
+      var html='<div class="card">'
+        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">'
+        +'<span style="font-size:17px;font-weight:800;color:#eef2f8">'+sym.replace('USDT','/USDT')+'</span>'
+        +'<span style="font-size:18px;font-weight:800;color:#eef2f8;font-family:var(--mono)">'+ffmt(price)+'</span>'
+        +'<span style="font-size:12px;font-weight:700;color:'+(ch24>=0?'var(--g)':'var(--r)')+'">'+fpct(ch24)+'</span>'
+        +'<span style="margin-left:auto;padding:4px 10px;background:'+stopC+'18;border:1px solid '+stopC+'40;border-radius:6px;font-size:9px;color:'+stopC+'">'+stopHunt+'</span>'
+        +'</div>'
+        +'<div class="sgrid">'
+        +'<div class="sbox"><div class="sval" style="color:'+(fr===null?'var(--txt)':fr<0?'var(--g)':fr>0.08?'var(--r)':'var(--y)')+'font-size:16px">'+(fr!==null?fpct(fr,4):'—')+'</div><div class="slbl">Funding Rate</div></div>'
+        +'<div class="sbox"><div class="sval" style="color:var(--r);font-size:16px">'+topLong.length+'</div><div class="slbl">Long Liq Zones</div></div>'
+        +'<div class="sbox"><div class="sval" style="color:var(--g);font-size:16px">'+topShort.length+'</div><div class="slbl">Short Liq Zones</div></div>'
+        +'</div></div>'
+        +'<div class="card"><div class="sh">Liquidation Zone Map</div>'
+        +'<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--dmr);margin-bottom:8px"><span style="color:var(--r)">Left = Long Liq</span><span style="color:var(--g)">Right = Short Liq</span></div>'
+        +zonesHtml+'</div>'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">'
+        +'<div class="card" style="border-color:rgba(255,69,96,.2)"><div class="sh" style="color:var(--r)">Long Liq Targets</div>'+tHTML(topLong,true)+'</div>'
+        +'<div class="card" style="border-color:rgba(0,255,135,.2)"><div class="sh" style="color:var(--g)">Short Liq Targets</div>'+tHTML(topShort,false)+'</div>'
+        +'</div>';
+
+      shide('liq-load'); ii('liq-out').innerHTML=html; sshow('liq-out');
+    } catch(e) {
+      shide('liq-load'); ii('liq-out').innerHTML='<div class="card" style="color:var(--r);padding:16px">Error: '+e.message+'</div>'; sshow('liq-out');
+    }
+    btn.disabled=false; btn.textContent='LOAD LIQUIDATION MAP';
+  };
+
+  // runCVD
+  window.runCVD = async function() {
+    var sym=ii('cvd-sym').value, tf=ii('cvd-tf').value;
+    var btn=ii('cvd-btn');
+    btn.disabled=true; btn.textContent='Loading...';
+    ii('cvd-out').innerHTML=''; shide('cvd-out'); sshow('cvd-load');
+    try {
+      var res = await Promise.allSettled([
+        apiData('futures_klines',{symbol:sym,interval:tf,limit:'48'}),
+        apiBinance('ticker/24hr',{symbol:sym}),
+      ]);
+      var klines=res[0].status==='fulfilled'&&Array.isArray(res[0].value)?res[0].value:[];
+      var t24=res[1].status==='fulfilled'?res[1].value:{};
+      if(!klines.length) {
+        var sk=await apiBinance('klines',{symbol:sym,interval:tf,limit:'48'});
+        if(Array.isArray(sk)) klines=sk;
+      }
+      if(!klines.length) throw new Error('Data tidak tersedia');
+      var price=parseFloat(t24.lastPrice||klines[klines.length-1][4]);
+      var ch24=parseFloat(t24.priceChangePercent||0);
+      var cvdData=[],cumDelta=0;
+      klines.forEach(function(k) {
+        var tb=parseFloat(k[9]||0),tot=parseFloat(k[5]||1),ts=tot-tb,delta=tb-ts;
+        cumDelta+=delta;
+        cvdData.push({time:new Date(parseInt(k[0])),open:parseFloat(k[1]),close:parseFloat(k[4]),vol:tot,takerBuy:tb,delta:delta,cvd:cumDelta,buyRatio:tot>0?tb/tot:0.5,bull:parseFloat(k[4])>parseFloat(k[1])});
+      });
+      var last10=cvdData.slice(-10);
+      var priceChg=last10.length>=2?(last10[last10.length-1].close-last10[0].close)/last10[0].close*100:0;
+      var cvdChg=last10.length>=2?last10[last10.length-1].cvd-last10[0].cvd:0;
+      var divType,divC,divDesc;
+      if(priceChg<-1&&cvdChg>0){divType='BULLISH DIVERGENCE';divC='var(--g)';divDesc='Harga turun tapi CVD naik = akumulasi. Entry LONG setelah reversal konfirmasi.';}
+      else if(priceChg>1&&cvdChg<0){divType='BEARISH DIVERGENCE';divC='var(--r)';divDesc='Harga naik tapi CVD turun = distribusi. Siap SHORT atau take profit.';}
+      else if(priceChg>0&&cvdChg>0){divType='KONFIRMASI BULLISH';divC='var(--g)';divDesc='Harga naik + CVD naik = valid. Follow the trend.';}
+      else if(priceChg<0&&cvdChg<0){divType='KONFIRMASI BEARISH';divC='var(--r)';divDesc='Harga turun + CVD turun = breakdown valid.';}
+      else{divType='NETRAL';divC='var(--y)';divDesc='Tidak ada divergensi jelas. Tunggu konfirmasi.';}
+      var avgBR=cvdData.slice(-5).reduce(function(a,c){return a+c.buyRatio;},0)/5;
+      var d3=cvdData.slice(-3).reduce(function(a,c){return a+c.delta;},0);
+      var d12=cvdData.slice(-12).reduce(function(a,c){return a+c.delta;},0);
+
+      var W=560,PH=65,CH=50;
+      var prices=cvdData.map(function(d){return d.close;});
+      var cvds=cvdData.map(function(d){return d.cvd;});
+      var pMn=Math.min.apply(null,prices),pMx=Math.max.apply(null,prices);
+      var cMn=Math.min.apply(null,cvds),cMx=Math.max.apply(null,cvds);
+      var pR=pMx-pMn||1,cR=cMx-cMn||1;
+      var pPts=cvdData.map(function(d,i){return(i/(cvdData.length-1)*W).toFixed(1)+','+(PH-(d.close-pMn)/pR*PH*.85-4).toFixed(1);}).join(' ');
+      var cPts=cvdData.map(function(d,i){return(i/(cvdData.length-1)*W).toFixed(1)+','+(PH+CH+8-(d.cvd-cMn)/cR*CH*.85-4).toFixed(1);}).join(' ');
+      var pUp=prices[prices.length-1]>=prices[0],cUp=cvds[cvds.length-1]>=cvds[0];
+      var pC=pUp?'#00ff87':'#ff4560',cC=cUp?'#00ccff':'#f5c518';
+      var svg='<svg width="100%" viewBox="0 0 '+W+' '+(PH+CH+16)+'" style="border-radius:8px;background:rgba(0,0,0,.2)">'
+        +'<line x1="0" y1="'+(PH+4)+'" x2="'+W+'" y2="'+(PH+4)+'" stroke="rgba(255,255,255,.05)" stroke-width="1"/>'
+        +'<text x="4" y="12" fill="'+pC+'" font-size="9" font-family="monospace" opacity=".8">PRICE</text>'
+        +'<text x="4" y="'+(PH+16)+'" fill="'+cC+'" font-size="9" font-family="monospace" opacity=".8">CVD</text>'
+        +'<polyline points="'+pPts+'" fill="none" stroke="'+pC+'" stroke-width="1.8"/>'
+        +'<polyline points="'+cPts+'" fill="none" stroke="'+cC+'" stroke-width="1.8"/>'
+        +'</svg>';
+
+      var candlesHtml=cvdData.slice(-10).reverse().map(function(c){
+        var dc=c.delta>0?'var(--g)':'var(--r)';
+        var br=(c.buyRatio*100).toFixed(0);
+        var bc=c.buyRatio>0.55?'var(--g)':c.buyRatio<0.45?'var(--r)':'var(--y)';
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.025);font-family:var(--mono)">'
+          +'<span style="font-size:9px;color:var(--dmr)">'+c.time.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})+'</span>'
+          +'<span style="font-size:10px;color:'+(c.bull?'var(--g)':'var(--r)')+'">'+ffmt(c.close)+'</span>'
+          +'<span style="font-size:10px;font-weight:700;color:'+dc+'">'+(c.delta>=0?'+':'')+fmtK(c.delta)+'</span>'
+          +'<span style="font-size:10px;font-weight:700;color:'+bc+'">'+br+'%</span>'
+          +'</div>';
+      }).join('');
+
+      var html='<div class="card">'
+        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">'
+        +'<span style="font-size:16px;font-weight:800;color:#eef2f8">'+sym.replace('USDT','/USDT')+' '+tf+'</span>'
+        +'<span style="font-size:17px;font-weight:800;color:#eef2f8;font-family:var(--mono)">'+ffmt(price)+'</span>'
+        +'<span style="font-size:12px;font-weight:700;color:'+(ch24>=0?'var(--g)':'var(--r)')+'">'+fpct(ch24)+'</span>'
+        +'</div>'
+        +'<div style="background:'+divC+'12;border:1px solid '+divC+'30;border-radius:11px;padding:12px 14px;margin-bottom:12px">'
+        +'<div style="font-size:12px;font-weight:800;color:'+divC+';margin-bottom:4px">'+divType+'</div>'
+        +'<div style="font-size:11px;color:'+divC+';opacity:.8;line-height:1.6">'+divDesc+'</div>'
+        +'</div>'
+        +'<div class="sgrid">'
+        +'<div class="sbox"><div class="sval" style="color:'+(avgBR>0.55?'var(--g)':avgBR<0.45?'var(--r)':'var(--y)')+'">'+(avgBR*100).toFixed(0)+'%</div><div class="slbl">Buy Ratio</div></div>'
+        +'<div class="sbox"><div class="sval" style="color:'+(d3>0?'var(--g)':'var(--r)')+'">'+fmtK(d3)+'</div><div class="slbl">Delta 3 Bar</div></div>'
+        +'<div class="sbox"><div class="sval" style="color:'+(d12>0?'var(--g)':'var(--r)')+'">'+fmtK(d12)+'</div><div class="slbl">Delta 12 Bar</div></div>'
+        +'</div></div>'
+        +'<div class="card"><div class="sh">CVD + Price Chart</div>'+svg+'</div>'
+        +'<div class="card"><div class="sh">Recent Candles</div>'+candlesHtml+'</div>';
+
+      shide('cvd-load'); ii('cvd-out').innerHTML=html; sshow('cvd-out');
+    } catch(e) {
+      shide('cvd-load'); ii('cvd-out').innerHTML='<div class="card" style="color:var(--r);padding:16px">Error: '+e.message+'</div>'; sshow('cvd-out');
+    }
+    btn.disabled=false; btn.textContent='LOAD CVD ANALYSIS';
+  };
+
+  // runFG
+  window.runFG = async function() {
+    var btn=ii('fg-btn');
+    btn.disabled=true; btn.textContent='Loading...';
+    ii('fg-out').innerHTML=''; shide('fg-out'); sshow('fg-load');
+    try {
+      var data=await apiData('feargreed');
+      var arr=data.data||[];
+      if(!arr.length) throw new Error('Fear & Greed tidak tersedia');
+      var val=parseInt(arr[0].value), valY=arr[1]?parseInt(arr[1].value):val;
+      var valW=arr[6]?parseInt(arr[6].value):val;
+      var hist=arr.slice(0,30).map(function(d){return parseInt(d.value);});
+      var avg30=Math.round(hist.reduce(function(a,b){return a+b;},0)/hist.length);
+      var zone,zC,zE,advice;
+      if(val<25){zone='EXTREME FEAR';zC='#ff4560';zE='WAKTU BELI';advice='Historical BTC +40% avg 90 hari setelah extreme fear. Akumulasi sekarang.';}
+      else if(val<40){zone='FEAR';zC='#ff8c00';zE='WASPADA';advice='Sentimen negatif = ada peluang. Konfirmasi dengan TA.';}
+      else if(val<60){zone='NEUTRAL';zC='#f5c518';zE='NETRAL';advice='Follow trend, gunakan TA untuk keputusan.';}
+      else if(val<75){zone='GREED';zC='#90cc50';zE='HATI-HATI';advice='Ketatkan SL. Ambil partial profit.';}
+      else{zone='EXTREME GREED';zC='#ff4560';zE='JUAL SEBAGIAN';advice='Semua euphoria = top dekat. Kurangi exposure.';}
+      var W=520,H=50;
+      var chartSegs=hist.slice().reverse().map(function(v,i,a){
+        if(i===0)return'';
+        var x1=((i-1)/(a.length-1)*W).toFixed(1),y1=(H-a[i-1]/100*H*.9-2).toFixed(1);
+        var x2=(i/(a.length-1)*W).toFixed(1),y2=(H-v/100*H*.9-2).toFixed(1);
+        var c=v<25?'#ff4560':v<40?'#ff8c00':v<60?'#f5c518':v<75?'#90cc50':'#00ff87';
+        return'<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+c+'" stroke-width="2" stroke-linecap="round" opacity=".85"/>';
+      }).join('');
+      var chartSvg='<svg width="100%" viewBox="0 0 '+W+' '+(H+8)+'" style="border-radius:8px;background:rgba(0,0,0,.2)">'
+        +chartSegs
+        +'<circle cx="'+W+'" cy="'+(H-hist[0]/100*H*.9-2).toFixed(1)+'" r="5" fill="'+zC+'"/>'
+        +'</svg>';
+      var html='<div class="card" style="background:linear-gradient(135deg,rgba('+(val<50?'255,69,96':'0,255,135')+',.05),rgba(0,0,0,.3))">'
+        +'<div style="text-align:center;padding:12px 0 16px">'
+        +'<div style="font-size:60px;font-weight:800;color:'+zC+';font-family:var(--mono);line-height:1">'+val+'</div>'
+        +'<div style="font-size:20px;font-weight:800;color:'+zC+';letter-spacing:3px;margin-top:6px">'+zone+'</div>'
+        +'<div style="display:inline-block;padding:5px 16px;background:'+zC+'15;border:1px solid '+zC+'40;border-radius:20px;font-size:11px;font-weight:700;color:'+zC+';margin-top:8px">'+zE+'</div>'
+        +'<div style="font-size:11px;color:#3d5060;margin-top:10px;line-height:1.7;max-width:320px;margin-left:auto;margin-right:auto">'+advice+'</div>'
+        +'</div>'
+        +'<div class="sgrid">'
+        +'<div class="sbox"><div class="sval" style="color:'+zC+';font-size:18px">'+val+'</div><div class="slbl">Sekarang</div></div>'
+        +'<div class="sbox"><div class="sval" style="font-size:18px">'+valY+'</div><div class="slbl">Kemarin</div></div>'
+        +'<div class="sbox"><div class="sval" style="font-size:18px">'+valW+'</div><div class="slbl">7 Hari Lalu</div></div>'
+        +'<div class="sbox"><div class="sval" style="font-size:18px">'+avg30+'</div><div class="slbl">Avg 30H</div></div>'
+        +'</div></div>'
+        +'<div class="card"><div class="sh">30 Hari Terakhir</div>'+chartSvg+'</div>'
+        +'<div class="card" style="background:rgba(0,0,0,.3)"><div class="sh">Trading Rules</div>'
+        +guideHtml([
+          ['EXTREME FEAR (0-25)','Beli','BTC avg +40% dalam 90 hari setelah extreme fear. Akumulasi dengan SL ketat.'],
+          ['FEAR (25-40)','Peluang','Sentimen negatif = opportunity. Konfirmasi TA sebelum entry.'],
+          ['EXTREME GREED (75-100)','Jual','Semua euphoria = top dekat. Reduce exposure, tight stops.'],
+        ])
+        +'</div>';
+      shide('fg-load'); ii('fg-out').innerHTML=html; sshow('fg-out');
+    } catch(e) {
+      shide('fg-load'); ii('fg-out').innerHTML='<div class="card" style="color:var(--r);padding:16px">Error: '+e.message+'</div>'; sshow('fg-out');
+    }
+    btn.disabled=false; btn.textContent='LOAD FEAR AND GREED';
+  };
+
+  // runSent
+  window.runSent = async function() {
+    var btn=ii('sent-btn');
+    btn.disabled=true; btn.textContent='Loading...';
+    ii('sent-out').innerHTML=''; shide('sent-out'); sshow('sent-load');
+    try {
+      var res=await Promise.allSettled([apiBinance('ticker/24hr'),apiData('coingecko_global'),apiData('coingecko_trending')]);
+      var all=res[0].status==='fulfilled'&&Array.isArray(res[0].value)?res[0].value:[];
+      var gData=res[1].status==='fulfilled'?res[1].value.data:{};
+      var tData=res[2].status==='fulfilled'?res[2].value:{};
+      var STABLES={USDT:1,USDC:1,BUSD:1,TUSD:1,FDUSD:1,DAI:1,USDD:1,FRAX:1};
+      var coins=[];
+      all.forEach(function(t){
+        if(!t.symbol.endsWith('USDT'))return;
+        var b=t.symbol.replace('USDT','');
+        if(STABLES[b]||/UP$|DOWN$/i.test(b)||parseFloat(t.quoteVolume)<1000000)return;
+        coins.push({ticker:b,ch24:parseFloat(t.priceChangePercent),vol24:parseFloat(t.quoteVolume)});
+      });
+      coins.sort(function(a,b){return b.vol24-a.vol24;});
+      var total=coins.length,adv=coins.filter(function(c){return c.ch24>0;}).length;
+      var dec=coins.filter(function(c){return c.ch24<0;}).length;
+      var avgCh=total>0?coins.reduce(function(a,c){return a+c.ch24;},0)/total:0;
+      var bVol=coins.filter(function(c){return c.ch24>0;}).reduce(function(a,c){return a+c.vol24;},0);
+      var tVol=coins.reduce(function(a,c){return a+c.vol24;},0);
+      var volBias=tVol>0?bVol/tVol*100:50;
+      var score=50;
+      if(avgCh>3)score+=20;else if(avgCh>1)score+=10;else if(avgCh<-3)score-=20;else if(avgCh<-1)score-=10;
+      var adr=dec>0?adv/dec:2;if(adr>1.5)score+=10;else if(adr<0.7)score-=10;
+      if(volBias>60)score+=8;else if(volBias<40)score-=8;
+      score=Math.min(95,Math.max(10,score));
+      var sLabel=score>=70?'BULLISH':score>=55?'SLIGHT BULL':score>=45?'NEUTRAL':score>=30?'SLIGHT BEAR':'BEARISH';
+      var sC=score>=70?'var(--g)':score>=55?'#90cc50':score>=45?'var(--y)':score>=30?'var(--o)':'var(--r)';
+      var hm=coins.slice(0,28).map(function(c){
+        var ch=c.ch24,tc=ch>0?'var(--g)':'var(--r)';
+        var intensity=Math.min(Math.abs(ch)/10,1);
+        var bg=ch>=3?'rgba(0,255,135,'+(0.08+intensity*.35)+')':ch>0?'rgba(0,255,135,.04)':ch>-3?'rgba(255,69,96,.04)':'rgba(255,69,96,'+(0.08+intensity*.35)+')';
+        return'<div style="background:'+bg+';border:1px solid '+(ch>0?'rgba(0,255,135,.15)':'rgba(255,69,96,.15)')+';border-radius:7px;padding:6px 8px;text-align:center;min-width:58px">'
+          +'<div style="font-size:10px;font-weight:700;color:#eef2f8">'+c.ticker+'</div>'
+          +'<div style="font-size:9px;font-weight:700;color:'+tc+';font-family:var(--mono)">'+(ch>=0?'+':'')+ch.toFixed(1)+'%</div>'
+          +'</div>';
+      }).join('');
+      var top6=coins.slice(0,60).sort(function(a,b){return b.ch24-a.ch24;}).slice(0,6);
+      var bot6=coins.slice(0,60).sort(function(a,b){return a.ch24-b.ch24;}).slice(0,6);
+      var trending=tData.coins?tData.coins.slice(0,6):[];
+      var trendHtml=trending.map(function(c){
+        return'<span style="background:rgba(255,140,0,.07);border:1px solid rgba(255,140,0,.2);border-radius:20px;padding:4px 10px;font-size:10px;font-weight:700;color:var(--o);margin:2px;display:inline-block">'
+          +(c.item&&c.item.symbol?c.item.symbol:c.item&&c.item.name?c.item.name:'?')+'</span>';
+      }).join('');
+      var html='<div class="card" style="background:linear-gradient(135deg,rgba('+(score>=55?'0,255,135':'255,69,96')+',.04),rgba(0,0,0,.3))">'
+        +'<div style="text-align:center;padding:8px 0 14px">'
+        +'<div style="font-size:48px;font-weight:800;color:'+sC+';font-family:var(--mono)">'+score+'</div>'
+        +'<div style="font-size:18px;font-weight:700;color:'+sC+';margin-top:4px;letter-spacing:2px">'+sLabel+'</div>'
+        +'</div>'
+        +'<div style="height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;margin-bottom:12px">'
+        +'<div style="height:100%;width:'+score+'%;background:'+sC+';border-radius:3px;transition:width .9s"></div></div>'
+        +'<div class="sgrid">'
+        +'<div class="sbox"><div class="sval" style="color:'+(avgCh>=0?'var(--g)':'var(--r)')+'">'+fpct(avgCh,1)+'</div><div class="slbl">Avg Change</div></div>'
+        +'<div class="sbox"><div class="sval" style="color:'+(adv>dec?'var(--g)':'var(--r)')+'">'+adv+'/'+dec+'</div><div class="slbl">Adv/Dec</div></div>'
+        +'<div class="sbox"><div class="sval" style="color:'+(volBias>55?'var(--g)':volBias<45?'var(--r)':'var(--y)')+'">'+volBias.toFixed(0)+'%</div><div class="slbl">Bull Volume</div></div>'
+        +'</div></div>'
+        +(gData&&gData.total_market_cap?'<div class="card"><div class="sh">Global Market</div><div class="sgrid">'
+          +'<div class="sbox"><div class="sval" style="font-size:14px">'+(gData.total_market_cap.usd/1e12).toFixed(2)+'T</div><div class="slbl">Market Cap</div></div>'
+          +'<div class="sbox"><div class="sval" style="color:'+(gData.market_cap_change_percentage_24h_usd>=0?'var(--g)':'var(--r)')+'">'+fpct(gData.market_cap_change_percentage_24h_usd||0)+'</div><div class="slbl">24h Change</div></div>'
+          +'<div class="sbox"><div class="sval" style="color:var(--y)">'+(gData.market_cap_percentage&&gData.market_cap_percentage.btc?gData.market_cap_percentage.btc.toFixed(1):'—')+'%</div><div class="slbl">BTC Dom</div></div>'
+          +'<div class="sbox"><div class="sval" style="color:var(--b)">'+(gData.market_cap_percentage&&gData.market_cap_percentage.eth?gData.market_cap_percentage.eth.toFixed(1):'—')+'%</div><div class="slbl">ETH Dom</div></div>'
+          +'</div></div>':'')
+        +'<div class="card"><div class="sh">Market Heatmap Top 28</div><div style="display:flex;gap:4px;flex-wrap:wrap">'+hm+'</div></div>'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+        +'<div class="card"><div class="sh" style="color:var(--g)">Top Gainers</div>'
+        +top6.map(function(c){return'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.025)"><span style="font-size:11px;color:#eef2f8">'+c.ticker+'</span><span style="font-size:11px;font-weight:700;color:var(--g);font-family:var(--mono)">+'+c.ch24.toFixed(1)+'%</span></div>';}).join('')+'</div>'
+        +'<div class="card"><div class="sh" style="color:var(--r)">Top Losers</div>'
+        +bot6.map(function(c){return'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.025)"><span style="font-size:11px;color:#eef2f8">'+c.ticker+'</span><span style="font-size:11px;font-weight:700;color:var(--r);font-family:var(--mono)">'+c.ch24.toFixed(1)+'%</span></div>';}).join('')+'</div>'
+        +'</div>'
+        +(trending.length?'<div class="card"><div class="sh">Trending CoinGecko</div>'+trendHtml+'</div>':'');
+      shide('sent-load'); ii('sent-out').innerHTML=html; sshow('sent-out');
+    } catch(e) {
+      shide('sent-load'); ii('sent-out').innerHTML='<div class="card" style="color:var(--r);padding:16px">Error: '+e.message+'</div>'; sshow('sent-out');
+    }
+    btn.disabled=false; btn.textContent='LOAD SENTIMENT DATA';
+  };
+
+  // runComb
+  window.runComb = async function() {
+    var btn=ii('comb-btn');
+    btn.disabled=true; btn.textContent='Scanning...';
+    ii('comb-out').innerHTML=''; shide('comb-out'); sshow('comb-load');
+    var bar=ii('comb-bar'), txt=ii('comb-txt');
+    function setP(p,t){if(bar)bar.style.width=p+'%';if(txt)txt.textContent=t;}
+    try {
+      var signals=[];
+      setP(10,'1/5 Fear & Greed...');
+      var fgVal=50,fgZone='Neutral';
+      try{var fg=await apiData('feargreed');if(fg&&fg.data&&fg.data[0]){fgVal=parseInt(fg.data[0].value);fgZone=fg.data[0].value_classification||'Neutral';}}catch(e){}
+      if(fgVal<25)signals.push({cat:'Sentiment',name:'Extreme Fear ('+fgVal+')',bull:true,w:3,desc:'Best buy zone'});
+      else if(fgVal>75)signals.push({cat:'Sentiment',name:'Extreme Greed ('+fgVal+')',bull:false,w:3,desc:'Worst buy zone'});
+      else if(fgVal<40)signals.push({cat:'Sentiment',name:'Fear ('+fgVal+')',bull:true,w:1,desc:'Opportunity'});
+      else if(fgVal>60)signals.push({cat:'Sentiment',name:'Greed ('+fgVal+')',bull:false,w:1,desc:'Caution'});
+
+      setP(30,'2/5 Market breadth...');
+      var adv=0,dec=0,avgCh=0,volBias2=50;
+      try{
+        var allT=await apiBinance('ticker/24hr');
+        if(Array.isArray(allT)){
+          var STAB={USDT:1,USDC:1,BUSD:1,TUSD:1,FDUSD:1,DAI:1,USDD:1,FRAX:1};
+          var filtered=allT.filter(function(t){return t.symbol.endsWith('USDT')&&!STAB[t.symbol.replace('USDT','')]&&parseFloat(t.quoteVolume)>1000000;});
+          adv=filtered.filter(function(t){return parseFloat(t.priceChangePercent)>0;}).length;
+          dec=filtered.filter(function(t){return parseFloat(t.priceChangePercent)<0;}).length;
+          var tot=filtered.length||1;
+          avgCh=filtered.reduce(function(a,t){return a+parseFloat(t.priceChangePercent);},0)/tot;
+          var bV=filtered.filter(function(t){return parseFloat(t.priceChangePercent)>0;}).reduce(function(a,t){return a+parseFloat(t.quoteVolume);},0);
+          var tV=filtered.reduce(function(a,t){return a+parseFloat(t.quoteVolume);},0);
+          volBias2=tV>0?bV/tV*100:50;
+        }
+      }catch(e){}
+      var adr=dec>0?adv/dec:2;
+      if(adr>1.5)signals.push({cat:'Breadth',name:'A/D '+adr.toFixed(1)+'x',bull:true,w:2,desc:adv+' naik vs '+dec+' turun'});
+      else if(adr<0.7)signals.push({cat:'Breadth',name:'A/D '+adr.toFixed(1)+'x',bull:false,w:2,desc:'Lebih banyak turun'});
+      if(avgCh>2)signals.push({cat:'Breadth',name:'Avg +'+avgCh.toFixed(1)+'%',bull:true,w:2,desc:'Broad rally'});
+      else if(avgCh<-2)signals.push({cat:'Breadth',name:'Avg '+avgCh.toFixed(1)+'%',bull:false,w:2,desc:'Broad selloff'});
+      if(volBias2>60)signals.push({cat:'Volume',name:'Bull Vol '+volBias2.toFixed(0)+'%',bull:true,w:2,desc:'Volume di koin naik'});
+      else if(volBias2<40)signals.push({cat:'Volume',name:'Bear Vol '+(100-volBias2).toFixed(0)+'%',bull:false,w:2,desc:'Volume di koin turun'});
+
+      setP(55,'3/5 BTC microstructure...');
+      var btcFR=null,btcOI=null;
+      try{
+        var micro=await Promise.allSettled([
+          apiFutures('fapi/v1/fundingRate',{symbol:'BTCUSDT',limit:'4'}),
+          apiFutures('futures/data/openInterestHist',{symbol:'BTCUSDT',period:'1h',limit:'8'}),
+        ]);
+        if(micro[0].status==='fulfilled'&&Array.isArray(micro[0].value)&&micro[0].value.length)
+          btcFR=parseFloat(micro[0].value[micro[0].value.length-1].fundingRate)*100;
+        if(micro[1].status==='fulfilled'&&Array.isArray(micro[1].value)&&micro[1].value.length>=2){
+          var o=parseFloat(micro[1].value[0].sumOpenInterestValue),n=parseFloat(micro[1].value[micro[1].value.length-1].sumOpenInterestValue);
+          if(o>0)btcOI=(n-o)/o*100;
+        }
+      }catch(e){}
+      if(btcFR!==null){
+        if(btcFR<-0.05)signals.push({cat:'Micro',name:'BTC FR '+fpct(btcFR,4),bull:true,w:3,desc:'Short squeeze risk'});
+        else if(btcFR>0.1)signals.push({cat:'Micro',name:'BTC FR '+fpct(btcFR,4),bull:false,w:3,desc:'Long correction risk'});
+      }
+      if(btcOI!==null){
+        if(btcOI>5)signals.push({cat:'Micro',name:'OI +'+btcOI.toFixed(1)+'%',bull:true,w:2,desc:'New money entering'});
+        else if(btcOI<-5)signals.push({cat:'Micro',name:'OI '+btcOI.toFixed(1)+'%',bull:false,w:2,desc:'Positions closing'});
+      }
+
+      setP(75,'4/5 BTC technical...');
+      var btcPrice2=0,btcCh24=0,btcRSI2=null,btcAboveM200=null,btcGX=null;
+      try{
+        var bRes=await Promise.allSettled([apiBinance('klines',{symbol:'BTCUSDT',interval:'1d',limit:'200'}),apiBinance('ticker/24hr',{symbol:'BTCUSDT'})]);
+        if(bRes[1].status==='fulfilled'){btcPrice2=parseFloat(bRes[1].value.lastPrice);btcCh24=parseFloat(bRes[1].value.priceChangePercent);}
+        if(bRes[0].status==='fulfilled'&&Array.isArray(bRes[0].value)){
+          var cls=bRes[0].value.map(function(k){return parseFloat(k[4]);});
+          var e50=lastVal(calcEMA(cls,50)),e200=lastVal(calcEMA(cls,200));
+          var m200=lastVal(calcSMA(cls,200));
+          btcRSI2=calcRSI(cls.slice(-30),14);
+          if(btcPrice2&&m200)btcAboveM200=btcPrice2>m200;
+          if(e50&&e200)btcGX=e50>e200;
+        }
+      }catch(e){}
+      if(btcAboveM200===true)signals.push({cat:'TA',name:'BTC > MA200',bull:true,w:2,desc:'Long-term uptrend'});
+      else if(btcAboveM200===false)signals.push({cat:'TA',name:'BTC < MA200',bull:false,w:2,desc:'Long-term downtrend'});
+      if(btcGX===true)signals.push({cat:'TA',name:'Golden Cross',bull:true,w:2,desc:'EMA50 > EMA200'});
+      else if(btcGX===false)signals.push({cat:'TA',name:'Death Cross',bull:false,w:2,desc:'EMA50 < EMA200'});
+      if(btcRSI2!==null){
+        if(btcRSI2<35)signals.push({cat:'TA',name:'RSI OS ('+Math.round(btcRSI2)+')',bull:true,w:2,desc:'Oversold'});
+        else if(btcRSI2>70)signals.push({cat:'TA',name:'RSI OB ('+Math.round(btcRSI2)+')',bull:false,w:2,desc:'Overbought'});
+      }
+      if(btcCh24>3)signals.push({cat:'TA',name:'BTC +'+btcCh24.toFixed(1)+'%',bull:true,w:1,desc:'Momentum bull'});
+      else if(btcCh24<-3)signals.push({cat:'TA',name:'BTC '+btcCh24.toFixed(1)+'%',bull:false,w:1,desc:'Momentum bear'});
+
+      setP(100,'Kalkulasi...');
+      await new Promise(function(r){setTimeout(r,400);});
+
+      var bSig=signals.filter(function(s){return s.bull;}),eSig=signals.filter(function(s){return !s.bull;});
+      var bW=bSig.reduce(function(a,s){return a+s.w;},0),eW=eSig.reduce(function(a,s){return a+s.w;},0);
+      var tW=bW+eW||1, ms=Math.round(bW/tW*100);
+      var mC,mL,mA;
+      if(ms>=70){mC='var(--g)';mL='BULLISH - KONDUSIF BELI';mA='Kondisi terbaik untuk entry. Semua layer konfirm bullish.';}
+      else if(ms>=55){mC='#90cc50';mL='SLIGHT BULLISH';mA='Entry selektif. Setup Grade A saja. SL ketat.';}
+      else if(ms>=45){mC='var(--y)';mL='NEUTRAL';mA='Mixed signals. Tunggu confluence lebih jelas.';}
+      else if(ms>=30){mC='var(--o)';mL='SLIGHT BEARISH';mA='Kurangi posisi. Perkecil size.';}
+      else{mC='var(--r)';mL='BEARISH - HOLD CASH';mA='Hindari beli baru. Tunggu reversal.';}
+
+      var sigsHtml=signals.map(function(s){
+        return'<div style="display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.025)">'
+          +'<span style="font-size:13px">'+(s.bull?'✅':'❌')+'</span>'
+          +'<div style="flex:1"><span style="font-size:11px;font-weight:700;color:'+(s.bull?'var(--g)':'var(--r)')+'">'+s.name+'</span>'
+          +'<span style="font-size:10px;color:var(--dmr);margin-left:6px">'+s.desc+'</span></div>'
+          +'<span style="font-size:8px;color:var(--dmr)">'+Array(s.w+1).join('*')+'</span>'
+          +'</div>';
+      }).join('');
+
+      var html='<div class="card" style="background:linear-gradient(135deg,rgba('+(ms>=55?'0,255,135':'255,69,96')+',.06),rgba(0,0,0,.4));border:1px solid '+mC+'30">'
+        +'<div style="text-align:center;padding:10px 0 18px">'
+        +'<div style="font-size:52px;font-weight:800;color:'+mC+';font-family:var(--mono);line-height:1;margin-bottom:8px">'+ms+'</div>'
+        +'<div style="font-size:16px;font-weight:700;color:'+mC+';margin-bottom:8px">'+mL+'</div>'
+        +'<div style="font-size:11px;color:#3d5060;line-height:1.7;max-width:340px;margin:0 auto;padding:10px 14px;background:'+mC+'08;border:1px solid '+mC+'20;border-radius:9px">'+mA+'</div>'
+        +'</div>'
+        +'<div style="height:7px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;margin-bottom:8px">'
+        +'<div style="height:100%;width:'+ms+'%;background:'+mC+';border-radius:3px;transition:width .9s"></div></div>'
+        +'<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--dmr)">'
+        +'<span>0 Bearish</span><span style="color:'+mC+'">'+bSig.length+' bull / '+eSig.length+' bear</span><span>100 Bullish</span>'
+        +'</div></div>'
+        +'<div class="sgrid">'
+        +'<div class="sbox"><div class="sval" style="color:'+(fgVal<25?'var(--g)':fgVal>75?'var(--r)':'var(--y)')+'">'+fgVal+'</div><div class="slbl">Fear&Greed</div></div>'
+        +'<div class="sbox"><div class="sval" style="color:'+(btcCh24>=0?'var(--g)':'var(--r)')+'">'+fpct(btcCh24,1)+'</div><div class="slbl">BTC 24h</div></div>'
+        +'<div class="sbox"><div class="sval" style="color:'+(btcFR===null?'var(--txt)':btcFR<0?'var(--g)':btcFR>0.08?'var(--r)':'var(--y)')+'">'+( btcFR!==null?fpct(btcFR,4):'—')+'</div><div class="slbl">FR BTC</div></div>'
+        +'<div class="sbox"><div class="sval" style="color:'+(adv>dec?'var(--g)':'var(--r)')+'">'+adv+'/'+dec+'</div><div class="slbl">Adv/Dec</div></div>'
+        +'</div>'
+        +'<div class="card"><div class="sh">Signal Breakdown</div>'+sigsHtml+'</div>';
+
+      shide('comb-load'); ii('comb-out').innerHTML=html; sshow('comb-out');
+    } catch(e) {
+      shide('comb-load'); ii('comb-out').innerHTML='<div class="card" style="color:var(--r);padding:16px">Error: '+e.message+'</div>'; sshow('comb-out');
+    }
+    btn.disabled=false; btn.textContent='FULL INSTITUTIONAL SCAN';
+  };
+
+});
+</script>
 
 </body>
 </html>
