@@ -3,166 +3,147 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>AC369 · Signal System v3</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<title>AC369 · SNIPER v4</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--g:#00ffd0;--amber:#FFB300;--red:#ff4466;--blue:#4488ff;--purple:#a855f7;
-  --bg:#060810;--card:rgba(9,12,20,.95);--brd:rgba(0,255,208,.13);--txt:#e8f0fe;--txt2:#7a8499}
+:root{
+  --g:#00ffd0;--amber:#FFB300;--red:#ff4466;--blue:#4488ff;--purple:#a855f7;
+  --bg:#04060d;--card:rgba(8,11,20,.97);--brd:rgba(0,255,208,.11);
+  --txt:#e8f0fe;--txt2:#5a6a7e;--txt3:#8a9ab0;
+}
 *{box-sizing:border-box;margin:0;padding:0}
 body{min-height:100vh;background:var(--bg);font-family:'Space Grotesk',sans-serif;color:var(--txt);overflow-x:hidden}
-.bg-grid{position:fixed;inset:0;pointer-events:none;z-index:0;background-image:linear-gradient(rgba(0,255,208,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,208,.03) 1px,transparent 1px);background-size:40px 40px}
-.bg-glow{position:fixed;top:-20%;left:50%;transform:translateX(-50%);width:700px;height:400px;background:radial-gradient(ellipse,rgba(0,255,208,.06) 0%,transparent 70%);pointer-events:none;z-index:0}
-.wrap{position:relative;z-index:1;max-width:980px;margin:0 auto;padding:18px 14px 60px}
+
+/* BG */
+.bg-grid{position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(0,255,208,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,208,.025) 1px,transparent 1px);
+  background-size:48px 48px}
+.bg-glow{position:fixed;top:-15%;left:50%;transform:translateX(-50%);width:800px;height:500px;
+  background:radial-gradient(ellipse,rgba(0,255,208,.055) 0%,transparent 65%);pointer-events:none;z-index:0}
+
+.wrap{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:18px 14px 70px}
 
 /* HEADER */
 .hdr{text-align:center;margin-bottom:20px;animation:fadeUp .5s ease}
-.badge-live{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border:1px solid var(--brd);border-radius:20px;font-size:10px;letter-spacing:2px;color:var(--g);margin-bottom:8px;font-family:'IBM Plex Mono',monospace}
-.dot-live{width:6px;height:6px;border-radius:50%;background:var(--g);animation:pulse 1.5s infinite}
-h1{font-family:'IBM Plex Mono',monospace;font-size:clamp(20px,5vw,32px);font-weight:700;letter-spacing:-1px}
+.badge-live{display:inline-flex;align-items:center;gap:5px;padding:3px 11px;border:1px solid var(--brd);border-radius:20px;font-size:9px;letter-spacing:2.5px;color:var(--g);margin-bottom:8px;font-family:'IBM Plex Mono',monospace}
+.dot-live{width:5px;height:5px;border-radius:50%;background:var(--g);animation:pulse 1.5s infinite}
+h1{font-family:'IBM Plex Mono',monospace;font-size:clamp(18px,5vw,30px);font-weight:700;letter-spacing:-1px}
 h1 span{color:var(--g)}
-.sub{color:var(--txt2);font-size:11px;letter-spacing:3px;margin-top:4px}
+.sub{color:var(--txt2);font-size:10px;letter-spacing:3px;margin-top:4px}
 
 /* NAV */
-.nav{display:flex;gap:3px;overflow-x:auto;padding-bottom:4px;margin-bottom:14px;border-bottom:1px solid var(--brd);scrollbar-width:none}
+.nav{display:flex;gap:3px;overflow-x:auto;padding-bottom:3px;margin-bottom:14px;border-bottom:1px solid var(--brd);scrollbar-width:none}
 .nav::-webkit-scrollbar{display:none}
-.nb{flex-shrink:0;padding:6px 11px;background:transparent;border:1px solid transparent;border-radius:7px;font-size:11px;color:var(--txt2);cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:all .2s;white-space:nowrap}
+.nb{flex-shrink:0;padding:6px 11px;background:transparent;border:1px solid transparent;border-radius:7px;font-size:10px;color:var(--txt2);cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:all .2s;white-space:nowrap}
 .nb:hover{color:var(--g);border-color:var(--brd)}
 .nb.active{background:rgba(0,255,208,.1);border-color:var(--g);color:var(--g);font-weight:600}
 .tab{display:none}.tab.active{display:block}
 
 /* CARDS */
-.card{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:16px 18px;margin-bottom:11px;backdrop-filter:blur(10px)}
-.card-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.card-title{font-size:11px;letter-spacing:2px;color:var(--g);font-family:'IBM Plex Mono',monospace}
+.card{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:15px 17px;margin-bottom:10px;backdrop-filter:blur(12px)}
+.ct{font-size:10px;letter-spacing:2px;color:var(--g);font-family:'IBM Plex Mono',monospace}
+.ch{display:flex;justify-content:space-between;align-items:center;margin-bottom:11px}
 
 /* INPUTS */
-.inp-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px}
-.inp{flex:1;min-width:120px;padding:9px 13px;background:rgba(255,255,255,.04);border:1px solid var(--brd);border-radius:8px;color:var(--txt);font-family:'IBM Plex Mono',monospace;font-size:12px;outline:none;transition:border-color .2s}
+.ir{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.inp{flex:1;min-width:110px;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid var(--brd);border-radius:7px;color:var(--txt);font-family:'IBM Plex Mono',monospace;font-size:12px;outline:none;transition:border-color .2s}
 .inp:focus{border-color:var(--g)}
-.btn{padding:9px 16px;background:rgba(0,255,208,.12);border:1px solid var(--g);border-radius:8px;color:var(--g);font-weight:600;cursor:pointer;font-size:12px;transition:all .2s;white-space:nowrap;font-family:'Space Grotesk',sans-serif}
-.btn:hover:not(:disabled){background:rgba(0,255,208,.22);box-shadow:0 0 16px rgba(0,255,208,.2)}
+.btn{padding:9px 16px;background:rgba(0,255,208,.1);border:1px solid var(--g);border-radius:7px;color:var(--g);font-weight:600;cursor:pointer;font-size:12px;transition:all .2s;white-space:nowrap;font-family:'Space Grotesk',sans-serif}
+.btn:hover:not(:disabled){background:rgba(0,255,208,.2);box-shadow:0 0 14px rgba(0,255,208,.18)}
 .btn:disabled{opacity:.4;cursor:not-allowed}
-.qb-row{display:flex;flex-wrap:wrap;gap:5px}
-.qb{padding:3px 9px;border:1px solid rgba(0,255,208,.2);border-radius:5px;font-size:10px;color:var(--txt2);cursor:pointer;font-family:'IBM Plex Mono',monospace;transition:all .15s}
+.qr{display:flex;flex-wrap:wrap;gap:5px}
+.qb{padding:3px 9px;border:1px solid rgba(0,255,208,.18);border-radius:5px;font-size:10px;color:var(--txt2);cursor:pointer;font-family:'IBM Plex Mono',monospace;transition:all .15s}
 .qb:hover{border-color:var(--g);color:var(--g)}
 
-/* VERDICT */
-.verdict-box{border-radius:11px;padding:16px;margin-bottom:11px;text-align:center;border:2px solid var(--brd)}
-.verdict-box.bull{border-color:var(--g);background:rgba(0,255,208,.05)}
-.verdict-box.bear{border-color:var(--red);background:rgba(255,68,102,.05)}
-.verdict-box.neutral{border-color:rgba(255,179,0,.4);background:rgba(255,179,0,.03)}
-.verdict-label{font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:700;letter-spacing:2px}
-.verdict-label.bull{color:var(--g)}.verdict-label.bear{color:var(--red)}.verdict-label.neutral{color:var(--amber)}
-.verdict-action{font-size:11px;color:var(--txt2);margin-top:5px}
-
-/* SCORE */
-.score-wrap{margin:10px 0}
-.score-label{display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px;font-family:'IBM Plex Mono',monospace}
-.score-bar{height:8px;background:rgba(255,255,255,.06);border-radius:8px;overflow:hidden}
-.score-fill{height:100%;border-radius:8px;transition:width .8s ease;background:linear-gradient(90deg,var(--g),#00ffa3)}
-.score-fill.bear-fill{background:linear-gradient(90deg,var(--red),#ff8800)}
-
-/* SIGNAL ROWS */
-.sig-grid{display:grid;gap:6px}
-.sig-row{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,255,255,.03);border-radius:7px;border-left:3px solid transparent}
-.sig-row.bull{border-left-color:var(--g)}.sig-row.bear{border-left-color:var(--red)}.sig-row.neutral{border-left-color:rgba(255,179,0,.4)}
-.sig-name{font-size:11px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;min-width:95px}
-.sig-val{font-size:11px;font-weight:600;text-align:center;flex:1}
-.sig-val.bull{color:var(--g)}.sig-val.bear{color:var(--red)}.sig-val.neutral{color:var(--amber)}
-.sig-detail{font-size:10px;color:var(--txt2);text-align:right;max-width:160px}
-.sig-badge{font-size:9px;padding:2px 6px;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-weight:700;margin-left:6px}
-.sig-badge.bull{background:rgba(0,255,208,.12);color:var(--g);border:1px solid rgba(0,255,208,.3)}
-.sig-badge.bear{background:rgba(255,68,102,.12);color:var(--red);border:1px solid rgba(255,68,102,.3)}
-.sig-badge.neutral{background:rgba(255,179,0,.1);color:var(--amber);border:1px solid rgba(255,179,0,.3)}
-.sig-badge.info{background:rgba(68,136,255,.12);color:var(--blue);border:1px solid rgba(68,136,255,.3)}
-
 /* METRICS */
-.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:11px}
-.metric{background:rgba(255,255,255,.03);border:1px solid var(--brd);border-radius:9px;padding:10px 12px;text-align:center}
-.metric-label{font-size:9px;color:var(--txt2);letter-spacing:1px;margin-bottom:3px;font-family:'IBM Plex Mono',monospace}
-.metric-val{font-size:16px;font-weight:700;font-family:'IBM Plex Mono',monospace}
-.metric-val.up{color:var(--g)}.metric-val.down{color:var(--red)}.metric-val.neutral{color:var(--amber)}
-.metric-sub{font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;margin-top:2px}
+.mets{display:grid;grid-template-columns:repeat(auto-fit,minmax(95px,1fr));gap:7px;margin-bottom:10px}
+.met{background:rgba(255,255,255,.025);border:1px solid var(--brd);border-radius:8px;padding:9px 11px;text-align:center}
+.ml{font-size:9px;color:var(--txt2);letter-spacing:1px;margin-bottom:3px;font-family:'IBM Plex Mono',monospace}
+.mv{font-size:15px;font-weight:700;font-family:'IBM Plex Mono',monospace}
+.mv.up{color:var(--g)}.mv.dn{color:var(--red)}.mv.ne{color:var(--amber)}
+.ms{font-size:9px;color:var(--txt2);margin-top:1px;font-family:'IBM Plex Mono',monospace}
 
-/* ══ ENTRY CALCULATOR ══ */
-.calc-box{background:rgba(0,255,208,.03);border:1px solid rgba(0,255,208,.15);border-radius:11px;padding:14px;margin-bottom:11px}
-.calc-title{font-size:10px;letter-spacing:2px;color:var(--g);font-family:'IBM Plex Mono',monospace;margin-bottom:11px}
-.calc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:11px}
-.calc-field{background:rgba(255,255,255,.04);border:1px solid var(--brd);border-radius:7px;padding:10px 12px}
-.calc-fl{font-size:9px;color:var(--txt2);letter-spacing:1px;margin-bottom:3px;font-family:'IBM Plex Mono',monospace}
-.calc-fv{font-size:14px;font-weight:700;font-family:'IBM Plex Mono',monospace}
-.calc-fv.entry{color:var(--txt)}.calc-fv.sl{color:var(--red)}.calc-fv.tp1{color:#a0e040}.calc-fv.tp2{color:var(--g)}.calc-fv.tp3{color:var(--amber)}
-.calc-fs{font-size:9px;color:var(--txt2);margin-top:2px;font-family:'IBM Plex Mono',monospace}
-.rr-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
-.rr-pill{padding:4px 11px;border-radius:7px;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;border:1px solid}
-.rr-pill.good{background:rgba(0,255,208,.1);border-color:rgba(0,255,208,.3);color:var(--g)}
-.rr-pill.ok{background:rgba(255,179,0,.1);border-color:rgba(255,179,0,.3);color:var(--amber)}
-.rr-pill.bad{background:rgba(255,68,102,.1);border-color:rgba(255,68,102,.3);color:var(--red)}
-.pos-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-.pos-lbl{font-size:9px;color:var(--txt2);letter-spacing:1px;font-family:'IBM Plex Mono',monospace;margin-bottom:3px}
+/* ══ SNIPER DECISION BOX ══ */
+.sniper-box{border-radius:14px;padding:20px;margin-bottom:10px;text-align:center;position:relative;overflow:hidden;border:2px solid var(--brd)}
+.sniper-box::before{content:'';position:absolute;inset:0;opacity:.06;pointer-events:none}
+.sniper-box.entry{border-color:var(--g)}
+.sniper-box.entry::before{background:radial-gradient(ellipse at center,var(--g),transparent)}
+.sniper-box.wait{border-color:var(--amber)}
+.sniper-box.wait::before{background:radial-gradient(ellipse at center,var(--amber),transparent)}
+.sniper-box.short{border-color:var(--red)}
+.sniper-box.short::before{background:radial-gradient(ellipse at center,var(--red),transparent)}
+.sniper-box.no{border-color:var(--txt2)}
+.sniper-decision{font-family:'IBM Plex Mono',monospace;font-size:clamp(16px,4vw,22px);font-weight:700;letter-spacing:1px;margin-bottom:6px}
+.sniper-prob{display:inline-flex;align-items:center;gap:8px;margin-top:8px}
+.prob-bar-wrap{width:120px;height:8px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+.prob-fill{height:100%;border-radius:4px;transition:width 1s ease}
 
-/* ══ SMC PANEL ══ */
-.smc-section{margin-bottom:10px}
-.smc-section-title{font-size:10px;letter-spacing:2px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;margin-bottom:7px;display:flex;align-items:center;gap:6px}
-.zone-grid{display:grid;gap:6px}
-.zone-row{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,255,255,.03);border-radius:7px;border-left:3px solid transparent}
-.zone-row.bull{border-left-color:var(--g);background:rgba(0,255,208,.04)}
-.zone-row.bear{border-left-color:var(--red);background:rgba(255,68,102,.04)}
-.zone-row.neutral{border-left-color:rgba(255,179,0,.4)}
-.zone-row.info{border-left-color:var(--blue);background:rgba(68,136,255,.04)}
-.zone-tag{font-size:9px;padding:2px 7px;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-weight:700}
-.zone-tag.bull{background:rgba(0,255,208,.15);color:var(--g)}
-.zone-tag.bear{background:rgba(255,68,102,.15);color:var(--red)}
-.zone-tag.info{background:rgba(68,136,255,.15);color:var(--blue)}
-.zone-tag.neutral{background:rgba(255,179,0,.1);color:var(--amber)}
-.zone-price{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600}
-.zone-detail{font-size:10px;color:var(--txt2)}
+/* ══ ENTRY CARD — THE MONEY SHOT ══ */
+.entry-card{background:rgba(0,255,208,.04);border:1px solid rgba(0,255,208,.25);border-radius:12px;padding:16px;margin-bottom:10px;position:relative}
+.entry-card.short-card{background:rgba(255,68,102,.04);border-color:rgba(255,68,102,.25)}
+.ec-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.ec-dir{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+.ec-badge{font-size:9px;padding:3px 9px;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-weight:700}
+.ec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px}
+.ec-field{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:7px;padding:10px 12px}
+.ecl{font-size:9px;color:var(--txt2);letter-spacing:1px;margin-bottom:3px;font-family:'IBM Plex Mono',monospace}
+.ecv{font-size:14px;font-weight:700;font-family:'IBM Plex Mono',monospace}
+.ecv.entry{color:var(--txt)}.ecv.sl{color:var(--red)}.ecv.tp1{color:#a0e040}.ecv.tp2{color:var(--g)}.ecv.tp3{color:var(--amber)}
+.ecs{font-size:9px;color:var(--txt2);margin-top:2px;font-family:'IBM Plex Mono',monospace}
+.rr-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.rr-p{padding:4px 10px;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;border:1px solid}
+.rr-p.g{background:rgba(0,255,208,.1);border-color:rgba(0,255,208,.3);color:var(--g)}
+.rr-p.o{background:rgba(255,179,0,.1);border-color:rgba(255,179,0,.3);color:var(--amber)}
+.invalidation{background:rgba(255,68,102,.08);border:1px solid rgba(255,68,102,.2);border-radius:7px;padding:9px 12px;font-size:10px;color:var(--red);font-family:'IBM Plex Mono',monospace}
+.pos-grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.pl{font-size:9px;color:var(--txt2);letter-spacing:1px;font-family:'IBM Plex Mono',monospace;margin-bottom:3px}
 
-/* ══ MTF PANEL ══ */
-.mtf-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:11px}
-.mtf-card{background:rgba(255,255,255,.03);border:1px solid var(--brd);border-radius:9px;padding:12px;text-align:center}
-.mtf-tf{font-size:10px;color:var(--txt2);letter-spacing:2px;font-family:'IBM Plex Mono',monospace;margin-bottom:6px}
-.mtf-trend{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;margin-bottom:6px}
-.mtf-trend.bull{color:var(--g)}.mtf-trend.bear{color:var(--red)}.mtf-trend.neutral{color:var(--amber)}
-.mtf-bar-wrap{height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;margin-bottom:4px}
-.mtf-bar{height:100%;border-radius:3px;transition:width 1s ease}
-.mtf-bar.bull{background:linear-gradient(90deg,var(--g),#00ffa3)}.mtf-bar.bear{background:linear-gradient(90deg,var(--red),#ff8800)}
-.mtf-pct{font-size:10px;font-family:'IBM Plex Mono',monospace}
-.mtf-stats{display:grid;gap:3px;margin-top:6px;text-align:left}
-.mtf-stat{display:flex;justify-content:space-between;font-size:9px;font-family:'IBM Plex Mono',monospace}
-.mtf-stat .lbl{color:var(--txt2)}.mtf-stat .val{font-weight:600}
-.mtf-align-badge{padding:8px 16px;border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;text-align:center;margin-bottom:11px}
-.mtf-align-badge.bull{background:rgba(0,255,208,.1);border:1px solid rgba(0,255,208,.3);color:var(--g)}
-.mtf-align-badge.bear{background:rgba(255,68,102,.1);border:1px solid rgba(255,68,102,.3);color:var(--red)}
-.mtf-align-badge.neutral{background:rgba(255,179,0,.08);border:1px solid rgba(255,179,0,.3);color:var(--amber)}
+/* ══ KILL ZONE ══ */
+.kz-banner{border-radius:9px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px;border:1px solid}
+.kz-dot{width:8px;height:8px;border-radius:50%;animation:pulse 1.2s infinite}
+.kz-name{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700}
+.kz-desc{font-size:10px;color:var(--txt2)}
 
-/* ══ BACKTEST ══ */
-.bt-table{width:100%;border-collapse:collapse;font-size:11px}
-.bt-table th{padding:8px 10px;font-size:9px;letter-spacing:1.5px;color:var(--txt2);border-bottom:1px solid var(--brd);text-align:left;font-family:'IBM Plex Mono',monospace}
-.bt-table td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.03);font-family:'IBM Plex Mono',monospace}
-.bt-table tr:hover td{background:rgba(0,255,208,.02)}
-.outcome-win{color:var(--g);font-weight:700}.outcome-loss{color:var(--red);font-weight:700}.outcome-pending{color:var(--amber);font-weight:700}
-.bt-stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+/* ══ SCORE LOG ══ */
+.score-grid{display:grid;gap:6px}
+.score-row{display:flex;justify-content:space-between;align-items:center;padding:8px 11px;background:rgba(255,255,255,.025);border-radius:7px;border-left:3px solid transparent}
+.score-row.bull{border-left-color:var(--g)}.score-row.bear{border-left-color:var(--red)}.score-row.neutral{border-left-color:var(--txt2)}.score-row.both{border-left-color:var(--amber)}
+.sc-cat{font-size:10px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;min-width:80px}
+.sc-detail{font-size:10px;flex:1;padding:0 8px;color:var(--txt3)}
+.sc-pts{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700}
+.sc-pts.bull{color:var(--g)}.sc-pts.bear{color:var(--red)}.sc-pts.neutral{color:var(--txt2)}
 
-/* SCANNER */
-.scan-table{width:100%;border-collapse:collapse;font-size:11px;font-family:'IBM Plex Mono',monospace}
-.scan-table th{color:var(--txt2);font-weight:500;padding:7px 9px;text-align:left;border-bottom:1px solid var(--brd);font-size:9px;letter-spacing:1px}
-.scan-table td{padding:8px 9px;border-bottom:1px solid rgba(255,255,255,.03)}
-.scan-table tr:hover td{background:rgba(0,255,208,.02)}
-.pill{display:inline-block;padding:2px 7px;border-radius:3px;font-size:9px;font-weight:700}
-.pill.bull{background:rgba(0,255,208,.12);color:var(--g)}.pill.bear{background:rgba(255,68,102,.12);color:var(--red)}.pill.neutral{background:rgba(255,179,0,.1);color:var(--amber)}
-.mini-spin{width:11px;height:11px;border:2px solid rgba(255,255,255,.1);border-top-color:var(--g);border-radius:50%;animation:spin .8s linear infinite;display:inline-block}
-.chart-wrap{position:relative;height:140px;margin-top:8px}
-canvas{width:100%;height:100%;display:block}
-.loading{display:flex;align-items:center;justify-content:center;gap:8px;padding:26px;color:var(--txt2);font-size:12px;font-family:'IBM Plex Mono',monospace}
-.spin{width:14px;height:14px;border:2px solid var(--brd);border-top-color:var(--g);border-radius:50%;animation:spin .8s linear infinite}
-.scan-prog-wrap{height:3px;background:rgba(255,255,255,.06);border-radius:2px;margin-bottom:10px;overflow:hidden}
-.scan-prog-fill{height:100%;background:linear-gradient(90deg,var(--g),#00ffa3);border-radius:2px;transition:width .3s ease;width:0%}
-.cscan-row{background:rgba(255,255,255,.03);border:1px solid var(--brd);border-radius:9px;padding:11px 13px;display:grid;grid-template-columns:70px 1fr 90px 105px 95px;gap:7px;align-items:center;border-left:4px solid transparent;cursor:pointer;transition:background .2s}
+/* ══ MTF MINI ══ */
+.mtf-mini{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px}
+.mtf-c{background:rgba(255,255,255,.025);border:1px solid var(--brd);border-radius:8px;padding:10px 11px;text-align:center}
+.mtf-tf{font-size:9px;color:var(--txt2);letter-spacing:2px;font-family:'IBM Plex Mono',monospace;margin-bottom:4px}
+.mtf-tr{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700}
+.mtf-tr.bull{color:var(--g)}.mtf-tr.bear{color:var(--red)}.mtf-tr.ne{color:var(--amber)}
+
+/* ══ PATTERN CHIPS ══ */
+.pat-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.pat-chip{padding:4px 10px;border-radius:6px;font-size:10px;font-family:'IBM Plex Mono',monospace;font-weight:600;border:1px solid}
+.pat-chip.bull{background:rgba(0,255,208,.1);border-color:rgba(0,255,208,.3);color:var(--g)}
+.pat-chip.bear{background:rgba(255,68,102,.1);border-color:rgba(255,68,102,.3);color:var(--red)}
+.pat-chip.neutral{background:rgba(255,179,0,.08);border-color:rgba(255,179,0,.3);color:var(--amber)}
+
+/* ══ ZONE ROWS ══ */
+.zg{display:grid;gap:6px}
+.zr{display:flex;justify-content:space-between;align-items:center;padding:8px 11px;background:rgba(255,255,255,.025);border-radius:7px;border-left:3px solid transparent}
+.zr.bull{border-left-color:var(--g);background:rgba(0,255,208,.03)}
+.zr.bear{border-left-color:var(--red);background:rgba(255,68,102,.03)}
+.zr.info{border-left-color:var(--blue);background:rgba(68,136,255,.03)}
+.zt{font-size:9px;padding:2px 6px;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-weight:700}
+.zt.bull{background:rgba(0,255,208,.15);color:var(--g)}.zt.bear{background:rgba(255,68,102,.15);color:var(--red)}.zt.info{background:rgba(68,136,255,.15);color:var(--blue)}
+.zp{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600}
+.zd{font-size:9px;color:var(--txt2)}
+
+/* ══ SCAN ══ */
+.cscan-row{background:rgba(255,255,255,.025);border:1px solid var(--brd);border-radius:9px;padding:10px 12px;display:grid;grid-template-columns:65px 1fr 85px 100px 90px;gap:7px;align-items:center;border-left:4px solid transparent;cursor:pointer;transition:background .2s}
 .cscan-row:hover{background:rgba(0,255,208,.03)}
-.cscan-row.bull{border-left-color:var(--g)}.cscan-row.bear{border-left-color:var(--red)}.cscan-row.neutral{border-left-color:rgba(255,179,0,.4)}
+.cscan-row.bull{border-left-color:var(--g)}.cscan-row.bear{border-left-color:var(--red)}.cscan-row.neutral{border-left-color:var(--amber)}
 .cscan-sym{font-weight:700;font-size:13px;font-family:'IBM Plex Mono',monospace}
-.cscan-price{font-size:10px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;margin-top:1px}
+.cscan-price{font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;margin-top:1px}
 .cscan-bars{display:flex;flex-direction:column;gap:3px}
 .cscan-brow{display:flex;align-items:center;gap:5px}
 .cscan-blbl{font-size:9px;color:var(--txt2);width:26px;font-family:'IBM Plex Mono',monospace}
@@ -173,30 +154,52 @@ canvas{width:100%;height:100%;display:block}
 .cscan-verd.bull{background:rgba(0,255,208,.12);color:var(--g);border:1px solid rgba(0,255,208,.3)}
 .cscan-verd.bear{background:rgba(255,68,102,.12);color:var(--red);border:1px solid rgba(255,68,102,.3)}
 .cscan-verd.neutral{background:rgba(255,179,0,.1);color:var(--amber);border:1px solid rgba(255,179,0,.3)}
+
+/* MISC */
+.scan-table{width:100%;border-collapse:collapse;font-size:11px;font-family:'IBM Plex Mono',monospace}
+.scan-table th{color:var(--txt2);font-weight:500;padding:7px 8px;text-align:left;border-bottom:1px solid var(--brd);font-size:9px;letter-spacing:1px}
+.scan-table td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.025)}
+.scan-table tr:hover td{background:rgba(0,255,208,.02)}
+.pill{display:inline-block;padding:2px 7px;border-radius:3px;font-size:9px;font-weight:700}
+.pill.bull{background:rgba(0,255,208,.12);color:var(--g)}.pill.bear{background:rgba(255,68,102,.12);color:var(--red)}.pill.neutral{background:rgba(255,179,0,.1);color:var(--amber)}
+.loading{display:flex;align-items:center;justify-content:center;gap:8px;padding:26px;color:var(--txt2);font-size:12px;font-family:'IBM Plex Mono',monospace}
+.spin{width:14px;height:14px;border:2px solid var(--brd);border-top-color:var(--g);border-radius:50%;animation:spin .8s linear infinite}
+.mini-spin{width:11px;height:11px;border:2px solid rgba(255,255,255,.1);border-top-color:var(--g);border-radius:50%;animation:spin .8s linear infinite;display:inline-block}
+.spw{height:3px;background:rgba(255,255,255,.05);border-radius:2px;margin-bottom:9px;overflow:hidden}
+.spf{height:100%;background:linear-gradient(90deg,var(--g),#00ffa3);border-radius:2px;transition:width .3s ease;width:0%}
+.score-bar-wrap{height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;margin:4px 0}
+.score-bar-fill{height:100%;border-radius:4px;transition:width .8s ease}
+.score-bar-fill.bull{background:linear-gradient(90deg,var(--g),#00ffa3)}.score-bar-fill.bear{background:linear-gradient(90deg,var(--red),#ff8800)}
+.chart-wrap{position:relative;height:130px;margin-top:8px}
+canvas{width:100%;height:100%;display:block}
 .wt{width:100%;border-collapse:collapse;font-size:11px}
-.wt th{padding:7px 11px;font-size:9px;letter-spacing:1.5px;color:var(--txt2);border-bottom:1px solid var(--brd);text-align:left;font-family:'IBM Plex Mono',monospace}
-.wt td{padding:9px 11px;border-bottom:1px solid rgba(255,255,255,.03)}
+.wt th{padding:7px 10px;font-size:9px;letter-spacing:1.5px;color:var(--txt2);border-bottom:1px solid var(--brd);text-align:left;font-family:'IBM Plex Mono',monospace}
+.wt td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.025)}
 .wt-bar{height:5px;background:rgba(255,255,255,.06);border-radius:3px;margin-top:3px;overflow:hidden}
 .wt-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--g),#00ffa3)}
-.fng-bar{width:100%;height:11px;border-radius:5px;margin-top:12px;background:linear-gradient(90deg,#ff4466,#ff8800,var(--amber),#a0e040,var(--g));position:relative}
-.fng-marker{position:absolute;top:-4px;width:18px;height:18px;border-radius:50%;background:var(--bg);border:3px solid var(--txt);transform:translateX(-50%);transition:left .8s ease}
+.fng-bar{width:100%;height:10px;border-radius:5px;margin-top:11px;background:linear-gradient(90deg,#ff4466,#ff8800,var(--amber),#a0e040,var(--g));position:relative}
+.fng-marker{position:absolute;top:-4px;width:17px;height:17px;border-radius:50%;background:var(--bg);border:2px solid var(--txt);transform:translateX(-50%);transition:left .8s ease}
 .liq-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.liq-price{font-family:'IBM Plex Mono',monospace;font-size:11px;min-width:90px;color:var(--txt2)}
-.liq-bw{flex:1;height:13px;background:rgba(255,255,255,.04);border-radius:3px;overflow:hidden}
+.liq-price{font-family:'IBM Plex Mono',monospace;font-size:11px;min-width:85px;color:var(--txt2)}
+.liq-bw{flex:1;height:12px;background:rgba(255,255,255,.04);border-radius:3px;overflow:hidden}
 .liq-b{height:100%;border-radius:3px;transition:width 1s ease}
 .liq-b.long{background:linear-gradient(90deg,rgba(0,255,208,.6),rgba(0,255,208,.3))}.liq-b.short{background:linear-gradient(90deg,rgba(255,68,102,.6),rgba(255,68,102,.3))}
-.liq-v{font-family:'IBM Plex Mono',monospace;font-size:10px;min-width:55px;text-align:right}
+.liq-v{font-family:'IBM Plex Mono',monospace;font-size:9px;min-width:50px;text-align:right}
+.bt-stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}
+.outcome-win{color:var(--g);font-weight:700}.outcome-loss{color:var(--red);font-weight:700}.outcome-pending{color:var(--amber);font-weight:700}
 
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes spin{to{transform:rotate(360deg)}}
-@media(max-width:580px){
-  .mtf-grid{grid-template-columns:1fr}
-  .cscan-row{grid-template-columns:65px 1fr 80px;gap:5px}
+@keyframes glow{0%,100%{box-shadow:0 0 10px rgba(0,255,208,.15)}50%{box-shadow:0 0 25px rgba(0,255,208,.4)}}
+
+@media(max-width:560px){
+  .ec-grid{grid-template-columns:repeat(2,1fr)}
+  .mtf-mini{grid-template-columns:1fr}
+  .cscan-row{grid-template-columns:60px 1fr 80px;gap:5px}
   .cscan-verd+button{display:none}
-  .sig-detail{display:none}
-  .calc-grid{grid-template-columns:repeat(2,1fr)}
-  .metrics{grid-template-columns:repeat(2,1fr)}
+  .sc-detail{display:none}
+  .mets{grid-template-columns:repeat(2,1fr)}
   .bt-stats-grid{grid-template-columns:repeat(2,1fr)}
 }
 </style>
@@ -206,153 +209,109 @@ canvas{width:100%;height:100%;display:block}
 <div class="wrap">
 
 <div class="hdr">
-  <div class="badge-live"><span class="dot-live"></span>ALPHA CRYPTO 369 · LIVE · SMC + MTF · v3.0</div>
-  <h1>AC369 <span>SIGNAL SYSTEM</span></h1>
-  <div class="sub">SMC · SUPPLY/DEMAND · MTF · BACKTEST · v3.0</div>
+  <div class="badge-live"><span class="dot-live"></span>AC369 · SNIPER ENTRY SYSTEM · LIVE</div>
+  <h1>AC369 <span>SNIPER</span></h1>
+  <div class="sub">ONLY HIGH PROBABILITY ENTRIES · SMC + MTF + PATTERNS · v4.0</div>
 </div>
 
 <div class="nav">
-  <button class="nb active" onclick="showTab('analisis',this)">📊 ANALISIS</button>
-  <button class="nb" onclick="showTab('smc',this)">🏛 SMC/SD</button>
-  <button class="nb" onclick="showTab('mtf',this)">📐 MTF</button>
-  <button class="nb" onclick="showTab('backtest',this)">🧪 BACKTEST</button>
+  <button class="nb active" onclick="showTab('sniper',this)">🎯 SNIPER ENTRY</button>
   <button class="nb" onclick="showTab('cscan',this)">⚡ CONF SCAN</button>
   <button class="nb" onclick="showTab('scanner',this)">🔍 SCANNER</button>
-  <button class="nb" onclick="showTab('tracker',this)">🎯 TRACKER</button>
+  <button class="nb" onclick="showTab('backtest',this)">🧪 BACKTEST</button>
+  <button class="nb" onclick="showTab('tracker',this)">📋 TRACKER</button>
   <button class="nb" onclick="showTab('liq',this)">🔥 LIQ</button>
   <button class="nb" onclick="showTab('cvd',this)">📉 CVD</button>
   <button class="nb" onclick="showTab('fng',this)">😱 F&G</button>
   <button class="nb" onclick="showTab('inst',this)">🏦 INST</button>
 </div>
 
-<!-- ══ ANALISIS ══ -->
-<div id="tab-analisis" class="tab active">
+<!-- ══ SNIPER ENTRY ══ -->
+<div id="tab-sniper" class="tab active">
   <div class="card">
-    <div class="card-hdr"><span class="card-title">CONFLUENCE ANALYSIS</span></div>
-    <div class="inp-row">
-      <input id="ana-sym" class="inp" placeholder="BTC / ETH / SOL..." value="BTC">
-      <button class="btn" id="ana-btn" onclick="runAnalysis()">► ANALISIS</button>
+    <div class="ch"><span class="ct">🎯 SNIPER ENTRY ANALYSIS</span></div>
+    <div class="ir">
+      <input id="snp-sym" class="inp" placeholder="BTC / ETH / SOL..." value="BTC" style="max-width:200px">
+      <button class="btn" id="snp-btn" onclick="runSniper()">🎯 ANALYZE</button>
     </div>
-    <div class="qb-row">
-      <span class="qb" onclick="setAna('BTC')">BTC</span><span class="qb" onclick="setAna('ETH')">ETH</span>
-      <span class="qb" onclick="setAna('SOL')">SOL</span><span class="qb" onclick="setAna('BNB')">BNB</span>
-      <span class="qb" onclick="setAna('XRP')">XRP</span><span class="qb" onclick="setAna('AVAX')">AVAX</span>
-      <span class="qb" onclick="setAna('ARB')">ARB</span><span class="qb" onclick="setAna('LINK')">LINK</span>
-      <span class="qb" onclick="setAna('SUI')">SUI</span><span class="qb" onclick="setAna('HYPE')">HYPE</span>
-      <span class="qb" onclick="setAna('DOGE')">DOGE</span><span class="qb" onclick="setAna('PEPE')">PEPE</span>
+    <div class="qr">
+      <span class="qb" onclick="setSni('BTC')">BTC</span><span class="qb" onclick="setSni('ETH')">ETH</span>
+      <span class="qb" onclick="setSni('SOL')">SOL</span><span class="qb" onclick="setSni('BNB')">BNB</span>
+      <span class="qb" onclick="setSni('XRP')">XRP</span><span class="qb" onclick="setSni('AVAX')">AVAX</span>
+      <span class="qb" onclick="setSni('ARB')">ARB</span><span class="qb" onclick="setSni('LINK')">LINK</span>
+      <span class="qb" onclick="setSni('SUI')">SUI</span><span class="qb" onclick="setSni('HYPE')">HYPE</span>
+      <span class="qb" onclick="setSni('DOGE')">DOGE</span><span class="qb" onclick="setSni('PEPE')">PEPE</span>
+      <span class="qb" onclick="setSni('WIF')">WIF</span><span class="qb" onclick="setSni('RENDER')">RENDER</span>
     </div>
   </div>
-  <div id="ana-result"></div>
+  <div id="snp-result"></div>
 </div>
 
-<!-- ══ SMC / SUPPLY & DEMAND ══ -->
-<div id="tab-smc" class="tab">
-  <div class="card">
-    <div class="card-hdr"><span class="card-title">SMC + SUPPLY & DEMAND DETECTION</span></div>
-    <div class="inp-row">
-      <input id="smc-sym" class="inp" placeholder="BTC" value="BTC" style="max-width:100px">
-      <select id="smc-tf" class="inp" style="max-width:100px">
-        <option value="1h">1H</option>
-        <option value="4h" selected>4H</option>
-        <option value="1d">1D</option>
-      </select>
-      <button class="btn" id="smc-btn" onclick="runSMC()">⚡ DETECT</button>
-    </div>
-  </div>
-  <div id="smc-result"></div>
-</div>
-
-<!-- ══ MTF ══ -->
-<div id="tab-mtf" class="tab">
-  <div class="card">
-    <div class="card-hdr"><span class="card-title">MULTI-TIMEFRAME CONFLUENCE</span></div>
-    <div class="inp-row">
-      <input id="mtf-sym" class="inp" placeholder="BTC" value="BTC" style="max-width:100px">
-      <button class="btn" id="mtf-btn" onclick="runMTF()">📐 ANALYZE</button>
-    </div>
-    <div style="font-size:10px;color:var(--txt2);font-family:'IBM Plex Mono',monospace">
-      ⚡ Sinyal valid HANYA jika 1H + 4H + 1D semua aligned
-    </div>
-  </div>
-  <div id="mtf-result"></div>
-</div>
-
-<!-- ══ BACKTEST ══ -->
-<div id="tab-backtest" class="tab">
-  <div class="card">
-    <div class="card-hdr">
-      <span class="card-title">🧪 BACKTEST — SIGNAL TRACKER</span>
-      <button class="btn" onclick="logSignalNow()" style="padding:6px 12px;font-size:10px">+ LOG SIGNAL NOW</button>
-    </div>
-    <div style="font-size:10px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;margin-bottom:10px">
-      Cara pakai: Setiap kali analisis keluar sinyal → tekan LOG → 24 jam kemudian UPDATE outcome WIN/LOSS
-    </div>
-    <div id="bt-stats"></div>
-  </div>
-  <div id="bt-log-form" style="display:none">
-    <div class="card">
-      <div class="card-hdr"><span class="card-title">LOG SIGNAL BARU</span></div>
-      <div class="inp-row">
-        <input id="bt-sym" class="inp" placeholder="Symbol (BTC)" style="max-width:100px">
-        <select id="bt-dir" class="inp" style="max-width:110px">
-          <option value="LONG">LONG</option>
-          <option value="SHORT">SHORT</option>
-        </select>
-        <input id="bt-entry" class="inp" placeholder="Entry Price" type="number">
-        <input id="bt-conf" class="inp" placeholder="Confluence % (e.g. 73)" type="number">
-      </div>
-      <div class="inp-row">
-        <input id="bt-smc" class="inp" placeholder="SMC setup (e.g. OB+FVG)">
-        <input id="bt-mtf" class="inp" placeholder="MTF alignment (e.g. ALL BULL)">
-        <button class="btn" onclick="saveBTSignal()" style="background:rgba(0,255,208,.2)">SAVE LOG</button>
-        <button class="btn" onclick="document.getElementById('bt-log-form').style.display='none'" style="border-color:var(--txt2);color:var(--txt2)">CANCEL</button>
-      </div>
-    </div>
-  </div>
-  <div id="bt-list"></div>
-</div>
-
-<!-- ══ CONFLUENCE SCAN ══ -->
+<!-- ══ CONF SCAN ══ -->
 <div id="tab-cscan" class="tab">
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-      <div>
-        <span class="card-title">⚡ CONFLUENCE SCANNER</span>
-        <div style="font-size:10px;color:var(--txt2);margin-top:3px;font-family:'IBM Plex Mono',monospace">15 pairs · 8 indikator per pair · ~2 menit</div>
-      </div>
-      <button class="btn" id="cscan-btn" onclick="runConfluenceScan()">⚡ SCAN ALL</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:9px">
+      <div><span class="ct">⚡ CONFLUENCE SCANNER</span><div style="font-size:9px;color:var(--txt2);margin-top:3px;font-family:'IBM Plex Mono',monospace">15 pairs · 8 indikator · ~2 menit</div></div>
+      <button class="btn" id="cscan-btn" onclick="runCScan()">⚡ SCAN ALL</button>
     </div>
-    <div class="scan-prog-wrap"><div class="scan-prog-fill" id="scan-prog"></div></div>
-    <div id="cscan-result" style="text-align:center;padding:20px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;font-size:12px">
-      Tekan ⚡ SCAN ALL untuk mulai
-    </div>
+    <div class="spw"><div class="spf" id="scan-prog"></div></div>
+    <div id="cscan-result" style="text-align:center;padding:20px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;font-size:11px">Tekan SCAN ALL untuk mulai</div>
   </div>
 </div>
 
 <!-- ══ SCANNER ══ -->
 <div id="tab-scanner" class="tab">
   <div class="card">
-    <div class="card-hdr">
-      <span class="card-title">MARKET SCANNER — TOP 50 USDT</span>
-      <button class="btn" onclick="loadScanner()" style="padding:5px 12px;font-size:10px">↺ REFRESH</button>
+    <div class="ch">
+      <span class="ct">MARKET SCANNER — TOP 50 USDT</span>
+      <button class="btn" onclick="loadScanner()" style="padding:5px 11px;font-size:10px">↺ REFRESH</button>
     </div>
     <div id="scanner-result"><div class="loading"><span class="spin"></span>Loading...</div></div>
   </div>
 </div>
 
+<!-- ══ BACKTEST ══ -->
+<div id="tab-backtest" class="tab">
+  <div class="card">
+    <div class="ch">
+      <span class="ct">🧪 SIGNAL BACKTEST TRACKER</span>
+      <button class="btn" onclick="showBTForm()" style="padding:5px 11px;font-size:10px">+ LOG SIGNAL</button>
+    </div>
+    <div style="font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;margin-bottom:9px">Log setiap sinyal → update WIN/LOSS setelah 24 jam → ukur winrate sistem</div>
+    <div id="bt-stats"></div>
+  </div>
+  <div id="bt-form" style="display:none">
+    <div class="card">
+      <div class="ch"><span class="ct">LOG SIGNAL BARU</span></div>
+      <div class="ir">
+        <input id="bt-sym" class="inp" placeholder="Symbol" style="max-width:90px">
+        <select id="bt-dir" class="inp" style="max-width:100px"><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select>
+        <input id="bt-entry" class="inp" placeholder="Entry Price" type="number">
+        <input id="bt-conf" class="inp" placeholder="Probability %" type="number">
+      </div>
+      <div class="ir">
+        <input id="bt-setup" class="inp" placeholder="Setup (e.g. OB+FVG+MTF BULL)">
+        <button class="btn" onclick="saveBT()" style="background:rgba(0,255,208,.18)">SAVE</button>
+        <button class="btn" onclick="document.getElementById('bt-form').style.display='none'" style="border-color:var(--txt2);color:var(--txt2)">CANCEL</button>
+      </div>
+    </div>
+  </div>
+  <div id="bt-list"></div>
+</div>
+
 <!-- ══ TRACKER ══ -->
 <div id="tab-tracker" class="tab">
   <div class="card">
-    <div class="card-hdr"><span class="card-title">TRADE TRACKER</span></div>
-    <div class="inp-row">
-      <input id="tr-sym" class="inp" placeholder="Symbol" style="max-width:90px">
+    <div class="ch"><span class="ct">TRADE TRACKER</span></div>
+    <div class="ir">
+      <input id="tr-sym" class="inp" placeholder="Symbol" style="max-width:85px">
       <input id="tr-dir" class="inp" placeholder="LONG/SHORT" style="max-width:100px">
       <input id="tr-entry" class="inp" placeholder="Entry" type="number">
-      <input id="tr-sl" class="inp" placeholder="Stop Loss" type="number">
-      <input id="tr-tp" class="inp" placeholder="Take Profit" type="number">
+      <input id="tr-sl" class="inp" placeholder="SL" type="number">
+      <input id="tr-tp" class="inp" placeholder="TP" type="number">
     </div>
-    <div class="inp-row">
-      <input id="tr-note" class="inp" placeholder="Notes / setup reason">
+    <div class="ir">
+      <input id="tr-note" class="inp" placeholder="Notes">
       <button class="btn" onclick="addTrade()">+ ADD</button>
     </div>
   </div>
@@ -362,14 +321,11 @@ canvas{width:100%;height:100%;display:block}
 <!-- ══ LIQ ══ -->
 <div id="tab-liq" class="tab">
   <div class="card">
-    <div class="card-hdr">
-      <span class="card-title">LIQUIDATION HEATMAP</span>
-      <div style="display:flex;gap:7px">
-        <input id="liq-sym" class="inp" value="BTC" style="width:70px;padding:6px 9px;font-size:11px">
-        <button class="btn" onclick="loadLiq()" style="padding:5px 12px;font-size:10px">LOAD</button>
-      </div>
+    <div class="ch">
+      <span class="ct">LIQUIDATION HEATMAP</span>
+      <div style="display:flex;gap:6px"><input id="liq-sym" class="inp" value="BTC" style="width:68px;padding:5px 9px;font-size:11px"><button class="btn" onclick="loadLiq()" style="padding:5px 11px;font-size:10px">LOAD</button></div>
     </div>
-    <div class="metrics" id="liq-metrics"></div>
+    <div class="mets" id="liq-metrics"></div>
     <div id="liq-result"></div>
   </div>
 </div>
@@ -377,37 +333,25 @@ canvas{width:100%;height:100%;display:block}
 <!-- ══ CVD ══ -->
 <div id="tab-cvd" class="tab">
   <div class="card">
-    <div class="card-hdr">
-      <span class="card-title">CUMULATIVE VOLUME DELTA</span>
-      <div style="display:flex;gap:7px">
-        <input id="cvd-sym" class="inp" value="BTC" style="width:70px;padding:6px 9px;font-size:11px">
-        <button class="btn" onclick="loadCVD()" style="padding:5px 12px;font-size:10px">LOAD</button>
-      </div>
+    <div class="ch">
+      <span class="ct">CUMULATIVE VOLUME DELTA</span>
+      <div style="display:flex;gap:6px"><input id="cvd-sym" class="inp" value="BTC" style="width:68px;padding:5px 9px;font-size:11px"><button class="btn" onclick="loadCVD()" style="padding:5px 11px;font-size:10px">LOAD</button></div>
     </div>
-    <div class="metrics" id="cvd-metrics"></div>
+    <div class="mets" id="cvd-metrics"></div>
     <div class="chart-wrap"><canvas id="cvd-chart"></canvas></div>
-    <div id="cvd-signal" style="margin-top:9px"></div>
+    <div id="cvd-signal" style="margin-top:8px"></div>
   </div>
 </div>
 
 <!-- ══ F&G ══ -->
 <div id="tab-fng" class="tab">
-  <div class="card">
-    <div class="card-hdr"><span class="card-title">FEAR & GREED INDEX</span></div>
-    <div id="fng-result"><div class="loading"><span class="spin"></span>Loading...</div></div>
-  </div>
-  <div class="card" id="fng-history-card" style="display:none">
-    <div class="card-hdr"><span class="card-title">30-DAY HISTORY</span></div>
-    <div class="chart-wrap"><canvas id="fng-chart"></canvas></div>
-  </div>
+  <div class="card"><div class="ch"><span class="ct">FEAR & GREED INDEX</span></div><div id="fng-result"><div class="loading"><span class="spin"></span>Loading...</div></div></div>
+  <div class="card" id="fng-hc" style="display:none"><div class="ch"><span class="ct">30-DAY HISTORY</span></div><div class="chart-wrap"><canvas id="fng-chart"></canvas></div></div>
 </div>
 
 <!-- ══ INST ══ -->
 <div id="tab-inst" class="tab">
-  <div class="card">
-    <div class="card-hdr"><span class="card-title">INSTITUTIONAL SIGNALS</span></div>
-    <div id="inst-result"><div class="loading"><span class="spin"></span>Loading...</div></div>
-  </div>
+  <div class="card"><div class="ch"><span class="ct">INSTITUTIONAL SIGNALS</span></div><div id="inst-result"><div class="loading"><span class="spin"></span>Loading...</div></div></div>
 </div>
 
 </div><!-- /wrap -->
@@ -417,6 +361,19 @@ const BASE='/api';
 let trades=JSON.parse(localStorage.getItem('ac369_trades')||'[]');
 let btSignals=JSON.parse(localStorage.getItem('ac369_bt')||'[]');
 const SCAN_SYMS=['BTC','ETH','SOL','BNB','XRP','AVAX','ARB','OP','LINK','SUI','DOGE','PEPE','WIF','RENDER','HYPE'];
+
+// ═══ UTILS ═══
+const fmt=(n,d=2)=>parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtVol=v=>v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v.toFixed(0);
+const fp=p=>Math.abs(p)>1?fmt(p,2):fmt(p,6);
+const sc=s=>s==='bull'?'bull':s==='bear'?'bear':'neutral';
+
+async function apiFetch(source,params={}){
+  const qs=new URLSearchParams({source,...params}).toString();
+  const r=await fetch(`${BASE}/data?${qs}`);
+  if(!r.ok)throw new Error('API '+r.status);
+  return r.json();
+}
 
 // ═══ NAV ═══
 function showTab(n,el){
@@ -428,474 +385,232 @@ function showTab(n,el){
   if(n==='fng')loadFNG();
   if(n==='inst')loadInst();
   if(n==='tracker')renderTrades();
-  if(n==='backtest')renderBacktest();
+  if(n==='backtest')renderBT();
   if(n==='cvd'){document.getElementById('cvd-sym').value='BTC';loadCVD();}
   if(n==='liq'){document.getElementById('liq-sym').value='BTC';loadLiq();}
 }
 function showTabByName(n){const b=document.querySelector(`.nb[onclick*="'${n}'"]`);if(b)showTab(n,b);}
 
-// ═══ UTILS ═══
-const fmt=(n,d=2)=>parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
-const fmtVol=v=>v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v.toFixed(0);
-const sc=s=>s==='bull'?'bull':s==='bear'?'bear':'neutral';
-const fp=p=>p>1?fmt(p,2):fmt(p,6);
+// ═══ SNIPER ENGINE ═══
+function setSni(s){document.getElementById('snp-sym').value=s;runSniper();}
 
-async function apiFetch(source,params={}){
-  const qs=new URLSearchParams({source,...params}).toString();
-  const r=await fetch(`${BASE}/data?${qs}`);
-  if(!r.ok)throw new Error('API '+r.status);
-  return r.json();
-}
+async function runSniper(){
+  const symRaw=document.getElementById('snp-sym').value.trim().toUpperCase()||'BTC';
+  const sym=symRaw.replace('USDT','')+'USDT';
+  const btn=document.getElementById('snp-btn'),res=document.getElementById('snp-result');
+  btn.disabled=true;btn.textContent='⏳ ANALYZING...';
+  res.innerHTML=`<div class="loading"><span class="spin"></span>Running sniper analysis for ${symRaw}...</div>`;
+  try{
+    const d=await apiFetch('sniper',{symbol:sym});
+    btn.disabled=false;btn.textContent='🎯 ANALYZE';
 
-// ═══ ENTRY CALCULATOR ═══
-function calcLevels(price,verdict){
-  const isBull=verdict.includes('LONG'),isBear=verdict.includes('SHORT'),isStrong=verdict.includes('STRONG');
-  if(!isBull&&!isBear)return null;
-  const slP=isStrong?0.018:0.025;
-  const sl=isBull?price*(1-slP):price*(1+slP);
-  const tp1=isBull?price*(1+slP*1.5):price*(1-slP*1.5);
-  const tp2=isBull?price*(1+slP*2.5):price*(1-slP*2.5);
-  const tp3=isBull?price*(1+slP*4):price*(1-slP*4);
-  const rr1=Math.abs(tp1-price)/Math.abs(price-sl);
-  const rr2=Math.abs(tp2-price)/Math.abs(price-sl);
-  const rr3=Math.abs(tp3-price)/Math.abs(price-sl);
-  return{entry:price,sl,tp1,tp2,tp3,rr1,rr2,rr3,isBull,slP};
-}
+    const isEntry=d.decision.includes('SNIPER');
+    const isWait=d.decision.includes('WAIT FOR');
+    const isNo=d.decision.includes('NO SETUP')||d.decision.includes('NO CLEAR');
+    const boxClass=isEntry?(d.biasDir==='LONG'?'entry':'short'):isWait?'wait':'no';
+    const probColor=d.probability>=80?'var(--g)':d.probability>=65?'var(--amber)':'var(--txt2)';
 
-function renderCalc(price,verdict,sym){
-  const L=calcLevels(price,verdict);
-  if(!L)return'';
-  const dir=L.isBull?'LONG':'SHORT',dc=L.isBull?'var(--g)':'var(--red)';
-  const rrc=r=>r>=2?'good':r>=1.5?'ok':'bad';
-  return`<div class="calc-box">
-    <div class="calc-title">📐 ENTRY/SL/TP — <span style="color:${dc}">${sym} ${dir}</span></div>
-    <div class="calc-grid">
-      <div class="calc-field"><div class="calc-fl">ENTRY</div><div class="calc-fv entry">$${fp(L.entry)}</div><div class="calc-fs">${dir} at market</div></div>
-      <div class="calc-field"><div class="calc-fl">STOP LOSS</div><div class="calc-fv sl">$${fp(L.sl)}</div><div class="calc-fs">-${(L.slP*100).toFixed(1)}%</div></div>
-      <div class="calc-field"><div class="calc-fl">TP1 Konservatif</div><div class="calc-fv tp1">$${fp(L.tp1)}</div><div class="calc-fs">R:R 1:${L.rr1.toFixed(1)}</div></div>
-      <div class="calc-field"><div class="calc-fl">TP2 Normal</div><div class="calc-fv tp2">$${fp(L.tp2)}</div><div class="calc-fs">R:R 1:${L.rr2.toFixed(1)}</div></div>
-      <div class="calc-field"><div class="calc-fl">TP3 Maksimal</div><div class="calc-fv tp3">$${fp(L.tp3)}</div><div class="calc-fs">R:R 1:${L.rr3.toFixed(1)}</div></div>
-    </div>
-    <div class="rr-row">
-      <div class="rr-pill ${rrc(L.rr1)}">TP1 → 1:${L.rr1.toFixed(1)}</div>
-      <div class="rr-pill ${rrc(L.rr2)}">TP2 → 1:${L.rr2.toFixed(1)}</div>
-      <div class="rr-pill good">TP3 → 1:${L.rr3.toFixed(1)}</div>
-    </div>
-    <div style="border-top:1px solid var(--brd);padding-top:10px;margin-top:10px">
-      <div class="pos-lbl">💰 POSITION SIZE CALCULATOR</div>
-      <div class="pos-grid">
-        <div><div class="pos-lbl">MODAL (USDT)</div><input class="inp" id="calc-cap" placeholder="1000" type="number" style="margin-top:3px" oninput="calcPos(${price},${L.sl},'${sym}')"></div>
-        <div><div class="pos-lbl">RISK PER TRADE (%)</div><input class="inp" id="calc-risk" value="2" type="number" style="margin-top:3px" oninput="calcPos(${price},${L.sl},'${sym}')"></div>
+    // Kill Zone Banner
+    const kzHTML=`<div class="kz-banner" style="background:${d.killZone.active?'rgba(0,255,208,.05)':'rgba(255,255,255,.02)'};border-color:${d.killZone.color}30">
+      <div class="kz-dot" style="background:${d.killZone.color};${d.killZone.active?'':'animation:none;opacity:.4'}"></div>
+      <div>
+        <div class="kz-name" style="color:${d.killZone.color}">${d.killZone.name} ${d.killZone.active?'🟢 ACTIVE':'⚪ INACTIVE'}</div>
+        <div class="kz-desc">${d.killZone.desc}</div>
       </div>
-      <div id="pos-result" style="margin-top:8px"></div>
-    </div>
-    <div style="margin-top:9px;padding:9px;background:rgba(255,255,255,.02);border-radius:7px;font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;line-height:1.7">
-      📌 TP1 (50% posisi) → pindah SL ke entry → ride ke TP2/TP3<br>⚠ Sesuaikan SL dengan OB / Demand Zone terdekat dari tab SMC/SD
-    </div>
-  </div>`;
+    </div>`;
+
+    // MTF Mini
+    const trendClass=t=>t.includes('UP')||t.includes('BULL')?'bull':t.includes('DOWN')||t.includes('BEAR')?'bear':'ne';
+    const mtfHTML=`<div class="mtf-mini">
+      <div class="mtf-c"><div class="mtf-tf">1D MACRO</div><div class="mtf-tr ${trendClass(d.mtf.tf1d)}">${d.mtf.tf1d}</div></div>
+      <div class="mtf-c"><div class="mtf-tf">4H ENTRY</div><div class="mtf-tr ${trendClass(d.mtf.tf4h)}">${d.mtf.tf4h}</div></div>
+      <div class="mtf-c"><div class="mtf-tf">1H TRIGGER</div><div class="mtf-tr ${trendClass(d.mtf.tf1h)}">${d.mtf.tf1h}</div></div>
+    </div>`;
+
+    // Pattern chips
+    const patHTML=d.patterns.length>0?`<div class="pat-row">${d.patterns.map(p=>`<div class="pat-chip ${p.type.toLowerCase()}" title="${p.detail}">${p.name} ${p.strength==='HIGH'?'★':''}</div>`).join('')}</div>`:'';
+
+    // Score log
+    const scoreHTML=`<div class="score-grid">${d.scoreLog.map(s=>`
+      <div class="score-row ${s.side}">
+        <span class="sc-cat">${s.cat}</span>
+        <span class="sc-detail">${s.detail}</span>
+        <span class="sc-pts ${s.side}">${s.pts>0?(s.side==='bull'?'+':'−')+s.pts+' pts':'—'}</span>
+      </div>`).join('')}</div>`;
+
+    // Entry card (the money shot)
+    let entryHTML='';
+    if(d.entryCard){
+      const E=d.entryCard;
+      const isLong=E.direction==='LONG';
+      const dc=isLong?'var(--g)':'var(--red)';
+      const rrc=r=>r>=2?'g':r>=1.5?'o':'o';
+      entryHTML=`<div class="entry-card ${isLong?'':'short-card'}">
+        <div class="ec-header">
+          <div class="ec-dir" style="color:${dc}">
+            ${isLong?'▲ LONG ENTRY':'▼ SHORT ENTRY'}
+            <span class="ec-badge" style="background:${isLong?'rgba(0,255,208,.15)':'rgba(255,68,102,.15)'};color:${dc};border:1px solid ${isLong?'rgba(0,255,208,.4)':'rgba(255,68,102,.4)'}">
+              PROB ${d.probability}% ${d.probability>=80?'🎯':''}
+            </span>
+          </div>
+          <div style="font-size:10px;color:var(--txt2);font-family:'IBM Plex Mono',monospace">$${fp(d.currentPrice)}</div>
+        </div>
+        <div class="ec-grid">
+          <div class="ec-field" style="border-color:${isLong?'rgba(0,255,208,.2)':'rgba(255,68,102,.2)'}">
+            <div class="ecl">📍 ENTRY PRICE</div>
+            <div class="ecv entry">$${fp(E.entry)}</div>
+            <div class="ecs">${isLong?'BUY at':'SELL at'} this level</div>
+          </div>
+          <div class="ec-field" style="border-color:rgba(255,68,102,.2)">
+            <div class="ecl">🛑 STOP LOSS</div>
+            <div class="ecv sl">$${fp(E.sl)}</div>
+            <div class="ecs">-${E.slPct}% dari entry</div>
+          </div>
+          <div class="ec-field">
+            <div class="ecl">🎯 TP1 (50% close)</div>
+            <div class="ecv tp1">$${fp(E.tp1)}</div>
+            <div class="ecs">R:R 1:${E.rr1}</div>
+          </div>
+          <div class="ec-field">
+            <div class="ecl">🎯 TP2 (30% close)</div>
+            <div class="ecv tp2">$${fp(E.tp2)}</div>
+            <div class="ecs">R:R 1:${E.rr2}</div>
+          </div>
+          <div class="ec-field">
+            <div class="ecl">🎯 TP3 (20% ride)</div>
+            <div class="ecv tp3">$${fp(E.tp3)}</div>
+            <div class="ecs">R:R 1:${E.rr3} ${E.liqTarget?'→ Liq Target':''}</div>
+          </div>
+        </div>
+        <div class="rr-row">
+          <div class="rr-p ${rrc(E.rr1)}">TP1 → 1:${E.rr1}</div>
+          <div class="rr-p ${rrc(E.rr2)}">TP2 → 1:${E.rr2}</div>
+          <div class="rr-p g">TP3 → 1:${E.rr3}</div>
+        </div>
+        <div class="invalidation">⚠ INVALIDASI: ${E.invalidation}</div>
+        <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:10px">
+          <div class="pl">💰 POSITION SIZE CALCULATOR</div>
+          <div class="pos-grid2">
+            <div><div class="pl">MODAL (USDT)</div><input class="inp" id="ec-cap" placeholder="1000" type="number" style="margin-top:3px" oninput="calcPos(${E.entry},${E.sl})"></div>
+            <div><div class="pl">RISK PER TRADE (%)</div><input class="inp" id="ec-risk" value="2" type="number" style="margin-top:3px" oninput="calcPos(${E.entry},${E.sl})"></div>
+          </div>
+          <div id="pos-result" style="margin-top:7px"></div>
+        </div>
+        <div style="margin-top:9px;padding:9px;background:rgba(255,255,255,.02);border-radius:6px;font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;line-height:1.7">
+          📌 Eksekusi: ${isLong?'Limit buy di entry price. Jika skip, tunggu retrace ke OB/Demand zone.':'Limit sell di entry price. Jika skip, tunggu bounce ke OB/Supply zone.'}<br>
+          📌 Manajemen: TP1 tercapai → pindah SL ke entry (breakeven) → ride ke TP2/TP3<br>
+          📌 ${E.obZone?`OB Zone: $${fp(E.obZone.low)} - $${fp(E.obZone.high)}`:'Entry berdasarkan ATR distance dari struktur terdekat'}
+          ${E.liqTarget?`<br>💧 Liquidity Target: $${fp(E.liqTarget.price)} (+${E.liqTarget.dist?.toFixed(1)||'?'}%)`:''}
+        </div>
+      </div>`;
+    }
+
+    // Indicators summary
+    const ind=d.indicators;
+    const indHTML=`<div class="mets">
+      <div class="met"><div class="ml">RSI 4H</div><div class="mv ${ind.rsi4h<35?'up':ind.rsi4h>68?'dn':'ne'}">${ind.rsi4h}</div></div>
+      <div class="met"><div class="ml">RSI 1D</div><div class="mv ${ind.rsi1d<35?'up':ind.rsi1d>68?'dn':'ne'}">${ind.rsi1d}</div></div>
+      <div class="met"><div class="ml">FUNDING</div><div class="mv ${ind.fundingRate<0?'up':ind.fundingRate>0.08?'dn':'ne'}">${ind.fundingRate.toFixed(4)}%</div></div>
+      <div class="met"><div class="ml">L/S RATIO</div><div class="mv ${ind.lsRatio<0.9?'up':ind.lsRatio>1.8?'dn':'ne'}">${ind.lsRatio}</div></div>
+      <div class="met"><div class="ml">STOCH</div><div class="mv ${ind.stoch<20?'up':ind.stoch>80?'dn':'ne'}">${ind.stoch}</div></div>
+      <div class="met"><div class="ml">BB POSITION</div><div class="mv ${ind.bbPosition<20?'up':ind.bbPosition>80?'dn':'ne'}">${ind.bbPosition}%</div></div>
+      <div class="met"><div class="ml">OI TREND</div><div class="mv ne" style="font-size:11px">${ind.oiTrend}</div></div>
+      <div class="met"><div class="ml">F&G</div><div class="mv ${ind.fng<30?'up':ind.fng>70?'dn':'ne'}">${ind.fng}</div></div>
+    </div>`;
+
+    // Score bar
+    const totalPts=d.scoreBreakdown.bull+d.scoreBreakdown.bear;
+    const bullPct=totalPts>0?Math.round(d.scoreBreakdown.bull/totalPts*100):50;
+    const scoreBarHTML=`<div style="margin:8px 0">
+      <div style="display:flex;justify-content:space-between;font-size:9px;font-family:'IBM Plex Mono',monospace;margin-bottom:3px">
+        <span style="color:var(--g)">▲ BULL ${d.scoreBreakdown.bull}pts</span>
+        <span style="color:var(--txt2)">SNIPER SCORE</span>
+        <span style="color:var(--red)">▼ BEAR ${d.scoreBreakdown.bear}pts</span>
+      </div>
+      <div class="score-bar-wrap"><div class="score-bar-fill ${bullPct>=50?'bull':'bear'}" style="width:${bullPct}%"></div></div>
+    </div>`;
+
+    res.innerHTML=`
+      ${kzHTML}
+
+      <div class="sniper-box ${boxClass}">
+        <div style="font-size:9px;letter-spacing:2px;color:var(--txt2);margin-bottom:5px;font-family:'IBM Plex Mono',monospace">
+          ${symRaw} · $${fp(d.currentPrice)} · SNIPER VERDICT
+        </div>
+        <div class="sniper-decision" style="color:${d.decisionColor}">${d.decision}</div>
+        <div class="sniper-prob">
+          <span style="font-size:10px;color:var(--txt2);font-family:'IBM Plex Mono',monospace">PROBABILITY</span>
+          <div class="prob-bar-wrap">
+            <div class="prob-fill" style="width:${d.probability}%;background:${probColor}"></div>
+          </div>
+          <span style="font-size:14px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:${probColor}">${d.probability}%</span>
+        </div>
+        ${!isEntry?`<div style="font-size:10px;color:var(--txt2);margin-top:6px;font-family:'IBM Plex Mono',monospace">
+          ${isWait?'Arah benar tapi entry belum optimal — tunggu price ke zona SMC':'Tidak ada setup valid saat ini — jangan force entry'}
+        </div>`:''}
+      </div>
+
+      ${entryHTML}
+
+      ${mtfHTML}
+      ${patHTML}
+      ${indHTML}
+
+      <div class="card">
+        <div class="ch" style="margin-bottom:9px">
+          <span class="ct">SNIPER SCORE BREAKDOWN</span>
+          <span style="font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace">Max 100pts</span>
+        </div>
+        ${scoreBarHTML}
+        ${scoreHTML}
+        <div style="margin-top:9px;padding:9px;background:rgba(255,255,255,.02);border-radius:7px;font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;line-height:1.7">
+          🎯 SNIPER ENTRY = Prob ≥80% + MTF Aligned + Price at SMC Zone + Chart Pattern confirmed<br>
+          ⏳ WAIT FOR PULLBACK = Arah benar (65-79%) — tunggu retrace ke OB/Demand sebelum entry<br>
+          ⛔ WAIT NO SETUP = Prob <65% atau MTF tidak aligned — SKIP, tunggu setup berikutnya
+        </div>
+      </div>
+
+      <div style="text-align:center;font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;padding:8px">
+        Updated: ${new Date(d.timestamp).toLocaleTimeString()} · ATR 4H: $${fp(d.indicators.atr4h)} · Selalu gunakan proper risk management
+      </div>`;
+
+  }catch(e){
+    btn.disabled=false;btn.textContent='🎯 ANALYZE';
+    res.innerHTML=`<div class="card" style="color:var(--red);font-family:'IBM Plex Mono',monospace;font-size:12px">⚠ ${e.message}</div>`;
+  }
 }
 
-function calcPos(price,sl,sym){
-  const cap=parseFloat(document.getElementById('calc-cap')?.value)||0;
-  const riskPct=parseFloat(document.getElementById('calc-risk')?.value)||2;
+// Position Size Calculator
+function calcPos(entry,sl){
+  const cap=parseFloat(document.getElementById('ec-cap')?.value)||0;
+  const riskPct=parseFloat(document.getElementById('ec-risk')?.value)||2;
   const el=document.getElementById('pos-result');
   if(!cap||!el)return;
   const riskAmt=cap*(riskPct/100);
-  const slDist=Math.abs(price-sl);
-  const posUSDT=(riskAmt/slDist)*price;
+  const slDist=Math.abs(entry-sl);
+  const posUSDT=(riskAmt/slDist)*entry;
   const lev=posUSDT/cap;
-  const qty=posUSDT/price;
+  const qty=posUSDT/entry;
   const sc2=lev>5?'var(--red)':lev>3?'var(--amber)':'var(--g)';
-  const lb=lev>5?'⚠ HIGH LEVERAGE':lev>3?'⚡ MODERATE':'✓ SAFE';
-  el.innerHTML=`<div class="metrics" style="grid-template-columns:repeat(4,1fr)">
-    <div class="metric"><div class="metric-label">RISK</div><div class="metric-val down" style="font-size:13px">$${fmt(riskAmt)}</div></div>
-    <div class="metric"><div class="metric-label">POS SIZE</div><div class="metric-val neutral" style="font-size:13px">$${fmt(posUSDT)}</div></div>
-    <div class="metric"><div class="metric-label">QTY</div><div class="metric-val neutral" style="font-size:13px">${qty<0.001?qty.toFixed(6):qty<1?qty.toFixed(4):qty.toFixed(2)}</div></div>
-    <div class="metric"><div class="metric-label">LEVERAGE</div><div class="metric-val" style="font-size:13px;color:${sc2}">${lev.toFixed(1)}x</div></div>
-  </div><div style="text-align:center;font-size:10px;font-family:'IBM Plex Mono',monospace;color:${sc2};margin-top:3px">${lb}</div>`;
-}
-
-// ═══ ANALISIS ═══
-function setAna(s){document.getElementById('ana-sym').value=s;runAnalysis();}
-
-async function runAnalysis(){
-  const symRaw=document.getElementById('ana-sym').value.trim().toUpperCase()||'BTC';
-  const sym=symRaw.replace('USDT','')+('USDT');
-  const btn=document.getElementById('ana-btn'),res=document.getElementById('ana-result');
-  btn.disabled=true;btn.textContent='⏳ LOADING...';
-  res.innerHTML=`<div class="loading"><span class="spin"></span>Analyzing ${symRaw}...</div>`;
-  try{
-    const[data,ticker]=await Promise.all([
-      apiFetch('confluence',{symbol:sym}),
-      apiFetch('futures_ticker',{symbol:sym}).catch(()=>null)
-    ]);
-    btn.disabled=false;btn.textContent='► ANALISIS';
-    const vClass=data.verdict.includes('LONG')?'bull':data.verdict.includes('SHORT')?'bear':'neutral';
-    const price=ticker?parseFloat(ticker.lastPrice):null;
-    const sigsHTML=data.signals.map(s=>`
-      <div class="sig-row ${sc(s.side)}">
-        <span class="sig-name">${s.name}</span>
-        <span class="sig-val ${sc(s.side)}">${s.value}</span>
-        <span class="sig-detail">${s.detail}</span>
-        <span class="sig-badge ${sc(s.side)}">${s.side==='bull'?'▲':'s.side'==='bear'?'▼':'—'} ${s.side.toUpperCase()}</span>
-      </div>`).join('');
-    const calcHTML=price&&data.verdict!=='NEUTRAL'?renderCalc(price,data.verdict,symRaw):'';
-    res.innerHTML=`
-      <div class="verdict-box ${vClass}">
-        <div style="font-size:10px;letter-spacing:2px;color:var(--txt2);margin-bottom:4px;font-family:'IBM Plex Mono',monospace">${symRaw}${price?' · $'+fmt(price):''} · CONFLUENCE VERDICT</div>
-        <div class="verdict-label ${vClass}">${data.verdict}</div>
-        <div class="verdict-action">${data.action}</div>
-      </div>
-      ${calcHTML}
-      <div class="card">
-        <div class="score-wrap">
-          <div class="score-label">
-            <span style="color:var(--g)">▲ BULL ${data.bullPct}%</span>
-            <span style="color:var(--txt2)">CONFLUENCE</span>
-            <span style="color:var(--red)">▼ BEAR ${data.bearPct}%</span>
-          </div>
-          <div class="score-bar"><div class="score-fill ${data.bullPct>=50?'':'bear-fill'}" style="width:${data.bullPct}%"></div></div>
-        </div>
-        <div class="card-hdr" style="margin-top:12px;margin-bottom:9px">
-          <span class="card-title">${data.signals.length} INDICATORS</span>
-          <span style="font-size:10px;color:var(--txt2);font-family:'IBM Plex Mono',monospace">BULL ${data.bullScore} · BEAR ${data.bearScore} pts</span>
-        </div>
-        <div class="sig-grid">${sigsHTML}</div>
-        <div style="margin-top:9px;padding:9px;background:rgba(255,255,255,.02);border-radius:7px;font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace">
-          ⚠ ${data.strength} confidence · ${new Date(data.timestamp).toLocaleTimeString()} · Cek SMC/SD tab untuk zona entry lebih presisi
-        </div>
-      </div>`;
-  }catch(e){
-    btn.disabled=false;btn.textContent='► ANALISIS';
-    res.innerHTML=`<div class="card" style="color:var(--red);font-family:'IBM Plex Mono',monospace">${e.message}</div>`;
-  }
-}
-
-// ═══ SMC / SUPPLY & DEMAND ═══
-async function runSMC(){
-  const symRaw=document.getElementById('smc-sym').value.trim().toUpperCase()||'BTC';
-  const sym=symRaw.replace('USDT','')+'USDT';
-  const tf=document.getElementById('smc-tf').value;
-  const btn=document.getElementById('smc-btn'),res=document.getElementById('smc-result');
-  btn.disabled=true;btn.textContent='⏳ DETECTING...';
-  res.innerHTML=`<div class="loading"><span class="spin"></span>Detecting SMC structures for ${symRaw} ${tf.toUpperCase()}...</div>`;
-  try{
-    const d=await apiFetch('smc',{symbol:sym,interval:tf,limit:'200'});
-    btn.disabled=false;btn.textContent='⚡ DETECT';
-
-    const smcClass=d.smcBias.bullPct>=60?'bull':d.smcBias.bullPct<=40?'bear':'neutral';
-    const smcVerdict=d.smcBias.bullPct>=65?'BULLISH STRUCTURE':d.smcBias.bullPct<=35?'BEARISH STRUCTURE':'NEUTRAL STRUCTURE';
-
-    // Structure section
-    const structHTML=d.structure.length>0?d.structure.map(s=>{
-      const sc2=s.type.includes('BULL')?'bull':'bear';
-      return`<div class="zone-row ${sc2}">
-        <div><div class="zone-tag ${sc2}">${s.label}</div><div class="zone-detail" style="margin-top:3px">${s.detail}</div></div>
-        <div class="zone-price" style="color:${sc2==='bull'?'var(--g)':'var(--red)'}">$${fp(s.price)}</div>
-      </div>`;
-    }).join(''):`<div style="color:var(--txt2);font-size:11px;font-family:'IBM Plex Mono',monospace;padding:8px">No structure detected in this range</div>`;
-
-    // Order Blocks
-    const obBullHTML=d.orderBlocks.bull.slice(0,3).map(ob=>`
-      <div class="zone-row bull">
-        <div><div class="zone-tag bull">Bullish OB</div><div class="zone-detail" style="margin-top:3px">$${fp(ob.low)} — $${fp(ob.high)}</div></div>
-        <div style="text-align:right"><div class="zone-price" style="color:var(--g)">$${fp(ob.mid)}</div><div style="font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace">mid</div></div>
-      </div>`).join('');
-    const obBearHTML=d.orderBlocks.bear.slice(0,3).map(ob=>`
-      <div class="zone-row bear">
-        <div><div class="zone-tag bear">Bearish OB</div><div class="zone-detail" style="margin-top:3px">$${fp(ob.low)} — $${fp(ob.high)}</div></div>
-        <div style="text-align:right"><div class="zone-price" style="color:var(--red)">$${fp(ob.mid)}</div><div style="font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace">mid</div></div>
-      </div>`).join('');
-
-    // FVGs
-    const fvgBullHTML=d.fvg.bull.slice(0,3).map(f=>`
-      <div class="zone-row bull">
-        <div><div class="zone-tag bull">Bullish FVG</div><div class="zone-detail" style="margin-top:3px">$${fp(f.low)} — $${fp(f.high)} · ${f.sizePct}%</div></div>
-        <div class="zone-price" style="color:var(--g)">$${fp(f.mid)}</div>
-      </div>`).join('');
-    const fvgBearHTML=d.fvg.bear.slice(0,3).map(f=>`
-      <div class="zone-row bear">
-        <div><div class="zone-tag bear">Bearish FVG</div><div class="zone-detail" style="margin-top:3px">$${fp(f.low)} — $${fp(f.high)} · ${f.sizePct}%</div></div>
-        <div class="zone-price" style="color:var(--red)">$${fp(f.mid)}</div>
-      </div>`).join('');
-
-    // S&D Zones
-    const demandHTML=d.supplyDemand.demand.slice(0,3).map(z=>`
-      <div class="zone-row bull">
-        <div><div class="zone-tag bull">DEMAND ${z.strength}</div><div class="zone-detail" style="margin-top:3px">$${fp(z.low)} — $${fp(z.high)} · ${z.volMultiple}x vol</div></div>
-        <div class="zone-price" style="color:var(--g)">$${fp(z.mid)}</div>
-      </div>`).join('');
-    const supplyHTML=d.supplyDemand.supply.slice(0,3).map(z=>`
-      <div class="zone-row bear">
-        <div><div class="zone-tag bear">SUPPLY ${z.strength}</div><div class="zone-detail" style="margin-top:3px">$${fp(z.low)} — $${fp(z.high)} · ${z.volMultiple}x vol</div></div>
-        <div class="zone-price" style="color:var(--red)">$${fp(z.mid)}</div>
-      </div>`).join('');
-
-    // Liquidity
-    const liqHTML=[
-      ...d.liquidity.bsl.map(l=>`<div class="zone-row info"><div><div class="zone-tag info">BSL</div><div class="zone-detail" style="margin-top:3px">${l.detail}</div></div><div class="zone-price" style="color:var(--blue)">$${fp(l.price)}</div></div>`),
-      ...d.liquidity.ssl.map(l=>`<div class="zone-row neutral"><div><div class="zone-tag neutral">SSL</div><div class="zone-detail" style="margin-top:3px">${l.detail}</div></div><div class="zone-price" style="color:var(--amber)">$${fp(l.price)}</div></div>`)
-    ].join('');
-
-    // SMC signals
-    const smcSigHTML=d.smcBias.signals.map(s=>`
-      <div class="sig-row ${s.side}">
-        <span class="sig-name">${s.name}</span>
-        <span class="sig-val ${s.side}">${s.side==='bull'?'BULLISH':'BEARISH'}</span>
-        <span class="sig-detail">${s.detail}</span>
-        <span class="sig-badge ${s.side}">wt:${s.weight}</span>
-      </div>`).join('');
-
-    res.innerHTML=`
-      <div class="verdict-box ${smcClass}">
-        <div style="font-size:10px;letter-spacing:2px;color:var(--txt2);margin-bottom:4px;font-family:'IBM Plex Mono',monospace">${symRaw} ${tf.toUpperCase()} · SMC BIAS · $${fp(d.currentPrice)}</div>
-        <div class="verdict-label ${smcClass}">${smcVerdict}</div>
-        <div class="verdict-action">ATR: ${d.atr} · Bull ${d.smcBias.bullPct}% vs Bear ${d.smcBias.bearPct}%</div>
-      </div>
-      <div class="card">
-        <div class="score-wrap">
-          <div class="score-label"><span style="color:var(--g)">▲ BULL SMC ${d.smcBias.bullPct}%</span><span style="color:var(--txt2)">SMC BIAS</span><span style="color:var(--red)">▼ BEAR ${d.smcBias.bearPct}%</span></div>
-          <div class="score-bar"><div class="score-fill ${d.smcBias.bullPct>=50?'':'bear-fill'}" style="width:${d.smcBias.bullPct}%"></div></div>
-        </div>
-        <div class="card-hdr" style="margin-top:12px;margin-bottom:9px"><span class="card-title">SMC SIGNAL CONFLUENCE</span></div>
-        <div class="sig-grid">${smcSigHTML||'<div style="color:var(--txt2);font-size:11px;padding:8px;font-family:IBM Plex Mono,monospace">No SMC signals near current price</div>'}</div>
-      </div>
-
-      <div class="card">
-        <div class="smc-section">
-          <div class="smc-section-title">🏗 MARKET STRUCTURE (BOS / CHoCH)</div>
-          <div class="zone-grid">${structHTML}</div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="smc-section">
-          <div class="smc-section-title">📦 ORDER BLOCKS</div>
-          <div class="zone-grid">
-            ${obBullHTML||'<div style="color:var(--txt2);font-size:11px;padding:8px;font-family:IBM Plex Mono,monospace">No bullish OB near price</div>'}
-            ${obBearHTML||'<div style="color:var(--txt2);font-size:11px;padding:8px;font-family:IBM Plex Mono,monospace">No bearish OB near price</div>'}
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="smc-section">
-          <div class="smc-section-title">⚡ FAIR VALUE GAPS (FVG / Imbalance)</div>
-          <div class="zone-grid">
-            ${fvgBullHTML||'<div style="color:var(--txt2);font-size:11px;padding:8px;font-family:IBM Plex Mono,monospace">No bullish FVG unfilled</div>'}
-            ${fvgBearHTML||'<div style="color:var(--txt2);font-size:11px;padding:8px;font-family:IBM Plex Mono,monospace">No bearish FVG unfilled</div>'}
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="smc-section">
-          <div class="smc-section-title">🏔 SUPPLY & DEMAND ZONES</div>
-          <div class="zone-grid">
-            ${supplyHTML||'<div style="color:var(--txt2);font-size:11px;padding:8px;font-family:IBM Plex Mono,monospace">No supply zone near price</div>'}
-            ${demandHTML||'<div style="color:var(--txt2);font-size:11px;padding:8px;font-family:IBM Plex Mono,monospace">No demand zone near price</div>'}
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="smc-section">
-          <div class="smc-section-title">💧 LIQUIDITY POOLS (BSL/SSL)</div>
-          <div class="zone-grid">${liqHTML||'<div style="color:var(--txt2);font-size:11px;padding:8px;font-family:IBM Plex Mono,monospace">No significant liquidity pools detected</div>'}</div>
-        </div>
-        <div style="margin-top:9px;padding:9px;background:rgba(255,255,255,.02);border-radius:7px;font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;line-height:1.7">
-          💡 BSL = Equal Highs → smart money akan sweep sebelum reversal down<br>
-          💡 SSL = Equal Lows → smart money akan sweep sebelum reversal up<br>
-          💡 OB paling dekat dengan harga = zona entry terbaik untuk SMC setup
-        </div>
-      </div>`;
-  }catch(e){
-    btn.disabled=false;btn.textContent='⚡ DETECT';
-    res.innerHTML=`<div class="card" style="color:var(--red);font-family:'IBM Plex Mono',monospace">${e.message}</div>`;
-  }
-}
-
-// ═══ MTF ═══
-async function runMTF(){
-  const symRaw=document.getElementById('mtf-sym').value.trim().toUpperCase()||'BTC';
-  const sym=symRaw.replace('USDT','')+'USDT';
-  const btn=document.getElementById('mtf-btn'),res=document.getElementById('mtf-result');
-  btn.disabled=true;btn.textContent='⏳ LOADING...';
-  res.innerHTML=`<div class="loading"><span class="spin"></span>Fetching 1H + 4H + 1D data untuk ${symRaw}...</div>`;
-  try{
-    const d=await apiFetch('mtf',{symbol:sym});
-    btn.disabled=false;btn.textContent='📐 ANALYZE';
-
-    const vClass=d.mtfVerdict.includes('BULL')?'bull':d.mtfVerdict.includes('BEAR')?'bear':'neutral';
-
-    const trendColor=t=>t==='UPTREND'?'var(--g)':t==='BULLISH BIAS'?'#a0e040':t==='DOWNTREND'?'var(--red)':t==='BEARISH BIAS'?'#ff8800':'var(--amber)';
-    const trendClass=t=>t.includes('UP')||t.includes('BULL')?'bull':t.includes('DOWN')||t.includes('BEAR')?'bear':'neutral';
-    const bool2c=b=>b?'var(--g)':'var(--red)';
-    const bool2s=b=>b?'✓':'✗';
-
-    const tfCard=(tf,label)=>`
-      <div class="mtf-card">
-        <div class="mtf-tf">${label}</div>
-        <div class="mtf-trend ${trendClass(tf.trend)}">${tf.trend}</div>
-        <div class="mtf-bar-wrap"><div class="mtf-bar ${trendClass(tf.trend)}" style="width:${tf.bullPct}%"></div></div>
-        <div class="mtf-pct" style="color:${trendColor(tf.trend)}">${tf.bullPct}% BULL</div>
-        <div class="mtf-stats" style="margin-top:8px">
-          <div class="mtf-stat"><span class="lbl">RSI</span><span class="val" style="color:${tf.rsi<35?'var(--g)':tf.rsi>70?'var(--red)':'var(--txt)'}">${tf.rsi}</span></div>
-          <div class="mtf-stat"><span class="lbl">MACD</span><span class="val" style="color:${tf.macd>0?'var(--g)':'var(--red)'}">${tf.macd>0?'+':''}{${parseFloat(tf.macd).toFixed(0)}}</span></div>
-          <div class="mtf-stat"><span class="lbl">>EMA200</span><span class="val" style="color:${bool2c(tf.priceVsEma200)}">${bool2s(tf.priceVsEma200)}</span></div>
-          <div class="mtf-stat"><span class="lbl">EMA50>200</span><span class="val" style="color:${bool2c(tf.ema50VsEma200)}">${bool2s(tf.ema50VsEma200)}</span></div>
-          <div class="mtf-stat"><span class="lbl">HH/HL</span><span class="val" style="color:${bool2c(tf.hh&&tf.hl)}">${tf.hh&&tf.hl?'✓ YES':'✗ NO'}</span></div>
-        </div>
-      </div>`;
-
-    const tfs=d.timeframes;
-    res.innerHTML=`
-      <div class="mtf-align-badge ${vClass}">
-        ${d.mtfVerdict} ${d.fullyAligned?'· ✓ FULLY ALIGNED':'· ⚠ PARTIAL ALIGNMENT'}
-      </div>
-      <div style="text-align:center;font-size:11px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;margin-bottom:11px">${d.mtfAction}</div>
-      <div class="mtf-grid">
-        ${tfCard(tfs['1H'],'1H — SHORT TERM')}
-        ${tfCard(tfs['4H'],'4H — MEDIUM TERM')}
-        ${tfCard(tfs['1D'],'1D — LONG TERM')}
-      </div>
-      <div class="card">
-        <div class="card-hdr"><span class="card-title">MTF ALIGNMENT RULES</span></div>
-        <div class="sig-grid">
-          <div class="sig-row ${tfs['1D'].trend.includes('UP')||tfs['1D'].trend.includes('BULL')?'bull':'bear'}">
-            <span class="sig-name">1D (Macro)</span>
-            <span class="sig-val ${trendClass(tfs['1D'].trend)}">${tfs['1D'].trend}</span>
-            <span class="sig-detail">Weight: 3pts — Paling dominan</span>
-          </div>
-          <div class="sig-row ${tfs['4H'].trend.includes('UP')||tfs['4H'].trend.includes('BULL')?'bull':'bear'}">
-            <span class="sig-name">4H (Entry TF)</span>
-            <span class="sig-val ${trendClass(tfs['4H'].trend)}">${tfs['4H'].trend}</span>
-            <span class="sig-detail">Weight: 3pts — Entry direction</span>
-          </div>
-          <div class="sig-row ${tfs['1H'].trend.includes('UP')||tfs['1H'].trend.includes('BULL')?'bull':'bear'}">
-            <span class="sig-name">1H (Trigger)</span>
-            <span class="sig-val ${trendClass(tfs['1H'].trend)}">${tfs['1H'].trend}</span>
-            <span class="sig-detail">Weight: 3pts — Timing entry</span>
-          </div>
-        </div>
-        <div style="margin-top:10px;padding:9px;background:rgba(255,255,255,.02);border-radius:7px;font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;line-height:1.7">
-          ✅ IDEAL ENTRY: 1D bullish + 4H bullish + 1H pullback ke OB/Demand (dari tab SMC)<br>
-          ⚠ JANGAN ENTRY jika 1D bearish tapi 1H bullish — counter-trend trades riskier<br>
-          📌 Score ${d.totalScore}/9 · ${d.normalizedBull}% normalized bull
-        </div>
-      </div>`;
-  }catch(e){
-    btn.disabled=false;btn.textContent='📐 ANALYZE';
-    res.innerHTML=`<div class="card" style="color:var(--red);font-family:'IBM Plex Mono',monospace">${e.message}</div>`;
-  }
-}
-
-// ═══ BACKTEST ═══
-function logSignalNow(){
-  document.getElementById('bt-log-form').style.display='block';
-  document.getElementById('bt-sym').value=document.getElementById('ana-sym')?.value||'';
-}
-
-function saveBTSignal(){
-  const sym=document.getElementById('bt-sym').value.trim().toUpperCase();
-  const dir=document.getElementById('bt-dir').value;
-  const entry=parseFloat(document.getElementById('bt-entry').value);
-  const conf=parseFloat(document.getElementById('bt-conf').value)||50;
-  const smc=document.getElementById('bt-smc').value.trim();
-  const mtf=document.getElementById('bt-mtf').value.trim();
-  if(!sym||!entry)return alert('Symbol dan Entry wajib diisi');
-  btSignals.unshift({
-    id:Date.now(),sym,dir,entry,conf,smc,mtf,
-    outcome:'PENDING',exitPrice:null,
-    ts:Date.now(),
-    checkAt:Date.now()+(24*60*60*1000) // 24h from now
-  });
-  localStorage.setItem('ac369_bt',JSON.stringify(btSignals));
-  document.getElementById('bt-log-form').style.display='none';
-  ['bt-sym','bt-entry','bt-conf','bt-smc','bt-mtf'].forEach(id=>document.getElementById(id).value='');
-  renderBacktest();
-}
-
-function updateBTOutcome(id,outcome,exitPrice){
-  btSignals=btSignals.map(s=>s.id===id?{...s,outcome,exitPrice:exitPrice||s.exitPrice}:s);
-  localStorage.setItem('ac369_bt',JSON.stringify(btSignals));
-  renderBacktest();
-}
-
-function deleteBTSignal(id){
-  btSignals=btSignals.filter(s=>s.id!==id);
-  localStorage.setItem('ac369_bt',JSON.stringify(btSignals));
-  renderBacktest();
-}
-
-function renderBacktest(){
-  const closed=btSignals.filter(s=>s.outcome==='WIN'||s.outcome==='LOSS');
-  const wins=closed.filter(s=>s.outcome==='WIN').length;
-  const total=closed.length;
-  const wr=total>0?(wins/total*100).toFixed(1):0;
-  const pending=btSignals.filter(s=>s.outcome==='PENDING').length;
-
-  // Stats by confluence level
-  const highConf=closed.filter(s=>s.conf>=70);
-  const highWins=highConf.filter(s=>s.outcome==='WIN').length;
-  const highWR=highConf.length>0?(highWins/highConf.length*100).toFixed(0):'-';
-
-  document.getElementById('bt-stats').innerHTML=`
-    <div class="bt-stats-grid">
-      <div class="metric"><div class="metric-label">TOTAL SIGNALS</div><div class="metric-val neutral">${btSignals.length}</div><div class="metric-sub">${pending} pending</div></div>
-      <div class="metric"><div class="metric-label">CLOSED</div><div class="metric-val neutral">${total}</div><div class="metric-sub">${wins}W / ${total-wins}L</div></div>
-      <div class="metric"><div class="metric-label">WIN RATE</div><div class="metric-val ${wr>=55?'up':wr<45?'down':'neutral'}">${wr}%</div><div class="metric-sub">overall</div></div>
-      <div class="metric"><div class="metric-label">WR ≥70% CONF</div><div class="metric-val ${highWR>=60?'up':highWR<50?'down':'neutral'}">${highWR}%</div><div class="metric-sub">${highConf.length} signals</div></div>
-    </div>`;
-
-  const list=document.getElementById('bt-list');
-  if(!btSignals.length){list.innerHTML=`<div class="card" style="text-align:center;color:var(--txt2);font-family:'IBM Plex Mono',monospace;font-size:12px">Belum ada signal di-log. Tekan + LOG SIGNAL NOW setelah analisis.</div>`;return;}
-
-  list.innerHTML=btSignals.map(s=>{
-    const oc=s.outcome==='WIN'?'outcome-win':s.outcome==='LOSS'?'outcome-loss':'outcome-pending';
-    const pnl=s.exitPrice?(((s.exitPrice-s.entry)/s.entry*100)*(s.dir==='LONG'?1:-1)).toFixed(2):null;
-    const hoursAgo=((Date.now()-s.ts)/(1000*60*60)).toFixed(1);
-    const isPastCheck=Date.now()>s.checkAt;
-    return`<div class="card" style="margin-bottom:9px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:7px;margin-bottom:8px">
-        <div style="display:flex;align-items:center;gap:7px">
-          <span style="font-weight:700;font-size:14px;font-family:'IBM Plex Mono',monospace">${s.sym}</span>
-          <span class="pill ${s.dir==='LONG'?'bull':'bear'}">${s.dir}</span>
-          <span class="${oc}" style="font-family:'IBM Plex Mono',monospace;font-size:11px">${s.outcome}</span>
-          ${isPastCheck&&s.outcome==='PENDING'?'<span style="color:var(--amber);font-size:9px;font-family:IBM Plex Mono,monospace">⏰ CHECK!</span>':''}
-        </div>
-        <div style="font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace">${hoursAgo}h ago</div>
-      </div>
-      <div class="metrics" style="grid-template-columns:repeat(4,1fr);margin-bottom:8px">
-        <div class="metric"><div class="metric-label">ENTRY</div><div class="metric-val" style="font-size:12px">$${fmt(s.entry)}</div></div>
-        <div class="metric"><div class="metric-label">CONFLUENCE</div><div class="metric-val ${s.conf>=70?'up':s.conf>=55?'neutral':'down'}" style="font-size:12px">${s.conf}%</div></div>
-        ${pnl?`<div class="metric"><div class="metric-label">P&L</div><div class="metric-val ${parseFloat(pnl)>0?'up':'down'}" style="font-size:12px">${pnl}%</div></div>`:'<div class="metric"><div class="metric-label">P&L</div><div class="metric-val neutral" style="font-size:12px">—</div></div>'}
-        <div class="metric"><div class="metric-label">EXIT</div><div class="metric-val neutral" style="font-size:12px">${s.exitPrice?'$'+fmt(s.exitPrice):'—'}</div></div>
-      </div>
-      ${s.smc||s.mtf?`<div style="font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;margin-bottom:8px">
-        ${s.smc?`SMC: ${s.smc} `:''}${s.mtf?`· MTF: ${s.mtf}`:''}
-      </div>`:''}
-      ${s.outcome==='PENDING'?`<div style="display:flex;gap:6px;flex-wrap:wrap">
-        <input id="exit-${s.id}" class="inp" placeholder="Exit price" type="number" style="flex:1;min-width:110px;font-size:11px;padding:6px 10px">
-        <button class="btn" onclick="updateBTOutcome(${s.id},'WIN',parseFloat(document.getElementById('exit-${s.id}').value)||null)" style="padding:5px 11px;font-size:10px;color:var(--g)">✓ WIN</button>
-        <button class="btn" onclick="updateBTOutcome(${s.id},'LOSS',parseFloat(document.getElementById('exit-${s.id}').value)||null)" style="padding:5px 11px;font-size:10px;color:var(--red);border-color:var(--red)">✗ LOSS</button>
-        <button class="btn" onclick="deleteBTSignal(${s.id})" style="padding:5px 9px;font-size:10px;color:var(--txt2);border-color:rgba(255,255,255,.15)">🗑</button>
-      </div>`:`<div style="display:flex;gap:6px"><button class="btn" onclick="deleteBTSignal(${s.id})" style="padding:4px 9px;font-size:10px;color:var(--txt2);border-color:rgba(255,255,255,.15)">🗑 Delete</button></div>`}
-    </div>`;
-  }).join('');
+  const lb=lev>5?'⚠ LEVERAGE TINGGI — reduce position':lev>3?'⚡ MODERATE leverage':'✓ SAFE — good risk sizing';
+  el.innerHTML=`<div class="mets" style="grid-template-columns:repeat(4,1fr)">
+    <div class="met"><div class="ml">RISK AMOUNT</div><div class="mv dn" style="font-size:12px">$${fmt(riskAmt)}</div></div>
+    <div class="met"><div class="ml">POSITION SIZE</div><div class="mv ne" style="font-size:12px">$${fmt(posUSDT)}</div></div>
+    <div class="met"><div class="ml">QTY</div><div class="mv ne" style="font-size:12px">${qty<0.001?qty.toFixed(6):qty<1?qty.toFixed(4):qty.toFixed(2)}</div></div>
+    <div class="met"><div class="ml">LEVERAGE</div><div class="mv" style="font-size:12px;color:${sc2}">${lev.toFixed(1)}x</div></div>
+  </div><div style="text-align:center;font-size:9px;font-family:'IBM Plex Mono',monospace;color:${sc2};margin-top:3px">${lb}</div>`;
 }
 
 // ═══ CONFLUENCE SCAN ═══
-async function runConfluenceScan(){
+async function runCScan(){
   const btn=document.getElementById('cscan-btn'),el=document.getElementById('cscan-result'),prog=document.getElementById('scan-prog');
   btn.disabled=true;btn.textContent='⏳ SCANNING...';
   prog.style.width='0%';
-  el.innerHTML=`<div style="display:grid;gap:7px" id="cscan-rows">${SCAN_SYMS.map(s=>`
-    <div class="cscan-row loading-row" id="cscan-${s}" style="opacity:.5">
+  el.innerHTML=`<div style="display:grid;gap:6px" id="cscan-rows">${SCAN_SYMS.map(s=>`
+    <div class="cscan-row" id="cscan-${s}" style="opacity:.4">
       <div><div class="cscan-sym">${s}</div></div>
-      <div style="display:flex;align-items:center;gap:7px;color:var(--txt2);font-size:10px;font-family:'IBM Plex Mono',monospace">
-        <span class="mini-spin"></span>Analyzing...
-      </div><span></span><span></span><span></span>
+      <div style="display:flex;align-items:center;gap:6px;color:var(--txt2);font-size:10px;font-family:'IBM Plex Mono',monospace"><span class="mini-spin"></span>Analyzing...</div>
+      <span></span><span></span><span></span>
     </div>`).join('')}</div>`;
   const results=[];
   for(let i=0;i<SCAN_SYMS.length;i++){
@@ -910,18 +625,18 @@ async function runConfluenceScan(){
       results.push({sym,data,price,vClass});
       if(rowEl){
         rowEl.className=`cscan-row ${vClass}`;rowEl.style.opacity='1';
-        rowEl.onclick=()=>{setAna(sym);showTabByName('analisis');};
+        rowEl.onclick=()=>{setSni(sym);showTabByName('sniper');};
         rowEl.innerHTML=`
-          <div><div class="cscan-sym">${sym}</div>${price?`<div class="cscan-price">$${price>1?fmt(price):fmt(price,5)}</div>`:''}</div>
+          <div><div class="cscan-sym">${sym}</div>${price?`<div class="cscan-price">$${Math.abs(price)>1?fmt(price):fmt(price,5)}</div>`:''}</div>
           <div class="cscan-bars">
-            <div class="cscan-brow"><span class="cscan-blbl" style="color:var(--g)">BULL</span><div class="cscan-bbg"><div class="cscan-bfill bull" style="width:${data.bullPct}%"></div></div><span style="font-size:9px;color:var(--g);font-family:'IBM Plex Mono',monospace;width:28px">${data.bullPct}%</span></div>
-            <div class="cscan-brow"><span class="cscan-blbl" style="color:var(--red)">BEAR</span><div class="cscan-bbg"><div class="cscan-bfill bear" style="width:${data.bearPct}%"></div></div><span style="font-size:9px;color:var(--red);font-family:'IBM Plex Mono',monospace;width:28px">${data.bearPct}%</span></div>
+            <div class="cscan-brow"><span class="cscan-blbl" style="color:var(--g)">B</span><div class="cscan-bbg"><div class="cscan-bfill bull" style="width:${data.bullPct}%"></div></div><span style="font-size:9px;color:var(--g);font-family:'IBM Plex Mono',monospace;width:25px">${data.bullPct}%</span></div>
+            <div class="cscan-brow"><span class="cscan-blbl" style="color:var(--red)">Br</span><div class="cscan-bbg"><div class="cscan-bfill bear" style="width:${data.bearPct}%"></div></div><span style="font-size:9px;color:var(--red);font-family:'IBM Plex Mono',monospace;width:25px">${data.bearPct}%</span></div>
           </div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;text-align:center;color:${vClass==='bull'?'var(--g)':vClass==='bear'?'var(--red)':'var(--amber)'}">${data.bullPct}%</div>
           <div class="cscan-verd ${vClass}">${data.verdict}</div>
-          <button class="btn" style="padding:4px 9px;font-size:9px" onclick="event.stopPropagation();setAna('${sym}');showTabByName('analisis')">▶ DETAIL</button>`;
+          <button class="btn" style="padding:4px 8px;font-size:9px" onclick="event.stopPropagation();setSni('${sym}');showTabByName('sniper')">🎯 SNIPER</button>`;
       }
-    }catch(e){if(rowEl)rowEl.innerHTML=`<span class="cscan-sym">${sym}</span><span style="color:var(--red);font-size:10px;font-family:'IBM Plex Mono',monospace">Error</span><span></span><span></span><span></span>`;}
+    }catch(e){if(rowEl){rowEl.innerHTML=`<span class="cscan-sym">${sym}</span><span style="color:var(--red);font-size:10px;font-family:'IBM Plex Mono',monospace">Error</span><span></span><span></span><span></span>`;rowEl.style.opacity='1';}}
     prog.style.width=`${((i+1)/SCAN_SYMS.length*100).toFixed(0)}%`;
     if(i<SCAN_SYMS.length-1)await new Promise(r=>setTimeout(r,900));
   }
@@ -932,14 +647,14 @@ async function runConfluenceScan(){
   const sb=results.filter(r=>r.data.verdict==='SHORT BIAS');
   const ne=results.filter(r=>r.data.verdict==='NEUTRAL');
   const sum=document.createElement('div');
-  sum.style.cssText='margin-top:10px;padding:12px;background:rgba(255,255,255,.02);border-radius:9px;border:1px solid var(--brd)';
-  sum.innerHTML=`<div style="font-size:9px;color:var(--txt2);letter-spacing:2px;font-family:'IBM Plex Mono',monospace;margin-bottom:9px">SCAN SUMMARY · ${new Date().toLocaleTimeString()}</div>
-  <div class="metrics" style="grid-template-columns:repeat(5,1fr)">
-    <div class="metric"><div class="metric-label">STR LONG</div><div class="metric-val up">${sl.length}</div><div style="font-size:9px;color:var(--g);font-family:'IBM Plex Mono',monospace;margin-top:2px">${sl.map(r=>r.sym).join(' ')||'-'}</div></div>
-    <div class="metric"><div class="metric-label">LONG BIAS</div><div class="metric-val" style="color:#a0e040">${lb.length}</div><div style="font-size:9px;color:#a0e040;font-family:'IBM Plex Mono',monospace;margin-top:2px">${lb.map(r=>r.sym).join(' ')||'-'}</div></div>
-    <div class="metric"><div class="metric-label">NEUTRAL</div><div class="metric-val neutral">${ne.length}</div></div>
-    <div class="metric"><div class="metric-label">SHORT BIAS</div><div class="metric-val down">${sb.length}</div><div style="font-size:9px;color:var(--red);font-family:'IBM Plex Mono',monospace;margin-top:2px">${sb.map(r=>r.sym).join(' ')||'-'}</div></div>
-    <div class="metric"><div class="metric-label">STR SHORT</div><div class="metric-val down">${ss.length}</div><div style="font-size:9px;color:var(--red);font-family:'IBM Plex Mono',monospace;margin-top:2px">${ss.map(r=>r.sym).join(' ')||'-'}</div></div>
+  sum.style.cssText='margin-top:9px;padding:11px;background:rgba(255,255,255,.02);border-radius:9px;border:1px solid var(--brd)';
+  sum.innerHTML=`<div style="font-size:9px;color:var(--txt2);letter-spacing:2px;font-family:'IBM Plex Mono',monospace;margin-bottom:8px">SCAN SUMMARY · ${new Date().toLocaleTimeString()}</div>
+  <div class="mets" style="grid-template-columns:repeat(5,1fr)">
+    <div class="met"><div class="ml">STR LONG</div><div class="mv up">${sl.length}</div><div style="font-size:8px;color:var(--g);font-family:'IBM Plex Mono',monospace;margin-top:1px">${sl.map(r=>r.sym).join(' ')||'-'}</div></div>
+    <div class="met"><div class="ml">LONG BIAS</div><div class="mv" style="color:#a0e040">${lb.length}</div><div style="font-size:8px;color:#a0e040;font-family:'IBM Plex Mono',monospace;margin-top:1px">${lb.map(r=>r.sym).join(' ')||'-'}</div></div>
+    <div class="met"><div class="ml">NEUTRAL</div><div class="mv ne">${ne.length}</div></div>
+    <div class="met"><div class="ml">SHORT BIAS</div><div class="mv dn">${sb.length}</div></div>
+    <div class="met"><div class="ml">STR SHORT</div><div class="mv dn">${ss.length}</div><div style="font-size:8px;color:var(--red);font-family:'IBM Plex Mono',monospace;margin-top:1px">${ss.map(r=>r.sym).join(' ')||'-'}</div></div>
   </div>`;
   el.appendChild(sum);
 }
@@ -947,16 +662,78 @@ async function runConfluenceScan(){
 // ═══ SCANNER ═══
 async function loadScanner(){
   const el=document.getElementById('scanner-result');
-  el.innerHTML=`<div class="loading"><span class="spin"></span>Scanning...</div>`;
+  el.innerHTML=`<div class="loading"><span class="spin"></span>Loading...</div>`;
   try{
     const tickers=await apiFetch('spot_tickers');
-    const rows=tickers.map(t=>{
-      const chg=t.change,cls=chg>0?'up':'down';
+    el.innerHTML=`<div style="overflow-x:auto"><table class="scan-table"><thead><tr><th>PAIR</th><th>PRICE</th><th>24H%</th><th>VOLUME</th><th>SIGNAL</th><th></th></tr></thead><tbody>${tickers.map(t=>{
+      const chg=t.change,cls=chg>0?'up':'dn';
       const m=Math.abs(chg)>5?(chg>0?'bull':'bear'):'neutral';
-      return`<tr><td style="font-weight:600">${t.symbol.replace('USDT','')}</td><td>$${fmt(t.price,t.price>1?2:6)}</td><td class="${cls};font-weight:600">${chg>0?'+':''}${fmt(chg,2)}%</td><td style="color:var(--txt2)">${fmtVol(t.volume)}</td><td><span class="pill ${m}">${m.toUpperCase()}</span></td><td><button class="btn" onclick="setAna('${t.symbol.replace('USDT','')}');showTabByName('analisis')" style="padding:2px 8px;font-size:9px">ANALISIS</button></td></tr>`;
-    }).join('');
-    el.innerHTML=`<div style="overflow-x:auto"><table class="scan-table"><thead><tr><th>PAIR</th><th>PRICE</th><th>24H%</th><th>VOLUME</th><th>SIGNAL</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><div style="margin-top:7px;font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;text-align:center">${tickers.length} pairs · ${new Date().toLocaleTimeString()}</div>`;
-  }catch(e){el.innerHTML=`<div style="color:var(--red);padding:14px;font-family:'IBM Plex Mono',monospace">${e.message}</div>`;}
+      return`<tr><td style="font-weight:600">${t.symbol.replace('USDT','')}</td><td>$${fmt(t.price,t.price>1?2:6)}</td><td class="${cls};font-weight:600">${chg>0?'+':''}${fmt(chg,2)}%</td><td style="color:var(--txt2)">${fmtVol(t.volume)}</td><td><span class="pill ${m}">${m.toUpperCase()}</span></td><td><button class="btn" onclick="setSni('${t.symbol.replace('USDT','')}');showTabByName('sniper')" style="padding:2px 7px;font-size:9px">🎯</button></td></tr>`;
+    }).join('')}</tbody></table></div><div style="margin-top:6px;font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;text-align:center">${tickers.length} pairs · ${new Date().toLocaleTimeString()}</div>`;
+  }catch(e){el.innerHTML=`<div style="color:var(--red);padding:12px;font-family:'IBM Plex Mono',monospace">${e.message}</div>`;}
+}
+
+// ═══ BACKTEST ═══
+function showBTForm(){document.getElementById('bt-form').style.display='block';}
+function saveBT(){
+  const sym=document.getElementById('bt-sym').value.trim().toUpperCase();
+  const dir=document.getElementById('bt-dir').value;
+  const entry=parseFloat(document.getElementById('bt-entry').value);
+  const conf=parseFloat(document.getElementById('bt-conf').value)||0;
+  const setup=document.getElementById('bt-setup').value.trim();
+  if(!sym||!entry)return alert('Symbol dan Entry wajib');
+  btSignals.unshift({id:Date.now(),sym,dir,entry,conf,setup,outcome:'PENDING',exitPrice:null,ts:Date.now(),checkAt:Date.now()+(24*60*60*1000)});
+  localStorage.setItem('ac369_bt',JSON.stringify(btSignals));
+  document.getElementById('bt-form').style.display='none';
+  ['bt-sym','bt-entry','bt-conf','bt-setup'].forEach(id=>document.getElementById(id).value='');
+  renderBT();
+}
+function updateBT(id,outcome,exit){btSignals=btSignals.map(s=>s.id===id?{...s,outcome,exitPrice:exit||s.exitPrice}:s);localStorage.setItem('ac369_bt',JSON.stringify(btSignals));renderBT();}
+function deleteBT(id){btSignals=btSignals.filter(s=>s.id!==id);localStorage.setItem('ac369_bt',JSON.stringify(btSignals));renderBT();}
+function renderBT(){
+  const closed=btSignals.filter(s=>s.outcome!=='PENDING');
+  const wins=closed.filter(s=>s.outcome==='WIN').length;
+  const wr=closed.length>0?(wins/closed.length*100).toFixed(1):0;
+  const highConf=closed.filter(s=>s.conf>=75);
+  const highWR=highConf.length>0?(highConf.filter(s=>s.outcome==='WIN').length/highConf.length*100).toFixed(0):'-';
+  document.getElementById('bt-stats').innerHTML=`<div class="bt-stats-grid">
+    <div class="met"><div class="ml">TOTAL</div><div class="mv ne">${btSignals.length}</div><div class="ms">${btSignals.filter(s=>s.outcome==='PENDING').length} pending</div></div>
+    <div class="met"><div class="ml">CLOSED</div><div class="mv ne">${closed.length}</div><div class="ms">${wins}W / ${closed.length-wins}L</div></div>
+    <div class="met"><div class="ml">WIN RATE</div><div class="mv ${wr>=60?'up':wr<45?'dn':'ne'}">${wr}%</div></div>
+    <div class="met"><div class="ml">WR ≥75% CONF</div><div class="mv ${highWR>=65?'up':highWR<50?'dn':'ne'}">${highWR}%</div><div class="ms">${highConf.length} signals</div></div>
+  </div>`;
+  const el=document.getElementById('bt-list');
+  if(!btSignals.length){el.innerHTML=`<div class="card" style="text-align:center;color:var(--txt2);font-family:'IBM Plex Mono',monospace;font-size:11px">Belum ada signal. Tekan + LOG SIGNAL setelah analisis.</div>`;return;}
+  el.innerHTML=btSignals.map(s=>{
+    const oc=s.outcome==='WIN'?'outcome-win':s.outcome==='LOSS'?'outcome-loss':'outcome-pending';
+    const pnl=s.exitPrice?(((s.exitPrice-s.entry)/s.entry*100)*(s.dir==='LONG'?1:-1)).toFixed(2):null;
+    const hoursAgo=((Date.now()-s.ts)/(1000*60*60)).toFixed(1);
+    const check=Date.now()>s.checkAt&&s.outcome==='PENDING';
+    return`<div class="card" style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;margin-bottom:7px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-weight:700;font-size:13px;font-family:'IBM Plex Mono',monospace">${s.sym}</span>
+          <span class="pill ${s.dir==='LONG'?'bull':'bear'}">${s.dir}</span>
+          <span class="${oc}" style="font-family:'IBM Plex Mono',monospace;font-size:10px">${s.outcome}</span>
+          ${check?'<span style="color:var(--amber);font-size:9px;font-family:IBM Plex Mono,monospace">⏰ CHECK NOW</span>':''}
+        </div>
+        <div style="font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace">${hoursAgo}h ago</div>
+      </div>
+      <div class="mets" style="grid-template-columns:repeat(4,1fr);margin-bottom:7px">
+        <div class="met"><div class="ml">ENTRY</div><div class="mv" style="font-size:11px">$${fmt(s.entry)}</div></div>
+        <div class="met"><div class="ml">PROB</div><div class="mv ${s.conf>=75?'up':s.conf>=60?'ne':'dn'}" style="font-size:11px">${s.conf}%</div></div>
+        ${pnl?`<div class="met"><div class="ml">P&L</div><div class="mv ${parseFloat(pnl)>0?'up':'dn'}" style="font-size:11px">${pnl}%</div></div>`:`<div class="met"><div class="ml">P&L</div><div class="mv ne" style="font-size:11px">—</div></div>`}
+        <div class="met"><div class="ml">EXIT</div><div class="mv ne" style="font-size:11px">${s.exitPrice?'$'+fmt(s.exitPrice):'—'}</div></div>
+      </div>
+      ${s.setup?`<div style="font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;margin-bottom:7px">📐 ${s.setup}</div>`:''}
+      ${s.outcome==='PENDING'?`<div style="display:flex;gap:5px;flex-wrap:wrap">
+        <input id="ex-${s.id}" class="inp" placeholder="Exit price" type="number" style="flex:1;min-width:100px;font-size:10px;padding:5px 9px">
+        <button class="btn" onclick="updateBT(${s.id},'WIN',parseFloat(document.getElementById('ex-${s.id}').value)||null)" style="padding:4px 10px;font-size:9px;color:var(--g)">✓ WIN</button>
+        <button class="btn" onclick="updateBT(${s.id},'LOSS',parseFloat(document.getElementById('ex-${s.id}').value)||null)" style="padding:4px 10px;font-size:9px;color:var(--red);border-color:var(--red)">✗ LOSS</button>
+        <button class="btn" onclick="deleteBT(${s.id})" style="padding:4px 8px;font-size:9px;color:var(--txt2);border-color:rgba(255,255,255,.15)">🗑</button>
+      </div>`:`<button class="btn" onclick="deleteBT(${s.id})" style="padding:3px 8px;font-size:9px;color:var(--txt2);border-color:rgba(255,255,255,.15)">🗑 Delete</button>`}
+    </div>`;
+  }).join('');
 }
 
 // ═══ TRACKER ═══
@@ -981,22 +758,22 @@ function renderTrades(){
   if(!trades.length){el.innerHTML=`<div class="card" style="text-align:center;color:var(--txt2);font-family:'IBM Plex Mono',monospace">Belum ada trade.</div>`;return;}
   el.innerHTML=trades.map(t=>{
     const sC=t.status==='WIN'?'bull':t.status==='LOSS'?'bear':'neutral';
-    return`<div class="card" style="margin-bottom:9px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:7px">
-        <div><span style="font-weight:700;font-size:14px">${t.sym}</span><span class="pill ${t.dir==='LONG'?'bull':'bear'}" style="margin-left:7px">${t.dir}</span><span class="pill ${sC}" style="margin-left:5px">${t.status}</span></div>
-        <div style="display:flex;gap:5px">
-          <button class="btn" onclick="updateTradeStatus(${t.id},'WIN')" style="padding:3px 9px;font-size:9px;color:var(--g)">WIN</button>
-          <button class="btn" onclick="updateTradeStatus(${t.id},'LOSS')" style="padding:3px 9px;font-size:9px;color:var(--red);border-color:var(--red)">LOSS</button>
-          <button class="btn" onclick="deleteTrade(${t.id})" style="padding:3px 9px;font-size:9px;color:var(--txt2);border-color:rgba(255,255,255,.15)">✕</button>
+    return`<div class="card" style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">
+        <div><span style="font-weight:700;font-size:13px">${t.sym}</span><span class="pill ${t.dir==='LONG'?'bull':'bear'}" style="margin-left:6px">${t.dir}</span><span class="pill ${sC}" style="margin-left:5px">${t.status}</span></div>
+        <div style="display:flex;gap:4px">
+          <button class="btn" onclick="updateTradeStatus(${t.id},'WIN')" style="padding:3px 8px;font-size:9px;color:var(--g)">WIN</button>
+          <button class="btn" onclick="updateTradeStatus(${t.id},'LOSS')" style="padding:3px 8px;font-size:9px;color:var(--red);border-color:var(--red)">LOSS</button>
+          <button class="btn" onclick="deleteTrade(${t.id})" style="padding:3px 7px;font-size:9px;color:var(--txt2);border-color:rgba(255,255,255,.15)">✕</button>
         </div>
       </div>
-      <div class="metrics" style="margin-top:9px;grid-template-columns:repeat(4,1fr)">
-        <div class="metric"><div class="metric-label">ENTRY</div><div class="metric-val" style="font-size:12px">$${fmt(t.entry)}</div></div>
-        <div class="metric"><div class="metric-label">SL</div><div class="metric-val down" style="font-size:12px">${t.sl?'$'+fmt(t.sl):'-'}</div></div>
-        <div class="metric"><div class="metric-label">TP</div><div class="metric-val up" style="font-size:12px">${t.tp?'$'+fmt(t.tp):'-'}</div></div>
-        <div class="metric"><div class="metric-label">R:R</div><div class="metric-val neutral" style="font-size:12px">1:${t.rr}</div></div>
+      <div class="mets" style="margin-top:8px;grid-template-columns:repeat(4,1fr)">
+        <div class="met"><div class="ml">ENTRY</div><div class="mv" style="font-size:11px">$${fmt(t.entry)}</div></div>
+        <div class="met"><div class="ml">SL</div><div class="mv dn" style="font-size:11px">${t.sl?'$'+fmt(t.sl):'-'}</div></div>
+        <div class="met"><div class="ml">TP</div><div class="mv up" style="font-size:11px">${t.tp?'$'+fmt(t.tp):'-'}</div></div>
+        <div class="met"><div class="ml">R:R</div><div class="mv ne" style="font-size:11px">1:${t.rr}</div></div>
       </div>
-      ${t.note?`<div style="margin-top:5px;font-size:10px;color:var(--txt2);font-family:'IBM Plex Mono',monospace">📝 ${t.note}</div>`:''}
+      ${t.note?`<div style="margin-top:5px;font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace">📝 ${t.note}</div>`:''}
     </div>`;
   }).join('');
 }
@@ -1013,11 +790,11 @@ async function loadLiq(){
     const latOI=oiArr.length>0?parseFloat(oiArr[oiArr.length-1].sumOpenInterestValue):0;
     const prevOI=oiArr.length>1?parseFloat(oiArr[0].sumOpenInterestValue):latOI;
     const oiChg=prevOI>0?((latOI-prevOI)/prevOI*100):0;
-    mEl.innerHTML=`<div class="metric"><div class="metric-label">PRICE</div><div class="metric-val neutral">$${fmt(price)}</div></div><div class="metric"><div class="metric-label">OI</div><div class="metric-val ${oiChg>0?'up':'down'}">${fmtVol(latOI)}</div></div><div class="metric"><div class="metric-label">OI 24H%</div><div class="metric-val ${oiChg>0?'up':'down'}">${oiChg>0?'+':''}${oiChg.toFixed(2)}%</div></div><div class="metric"><div class="metric-label">VOL 24H</div><div class="metric-val neutral">${fmtVol(parseFloat(ticker.quoteVolume))}</div></div>`;
+    mEl.innerHTML=`<div class="met"><div class="ml">PRICE</div><div class="mv ne">$${fmt(price)}</div></div><div class="met"><div class="ml">OI</div><div class="mv ${oiChg>0?'up':'dn'}">${fmtVol(latOI)}</div></div><div class="met"><div class="ml">OI 24H%</div><div class="mv ${oiChg>0?'up':'dn'}">${oiChg>0?'+':''}${oiChg.toFixed(2)}%</div></div><div class="met"><div class="ml">VOL 24H</div><div class="mv ne">${fmtVol(parseFloat(ticker.quoteVolume))}</div></div>`;
     const lvls=[];[1,2,3,5,8,10,15,20].forEach(p=>{lvls.push({price:price*(1-p/100),type:'long',pct:p,est:latOI*(p<5?0.15:p<10?0.08:0.04)});lvls.push({price:price*(1+p/100),type:'short',pct:p,est:latOI*(p<5?0.12:p<10?0.06:0.03)});});
     const maxE=Math.max(...lvls.map(l=>l.est));
-    el.innerHTML=`<div style="margin-bottom:9px"><div style="font-size:9px;color:var(--g);letter-spacing:2px;font-family:'IBM Plex Mono',monospace;margin-bottom:6px">▲ LONG LIQ ZONES</div>${lvls.filter(l=>l.type==='long').sort((a,b)=>b.price-a.price).map(l=>`<div class="liq-row"><span class="liq-price">$${fmt(l.price)} <span style="font-size:9px">-${l.pct}%</span></span><div class="liq-bw"><div class="liq-b long" style="width:${(l.est/maxE*100).toFixed(0)}%"></div></div><span class="liq-v" style="color:var(--g)">${fmtVol(l.est)}</span></div>`).join('')}</div><div style="border-top:1px solid var(--brd);padding-top:9px"><div style="font-size:9px;color:var(--red);letter-spacing:2px;font-family:'IBM Plex Mono',monospace;margin-bottom:6px">▼ SHORT LIQ ZONES</div>${lvls.filter(l=>l.type==='short').sort((a,b)=>a.price-b.price).map(l=>`<div class="liq-row"><span class="liq-price">$${fmt(l.price)} <span style="font-size:9px">+${l.pct}%</span></span><div class="liq-bw"><div class="liq-b short" style="width:${(l.est/maxE*100).toFixed(0)}%"></div></div><span class="liq-v" style="color:var(--red)">${fmtVol(l.est)}</span></div>`).join('')}</div>`;
-  }catch(e){el.innerHTML=`<div style="color:var(--red);padding:12px;font-family:'IBM Plex Mono',monospace">${e.message}</div>`;}
+    el.innerHTML=`<div style="margin-bottom:8px"><div style="font-size:9px;color:var(--g);letter-spacing:2px;font-family:'IBM Plex Mono',monospace;margin-bottom:5px">▲ LONG LIQ ZONES</div>${lvls.filter(l=>l.type==='long').sort((a,b)=>b.price-a.price).map(l=>`<div class="liq-row"><span class="liq-price">$${fmt(l.price)} <span style="font-size:8px">-${l.pct}%</span></span><div class="liq-bw"><div class="liq-b long" style="width:${(l.est/maxE*100).toFixed(0)}%"></div></div><span class="liq-v" style="color:var(--g)">${fmtVol(l.est)}</span></div>`).join('')}</div><div style="border-top:1px solid var(--brd);padding-top:8px"><div style="font-size:9px;color:var(--red);letter-spacing:2px;font-family:'IBM Plex Mono',monospace;margin-bottom:5px">▼ SHORT LIQ ZONES</div>${lvls.filter(l=>l.type==='short').sort((a,b)=>a.price-b.price).map(l=>`<div class="liq-row"><span class="liq-price">$${fmt(l.price)} <span style="font-size:8px">+${l.pct}%</span></span><div class="liq-bw"><div class="liq-b short" style="width:${(l.est/maxE*100).toFixed(0)}%"></div></div><span class="liq-v" style="color:var(--red)">${fmtVol(l.est)}</span></div>`).join('')}</div>`;
+  }catch(e){el.innerHTML=`<div style="color:var(--red);padding:11px;font-family:'IBM Plex Mono',monospace">${e.message}</div>`;}
 }
 
 // ═══ CVD ═══
@@ -1033,16 +810,16 @@ async function loadCVD(){
     const lat=cvdS[cvdS.length-1],prev=cvdS[cvdS.length-4]||cvdS[0];
     const trend=lat.cvd>prev.cvd?'bull':'bear';
     const avgR=takerData.slice(-6).reduce((s,d)=>s+parseFloat(d.buySellRatio),0)/6;
-    mEl.innerHTML=`<div class="metric"><div class="metric-label">CVD TREND</div><div class="metric-val ${trend==='bull'?'up':'down'}">${trend==='bull'?'▲ BUYING':'▼ SELLING'}</div></div><div class="metric"><div class="metric-label">TAKER RATIO</div><div class="metric-val ${avgR>1?'up':'down'}">${avgR.toFixed(3)}</div></div><div class="metric"><div class="metric-label">BUY VOL</div><div class="metric-val up">${fmtVol(lat.bv)}</div></div><div class="metric"><div class="metric-label">SELL VOL</div><div class="metric-val down">${fmtVol(lat.sv)}</div></div>`;
+    mEl.innerHTML=`<div class="met"><div class="ml">CVD TREND</div><div class="mv ${trend==='bull'?'up':'dn'}">${trend==='bull'?'▲ BUYING':'▼ SELLING'}</div></div><div class="met"><div class="ml">TAKER RATIO</div><div class="mv ${avgR>1?'up':'dn'}">${avgR.toFixed(3)}</div></div><div class="met"><div class="ml">BUY VOL</div><div class="mv up">${fmtVol(lat.bv)}</div></div><div class="met"><div class="ml">SELL VOL</div><div class="mv dn">${fmtVol(lat.sv)}</div></div>`;
     drawChart(document.getElementById('cvd-chart'),cvdS.map(d=>d.cvd),trend==='bull'?'#00ffd0':'#ff4466');
     if(Array.isArray(klines)&&klines.length>0){
       const pC=klines[klines.length-1].c-klines[klines.length-7].c;
       const cC=cvdS[cvdS.length-1].cvd-cvdS[cvdS.length-7].cvd;
       let div='';
-      if(pC<0&&cC>0)div=`<div class="sig-row bull"><span class="sig-name">CVD Divergence</span><span class="sig-val bull">BULLISH DIV</span><span class="sig-detail">Price↓ CVD↑ → Hidden buying</span><span class="sig-badge bull">▲ SIGNAL</span></div>`;
-      else if(pC>0&&cC<0)div=`<div class="sig-row bear"><span class="sig-name">CVD Divergence</span><span class="sig-val bear">BEARISH DIV</span><span class="sig-detail">Price↑ CVD↓ → Hidden selling</span><span class="sig-badge bear">▼ SIGNAL</span></div>`;
-      else div=`<div class="sig-row neutral"><span class="sig-name">CVD Divergence</span><span class="sig-val neutral">CONFIRMED</span><span class="sig-detail">Price & CVD aligned</span><span class="sig-badge neutral">— NEUT</span></div>`;
-      sigEl.innerHTML=`<div class="sig-grid">${div}</div>`;
+      if(pC<0&&cC>0)div=`<div class="score-row bull"><span class="sc-cat">CVD Divergence</span><span class="sc-detail">Price↓ CVD↑ → Hidden buying pressure</span><span class="sc-pts bull">▲ BULLISH</span></div>`;
+      else if(pC>0&&cC<0)div=`<div class="score-row bear"><span class="sc-cat">CVD Divergence</span><span class="sc-detail">Price↑ CVD↓ → Hidden selling pressure</span><span class="sc-pts bear">▼ BEARISH</span></div>`;
+      else div=`<div class="score-row neutral"><span class="sc-cat">CVD</span><span class="sc-detail">Price & CVD aligned — no divergence</span><span class="sc-pts neutral">— NEUT</span></div>`;
+      sigEl.innerHTML=`<div class="score-grid">${div}</div>`;
     }
   }catch(e){mEl.innerHTML=`<div style="color:var(--red);font-family:'IBM Plex Mono',monospace">${e.message}</div>`;}
 }
@@ -1054,16 +831,16 @@ async function loadFNG(){
     const data=await apiFetch('feargreed');
     const cur=data.data[0],val=parseInt(cur.value);
     const color=val<=25?'#ff4466':val<=45?'#ff8800':val<=55?'#FFB300':val<=75?'#a0e040':'#00ffd0';
-    el.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;padding:12px 0">
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:52px;font-weight:700;color:${color}">${val}</div>
-      <div style="font-size:13px;letter-spacing:2px;color:${color};margin-top:4px;text-transform:uppercase">${cur.value_classification}</div>
+    el.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;padding:10px 0">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:50px;font-weight:700;color:${color}">${val}</div>
+      <div style="font-size:12px;letter-spacing:2px;color:${color};margin-top:3px;text-transform:uppercase">${cur.value_classification}</div>
       <div class="fng-bar"><div class="fng-marker" style="left:${val}%"></div></div>
-      <div style="display:flex;justify-content:space-between;width:100%;margin-top:4px;font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace"><span>EXT FEAR</span><span>FEAR</span><span>NEUTRAL</span><span>GREED</span><span>EXT GREED</span></div>
+      <div style="display:flex;justify-content:space-between;width:100%;margin-top:3px;font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace"><span>EXT FEAR</span><span>FEAR</span><span>NEUT</span><span>GREED</span><span>EXT GREED</span></div>
     </div>
-    <div class="metrics" style="margin-top:12px">${data.data.slice(0,4).map((d,i)=>`<div class="metric"><div class="metric-label">${['TODAY','YESTERDAY','1W AGO','2W AGO'][i]}</div><div class="metric-val" style="color:${parseInt(d.value)<40?'var(--red)':parseInt(d.value)>60?'var(--g)':'var(--amber)'}">${d.value}</div></div>`).join('')}</div>`;
-    document.getElementById('fng-history-card').style.display='block';
+    <div class="mets" style="margin-top:10px">${data.data.slice(0,4).map((d,i)=>`<div class="met"><div class="ml">${['TODAY','YESTERDAY','1W AGO','2W AGO'][i]}</div><div class="mv" style="color:${parseInt(d.value)<40?'var(--red)':parseInt(d.value)>60?'var(--g)':'var(--amber)'}">${d.value}</div></div>`).join('')}</div>`;
+    document.getElementById('fng-hc').style.display='block';
     drawChart(document.getElementById('fng-chart'),data.data.slice(0,30).reverse().map(d=>parseInt(d.value)),'#FFB300');
-  }catch(e){el.innerHTML=`<div style="color:var(--red);padding:12px">${e.message}</div>`;}
+  }catch(e){el.innerHTML=`<div style="color:var(--red);padding:11px">${e.message}</div>`;}
 }
 
 // ═══ INST ═══
@@ -1076,39 +853,39 @@ async function loadInst(){
       const frB=fr<-0.05?'bull':fr>0.1?'bear':fr<0?'bull':'neutral';
       const lsR=ls&&ls[0]?parseFloat(ls[0].longShortRatio):null;
       const lsB=lsR?(lsR<0.9?'bull':lsR>1.8?'bear':'neutral'):'neutral';
-      return`<div style="padding:12px;background:rgba(255,255,255,.03);border:1px solid var(--brd);border-radius:9px;margin-bottom:9px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:9px"><span style="font-size:13px;font-weight:600">${sym}</span><span class="sig-badge ${frB}">${frB==='bull'?'▲ LONG BIAS':frB==='bear'?'▼ SHORT BIAS':'— NEUTRAL'}</span></div>
-        <div class="metrics" style="grid-template-columns:repeat(3,1fr)">
-          <div class="metric"><div class="metric-label">FUNDING RATE</div><div class="metric-val ${fr<0?'up':fr>0.05?'down':'neutral'}" style="font-size:13px">${fr.toFixed(4)}%</div></div>
-          <div class="metric"><div class="metric-label">L/S RATIO</div><div class="metric-val ${lsB==='bull'?'up':lsB==='bear'?'down':'neutral'}" style="font-size:13px">${lsR?lsR.toFixed(2):'N/A'}</div></div>
-          <div class="metric"><div class="metric-label">NEXT FUNDING</div><div class="metric-val neutral" style="font-size:13px">${new Date(parseInt(funding.nextFundingTime)).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div></div>
+      return`<div style="padding:11px;background:rgba(255,255,255,.025);border:1px solid var(--brd);border-radius:9px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:12px;font-weight:600">${sym}</span><span class="sc-pts ${frB}">${frB==='bull'?'▲ LONG BIAS':frB==='bear'?'▼ SHORT BIAS':'— NEUTRAL'}</span></div>
+        <div class="mets" style="grid-template-columns:repeat(3,1fr)">
+          <div class="met"><div class="ml">FUNDING</div><div class="mv ${fr<0?'up':fr>0.05?'dn':'ne'}" style="font-size:12px">${fr.toFixed(4)}%</div></div>
+          <div class="met"><div class="ml">L/S RATIO</div><div class="mv ${lsB==='bull'?'up':lsB==='bear'?'dn':'ne'}" style="font-size:12px">${lsR?lsR.toFixed(2):'N/A'}</div></div>
+          <div class="met"><div class="ml">NEXT FUNDING</div><div class="mv ne" style="font-size:12px">${new Date(parseInt(funding.nextFundingTime)).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div></div>
         </div>
       </div>`;
     };
-    el.innerHTML=rc('BTC/USDT',btcF,btcLS)+rc('ETH/USDT',ethF,ethLS);
-  }catch(e){el.innerHTML=`<div style="color:var(--red);padding:12px">${e.message}</div>`;}
+    el.innerHTML=rc('BTC/USDT',btcF,btcLS)+rc('ETH/USDT',ethF,ethLS)+`<div style="padding:8px;background:rgba(255,255,255,.02);border-radius:7px;font-size:9px;color:var(--txt2);font-family:'IBM Plex Mono',monospace;line-height:1.8">💡 FR < -0.05% = institutional accumulation zone<br>💡 L/S < 0.9 = retail majority short → smart money often opposite</div>`;
+  }catch(e){el.innerHTML=`<div style="color:var(--red);padding:11px">${e.message}</div>`;}
 }
 
 // ═══ CHART ═══
 function drawChart(canvas,data,color='#00ffd0'){
   if(!canvas||!data.length)return;
   const ctx=canvas.getContext('2d');
-  const W=canvas.parentElement.offsetWidth,H=140;
+  const W=canvas.parentElement.offsetWidth,H=130;
   canvas.width=W*devicePixelRatio;canvas.height=H*devicePixelRatio;
   canvas.style.width=W+'px';canvas.style.height=H+'px';
   ctx.scale(devicePixelRatio,devicePixelRatio);
   const min=Math.min(...data),max=Math.max(...data),range=max-min||1;
-  const p={t:10,b:16,l:5,r:5},cW=W-p.l-p.r,cH=H-p.t-p.b;
+  const p={t:8,b:14,l:4,r:4},cW=W-p.l-p.r,cH=H-p.t-p.b;
   ctx.clearRect(0,0,W,H);
-  [.25,.5,.75].forEach(t=>{ctx.strokeStyle='rgba(255,255,255,0.04)';ctx.lineWidth=1;const y=p.t+cH*(1-t);ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(W-p.r,y);ctx.stroke();});
+  [.25,.5,.75].forEach(t=>{ctx.strokeStyle='rgba(255,255,255,0.035)';ctx.lineWidth=1;const y=p.t+cH*(1-t);ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(W-p.r,y);ctx.stroke();});
   const gx=i=>p.l+(i/(data.length-1))*cW,gy=v=>p.t+cH*(1-(v-min)/range);
-  const gr=ctx.createLinearGradient(0,p.t,0,H);gr.addColorStop(0,color+'2a');gr.addColorStop(1,color+'00');
+  const gr=ctx.createLinearGradient(0,p.t,0,H);gr.addColorStop(0,color+'22');gr.addColorStop(1,color+'00');
   ctx.beginPath();ctx.moveTo(gx(0),gy(data[0]));data.forEach((v,i)=>ctx.lineTo(gx(i),gy(v)));ctx.lineTo(gx(data.length-1),H);ctx.lineTo(gx(0),H);ctx.closePath();ctx.fillStyle=gr;ctx.fill();
   ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.lineJoin='round';data.forEach((v,i)=>i===0?ctx.moveTo(gx(i),gy(v)):ctx.lineTo(gx(i),gy(v)));ctx.stroke();
   ctx.beginPath();ctx.arc(gx(data.length-1),gy(data[data.length-1]),3,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
 }
 
-window.addEventListener('load',()=>{renderTrades();renderBacktest();});
+window.addEventListener('load',()=>{renderTrades();renderBT();});
 </script>
 </body>
 </html>
