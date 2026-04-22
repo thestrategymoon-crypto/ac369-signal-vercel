@@ -1,49 +1,259 @@
-<!-- Tambahkan di dalam container grid/dashboard Anda -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <title>AC369 FUSION - Enhanced</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0b0b1a;
+      color: #e0e0ff;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      padding: 16px;
+    }
+    h1 { font-size: 1.8rem; margin-bottom: 8px; color: #a0a0ff; }
+    .subtitle { color: #888; margin-bottom: 20px; font-size: 0.9rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    @media (min-width: 640px) {
+      .grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (min-width: 1024px) {
+      .grid { grid-template-columns: repeat(4, 1fr); }
+    }
+    .card {
+      background: #16162a;
+      border-radius: 18px;
+      padding: 18px 16px;
+      border: 1px solid #2a2a4a;
+      box-shadow: 0 6px 10px rgba(0,0,0,0.4);
+      transition: all 0.1s ease;
+    }
+    .card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #b0b0ff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border-bottom: 1px solid #2a2a4a;
+      padding-bottom: 8px;
+    }
+    .card-content {
+      font-size: 0.9rem;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .error { color: #ff7b7b; }
+    .success { color: #7bffb1; }
+    .refresh-btn {
+      background: #2a2a5a;
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 30px;
+      font-weight: 600;
+      margin: 20px 0;
+      cursor: pointer;
+      border: 1px solid #4a4a8a;
+    }
+    .footer {
+      margin-top: 24px;
+      font-size: 0.8rem;
+      color: #5a5a8a;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>📊 AC369 FUSION</h1>
+  <div class="subtitle">Real-time Enhanced Analytics • Auto-refresh 60s</div>
+  
+  <button class="refresh-btn" onclick="fetchEnhancedData()">🔄 Refresh Now</button>
 
-<!-- Order Flow Imbalance -->
-<div class="card">
-  <h3>📊 Order Flow Imbalance (2% Depth)</h3>
-  <div id="orderFlowData">Loading...</div>
-</div>
+  <div class="grid" id="dashboardGrid">
+    <!-- Kartu akan diisi oleh JavaScript -->
+  </div>
+  
+  <div class="footer">
+    Data dari Binance, Coinbase • v2.0
+  </div>
 
-<!-- Smart Money Index -->
-<div class="card">
-  <h3>🧠 Smart Money Index (Sesi)</h3>
-  <div id="smiData">Loading...</div>
-</div>
+  <script>
+    (function() {
+      // Daftar kartu yang akan dibuat dinamis agar lebih rapi
+      const cardsConfig = [
+        { id: 'orderFlow', title: '📊 Order Flow Imbalance (2%)' },
+        { id: 'premium', title: '🇺🇸 Coinbase Premium Gap' },
+        { id: 'volatility', title: '📉 Volatility Z-Score' },
+        { id: 'smi', title: '🧠 Smart Money Index' },
+        { id: 'liqDelta', title: '💧 Cumulative Liq. Delta' },
+        { id: 'age', title: '⏳ BTC Age Consumed' },
+        { id: 'corr', title: '📈 NVDA-BTC Correlation' },
+        { id: 'vwap', title: '⚓ Anchored VWAP' }
+      ];
 
-<!-- Volatility Z-Score -->
-<div class="card">
-  <h3>📉 Volatility Z-Score (ATR)</h3>
-  <div id="volZData">Loading...</div>
-</div>
+      const grid = document.getElementById('dashboardGrid');
+      
+      // Buat elemen kartu kosong
+      cardsConfig.forEach(card => {
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.innerHTML = `
+          <h3>${card.title}</h3>
+          <div class="card-content" id="${card.id}Data">Memuat...</div>
+        `;
+        grid.appendChild(div);
+      });
 
-<!-- Coinbase Premium -->
-<div class="card">
-  <h3>🇺🇸 Coinbase Premium Gap</h3>
-  <div id="premiumData">Loading...</div>
-</div>
+      // Fungsi utama fetch data
+      window.fetchEnhancedData = async function() {
+        // Tampilkan status loading
+        cardsConfig.forEach(c => {
+          const el = document.getElementById(c.id + 'Data');
+          if (el) el.innerHTML = '⏳ Memuat...';
+        });
 
-<!-- Cumulative Liquidation Delta -->
-<div class="card">
-  <h3>💧 Cumulative Liq. Delta (Est.)</h3>
-  <div id="liqDeltaData">Loading...</div>
-</div>
+        try {
+          const response = await fetch('/api/data');
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          
+          const data = await response.json();
+          console.log('Data diterima:', data); // Tidak muncul di iPad, tapi tidak masalah
 
-<!-- BTC Age Consumed -->
-<div class="card">
-  <h3>⏳ BTC Age Consumed</h3>
-  <div id="ageData">Loading...</div>
-</div>
+          // === Update setiap kartu ===
+          
+          // 1. Order Flow
+          const of = data.orderFlowImbalance;
+          const ofEl = document.getElementById('orderFlowData');
+          if (of && !of.error) {
+            ofEl.innerHTML = `
+              Bid: $${Number(of.bidVolumeUSD).toLocaleString()}<br>
+              Ask: $${Number(of.askVolumeUSD).toLocaleString()}<br>
+              Ratio: ${of.imbalanceRatio}<br>
+              <strong class="${of.signal.includes('Dominant') ? 'success' : ''}">${of.signal}</strong><br>
+              <small>Mid: $${of.midPrice}</small>
+            `;
+          } else {
+            ofEl.innerHTML = `<span class="error">Gagal memuat</span>`;
+          }
 
-<!-- NVDA-BTC Correlation -->
-<div class="card">
-  <h3>📈 NVDA-BTC Correlation (30d)</h3>
-  <div id="corrData">Loading...</div>
-</div>
+          // 2. Premium Gap
+          const prem = data.coinbasePremiumGap;
+          const premEl = document.getElementById('premiumData');
+          if (prem && !prem.error) {
+            premEl.innerHTML = `
+              CB: $${prem.coinbasePrice.toLocaleString()}<br>
+              BN: $${prem.binancePrice.toLocaleString()}<br>
+              Gap: ${prem.gapPercent}<br>
+              <strong>${prem.signal}</strong>
+            `;
+          } else {
+            premEl.innerHTML = `<span class="error">Gagal memuat</span>`;
+          }
 
-<!-- Anchored VWAP -->
-<div class="card">
-  <h3>⚓ Anchored VWAP (Swing Low)</h3>
-  <div id="vwapData">Loading...</div>
-</div>
+          // 3. Volatility
+          const vol = data.volatilityZScore;
+          const volEl = document.getElementById('volatilityData');
+          if (vol && !vol.error) {
+            volEl.innerHTML = `
+              ATR: ${vol.currentATR}<br>
+              Z-Score: ${vol.zScore}<br>
+              ${vol.signal}
+            `;
+          } else {
+            volEl.innerHTML = `<span class="error">Gagal memuat</span>`;
+          }
+
+          // 4. Smart Money Index
+          const smi = data.smartMoneyIndex;
+          const smiEl = document.getElementById('smiData');
+          if (smi && !smi.error) {
+            smiEl.innerHTML = `
+              Sesi: ${smi.currentSession}<br>
+              SMI 30m: ${smi.smi30mChangePercent}%<br>
+              ${smi.interpretation}
+            `;
+          } else {
+            smiEl.innerHTML = `<span class="error">Gagal memuat</span>`;
+          }
+
+          // 5. Liquidation Delta
+          const liq = data.cumulativeLiquidationDelta;
+          const liqEl = document.getElementById('liqDeltaData');
+          if (liq && !liq.error) {
+            liqEl.innerHTML = `
+              Delta Est: $${Number(liq.estimatedLiquidationDelta24h).toLocaleString()}<br>
+              <small>${liq.note || ''}</small>
+            `;
+          } else {
+            liqEl.innerHTML = `<span class="error">Gagal memuat</span>`;
+          }
+
+          // 6. Age Consumed
+          const age = data.btcAgeConsumed;
+          const ageEl = document.getElementById('ageData');
+          if (age && !age.error) {
+            ageEl.innerHTML = `
+              Latest: ${age.latestValue?.toFixed(4) || 'N/A'}<br>
+              ${age.interpretation}
+            `;
+          } else {
+            ageEl.innerHTML = `<span class="error">Gagal memuat</span>`;
+          }
+
+          // 7. NVDA Correlation
+          const corr = data.nvidiaBTCCorrelation;
+          const corrEl = document.getElementById('corrData');
+          if (corr && !corr.error) {
+            corrEl.innerHTML = `
+              Corr: ${corr.correlation30d}<br>
+              ${corr.signal}
+            `;
+          } else {
+            corrEl.innerHTML = `<span class="error">Gagal memuat</span>`;
+          }
+
+          // 8. Anchored VWAP
+          const vwap = data.anchoredVWAP;
+          const vwapEl = document.getElementById('vwapData');
+          if (vwap && !vwap.error) {
+            vwapEl.innerHTML = `
+              AVWAP: $${Number(vwap.vwapValue).toLocaleString()}<br>
+              Price: $${Number(vwap.currentPrice).toLocaleString()}<br>
+              ${vwap.position}
+            `;
+          } else {
+            vwapEl.innerHTML = `<span class="error">Gagal memuat</span>`;
+          }
+
+          // Tampilkan timestamp
+          const timeEl = document.createElement('div');
+          // Bisa ditambahkan di footer, opsional
+          document.querySelector('.footer').innerHTML = `Data diperbarui: ${new Date(data.timestamp).toLocaleTimeString()} • AC369 FUSION`;
+          
+        } catch (error) {
+          console.error('Fetch error:', error);
+          // Tampilkan error di semua kartu
+          cardsConfig.forEach(c => {
+            const el = document.getElementById(c.id + 'Data');
+            if (el) el.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+          });
+          document.querySelector('.footer').innerHTML = `Gagal mengambil data. Periksa koneksi.`;
+        }
+      };
+
+      // Panggil pertama kali
+      fetchEnhancedData();
+      
+      // Auto refresh tiap 60 detik
+      setInterval(fetchEnhancedData, 60000);
+    })();
+  </script>
+</body>
+</html>
