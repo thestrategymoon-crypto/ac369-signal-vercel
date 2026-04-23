@@ -1,6 +1,4 @@
-// api/scanner-full.js - AC369 FUSION Fase 8 (Elliott Wave & SMC)
-import { detectElliottWave, analyzeSMC } from './elliott-smc.js';
-
+// api/scanner-full.js - AC369 FUSION Fase 8 (All-in-One)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'max-age=0, s-maxage=300');
@@ -39,7 +37,7 @@ async function analyzeCoin(coin) {
   const symbol = coin.symbol.toUpperCase();
   let ohlcv = [];
   let chartPatterns = [];
-  let elliottWave = { wave: '-', confidence: 0, description: '' };
+  let elliottWave = { wave: 'Konsolidasi', confidence: 20, description: 'Data kurang' };
   let smc = { signal: 'Neutral', summary: '' };
 
   try {
@@ -51,29 +49,17 @@ async function analyzeCoin(coin) {
         close: parseFloat(c[4]), volume: parseFloat(c[5])
       }));
 
-      // Deteksi pola candlestick
       chartPatterns = detectAllPatterns(ohlcv);
-
-      // Deteksi Elliott Wave
-      if (ohlcv.length >= 50) {
+      
+      if (ohlcv.length >= 30) {
         elliottWave = detectElliottWave(ohlcv);
       }
-
-      // Deteksi SMC
-      if (ohlcv.length >= 20) {
+      if (ohlcv.length >= 15) {
         smc = analyzeSMC(ohlcv);
       }
     }
   } catch (e) {
-    // Lanjut tanpa data OHLCV
-  }
-
-  // Fallback pola minimal
-  if (chartPatterns.length === 0) {
-    const change = coin.price_change_percentage_24h || 0;
-    if (change > 5) chartPatterns.push({ name: 'Breakout Bullish', signal: 'bullish', probability: 60 });
-    else if (change < -5) chartPatterns.push({ name: 'Breakdown Bearish', signal: 'bearish', probability: 60 });
-    else chartPatterns.push({ name: 'Sideways', signal: 'neutral', probability: 40 });
+    console.error('Error fetch OHLCV', symbol, e.message);
   }
 
   const prob = calculateBreakoutScore(coin, chartPatterns, elliottWave, smc);
@@ -91,6 +77,109 @@ async function analyzeCoin(coin) {
   };
 }
 
+// ==================== ELLIOTT WAVE ====================
+function detectElliottWave(ohlcv) {
+  const swings = findSwingPoints(ohlcv, 3);
+  if (swings.length < 3) return { wave: 'Konsolidasi', confidence: 20, description: 'Swing tidak cukup' };
+
+  const recent = swings.slice(-5);
+  const highs = recent.filter(s => s.type === 'high');
+  const lows = recent.filter(s => s.type === 'low');
+
+  if (highs.length < 2 || lows.length < 2) return { wave: 'Konsolidasi', confidence: 20, description: 'Pola belum terbentuk' };
+
+  const lastHigh = highs[highs.length - 1];
+  const prevHigh = highs[highs.length - 2];
+  const lastLow = lows[lows.length - 1];
+  const prevLow = lows[lows.length - 2];
+  const currentPrice = ohlcv[ohlcv.length - 1].close;
+
+  // Wave 3 impulsif naik
+  if (lastHigh.price > prevHigh.price && lastLow.price > prevLow.price && currentPrice > lastLow.price) {
+    return { wave: 'Wave 3 (Impulsif)', confidence: 55, description: 'Tren naik terkonfirmasi' };
+  }
+  // Korektif turun
+  if (lastHigh.price < prevHigh.price && lastLow.price < prevLow.price && currentPrice < lastHigh.price) {
+    return { wave: 'Wave Korektif', confidence: 50, description: 'Fase koreksi' };
+  }
+  return { wave: 'Konsolidasi', confidence: 25, description: 'Belum ada struktur jelas' };
+}
+
+function findSwingPoints(ohlcv, lookback) {
+  const swings = [];
+  for (let i = lookback; i < ohlcv.length - lookback; i++) {
+    let isSwingHigh = true;
+    let isSwingLow = true;
+    const ch = ohlcv[i].high;
+    const cl = ohlcv[i].low;
+    for (let j = i - lookback; j <= i + lookback; j++) {
+      if (j === i) continue;
+      if (ohlcv[j].high >= ch) isSwingHigh = false;
+      if (ohlcv[j].low <= cl) isSwingLow = false;
+    }
+    if (isSwingHigh) swings.push({ index: i, price: ch, type: 'high' });
+    if (isSwingLow) swings.push({ index: i, price: cl, type: 'low' });
+  }
+  return swings;
+}
+
+// ==================== SMC ====================
+function analyzeSMC(ohlcv) {
+  const ob = findOrderBlock(ohlcv);
+  const ls = findLiquiditySweep(ohlcv);
+
+  if (ls.detected) {
+    return { signal: ls.direction, summary: ls.description };
+  }
+  if (ob.detected) {
+    return { signal: ob.type === 'Demand Zone' ? 'Bullish' : 'Bearish', summary: ob.description };
+  }
+  return { signal: 'Neutral', summary: 'Tidak ada sinyal signifikan' };
+}
+
+function findOrderBlock(ohlcv) {
+  const recent = ohlcv.slice(-10);
+  let maxVol = 0;
+  let obCandle = recent[0];
+  for (let i = 0; i < recent.length; i++) {
+    if (recent[i].volume > maxVol) {
+      maxVol = recent[i].volume;
+      obCandle = recent[i];
+    }
+  }
+  const avgVol = recent.reduce((a, b) => a + b.volume, 0) / recent.length;
+  if (obCandle.volume < avgVol * 1.2) return { detected: false };
+
+  const isBullish = obCandle.close > obCandle.open;
+  const currentPrice = ohlcv[ohlcv.length - 1].close;
+  const blockHigh = obCandle.high;
+  const blockLow = obCandle.low;
+
+  if (isBullish && currentPrice >= blockLow && currentPrice <= blockHigh) {
+    return { detected: true, type: 'Demand Zone', description: 'Area akumulasi' };
+  }
+  if (!isBullish && currentPrice >= blockLow && currentPrice <= blockHigh) {
+    return { detected: true, type: 'Supply Zone', description: 'Area distribusi' };
+  }
+  return { detected: false };
+}
+
+function findLiquiditySweep(ohlcv) {
+  const range = ohlcv.slice(-20, -1);
+  const recentHigh = Math.max(...range.map(c => c.high));
+  const recentLow = Math.min(...range.map(c => c.low));
+  const last = ohlcv[ohlcv.length - 1];
+
+  if (last.high > recentHigh && last.close < recentHigh) {
+    return { detected: true, direction: 'Bearish', description: 'Sweep resistance' };
+  }
+  if (last.low < recentLow && last.close > recentLow) {
+    return { detected: true, direction: 'Bullish', description: 'Sweep support' };
+  }
+  return { detected: false };
+}
+
+// ==================== POLA CANDLESTICK ====================
 function detectAllPatterns(ohlcv) {
   const patterns = [];
   if (ohlcv.length < 2) return patterns;
@@ -111,6 +200,7 @@ function detectAllPatterns(ohlcv) {
   return patterns;
 }
 
+// ==================== SKOR ====================
 function calculateBreakoutScore(coin, patterns, elliott, smc) {
   let score = 50;
   const change = coin.price_change_percentage_24h || 0;
@@ -118,22 +208,17 @@ function calculateBreakoutScore(coin, patterns, elliott, smc) {
   else if (change > 5) score += 10;
   else if (change < -5) score -= 10;
 
-  // Bonus dari pola
   const bullishP = patterns.filter(p => p.signal === 'bullish').length;
   const bearishP = patterns.filter(p => p.signal === 'bearish').length;
   score += (bullishP - bearishP) * 8;
 
-  // Bonus dari Elliott Wave
   if (elliott.wave.includes('Wave 3')) score += 15;
-  else if (elliott.wave.includes('Wave 5')) score += 10;
-  else if (elliott.wave.includes('Wave 4')) score -= 5;
+  else if (elliott.wave.includes('Korektif')) score -= 5;
 
-  // Bonus dari SMC
   if (smc.signal === 'Bullish') score += 20;
   else if (smc.signal === 'Bearish') score -= 15;
 
   score = Math.max(0, Math.min(100, Math.round(score)));
-
   return {
     score,
     reasons: [change > 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`],
