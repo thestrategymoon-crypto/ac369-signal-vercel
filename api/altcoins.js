@@ -1,86 +1,56 @@
-// api/altcoins.js - AC369 FUSION Final (Anti Blokir)
-const FETCH_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Accept': 'application/json',
-  'Accept-Language': 'id-ID,id;q=0.9'
-};
-
-async function fetchWithRetry(url, retries = 2) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(url, { headers: FETCH_HEADERS, signal: controller.signal });
-      clearTimeout(timeout);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
-    } catch (e) {
-      if (i === retries - 1) throw e;
-      await new Promise(r => setTimeout(r, 1000));
-    }
-  }
-}
-
+// api/altcoins.js - AC369 FUSION (CoinGecko + RSI)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
   res.setHeader('Cache-Control', 'max-age=0, s-maxage=60');
 
-  const fallback = {
-    timestamp: new Date().toISOString(),
-    topGainers: [],
-    volumeBreakouts: [],
-    rsiExtremes: [],
-    narrative: 'Data altcoin sementara tidak tersedia.'
-  };
-
   try {
-    console.log('[Altcoins] Fetch ticker dengan User-Agent...');
-    const all = await fetchWithRetry('https://api.binance.com/api/v3/ticker/24hr');
-    const usdtPairs = all.filter(t => 
-      t.symbol.endsWith('USDT') && 
-      !t.symbol.includes('BUSD') && 
-      !t.symbol.includes('TUSD') &&
-      !t.symbol.includes('USDC')
+    console.log('[Altcoins] Fetch dari CoinGecko...');
+    
+    // 1. Ambil 100 koin teratas dari CoinGecko
+    const cgRes = await fetch(
+      'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h'
     );
+    if (!cgRes.ok) throw new Error(`CoinGecko HTTP ${cgRes.status}`);
+    const coins = await cgRes.json();
 
-    // Top Gainers
-    const topGainers = usdtPairs
-      .sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent))
+    // 2. Top Gainers (15 teratas)
+    const gainers = [...coins]
+      .sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0))
+      .slice(0, 15)
+      .map(c => ({
+        symbol: c.symbol.toUpperCase(),
+        price: (c.current_price || 0).toFixed(4),
+        change24h: (c.price_change_percentage_24h || 0).toFixed(2) + '%'
+      }));
+
+    // 3. Volume Breakouts (volume > 3x median)
+    const volumes = coins.map(c => c.total_volume || 0).filter(v => v > 0);
+    volumes.sort((a, b) => a - b);
+    const medianVol = volumes[Math.floor(volumes.length / 2)] || 1000000;
+    const breakouts = coins
+      .filter(c => (c.total_volume || 0) > medianVol * 3)
       .slice(0, 10)
-      .map(t => ({
-        symbol: t.symbol.replace('USDT', ''),
-        price: parseFloat(t.lastPrice).toFixed(4),
-        change24h: parseFloat(t.priceChangePercent).toFixed(2) + '%'
+      .map(c => ({
+        symbol: c.symbol.toUpperCase(),
+        price: (c.current_price || 0).toFixed(4),
+        volumeRatio: ((c.total_volume || 0) / medianVol).toFixed(1) + 'x'
       }));
 
-    // Volume Breakouts (median)
-    const volumes = usdtPairs.map(t => parseFloat(t.quoteVolume)).filter(v => !isNaN(v));
-    volumes.sort((a,b) => a-b);
-    const medianVol = volumes[Math.floor(volumes.length/2)] || 1000000;
-    const breakouts = usdtPairs
-      .filter(t => parseFloat(t.quoteVolume) > medianVol * 3)
-      .slice(0, 5)
-      .map(t => ({
-        symbol: t.symbol.replace('USDT', ''),
-        price: parseFloat(t.lastPrice).toFixed(4),
-        volumeRatio: (parseFloat(t.quoteVolume) / medianVol).toFixed(1) + 'x'
-      }));
-
-    // RSI untuk 7 koin utama
+    // 4. RSI untuk 7 koin utama (dari Binance)
     const majors = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOGEUSDT'];
     const rsiExtremes = [];
     for (const sym of majors) {
       try {
-        const klines = await fetchWithRetry(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1h&limit=100`);
+        const klinesRes = await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1h&limit=100`);
+        if (!klinesRes.ok) continue;
+        const klines = await klinesRes.json();
         const closes = klines.map(k => parseFloat(k[4])).filter(v => !isNaN(v) && v > 0);
         if (closes.length < 14) continue;
         const rsi = calculateRSI(closes);
-        const ticker = usdtPairs.find(t => t.symbol === sym);
+        const info = coins.find(c => c.symbol === sym.replace('USDT', '').toLowerCase());
         let price = 'N/A';
-        if (ticker) {
-          const p = parseFloat(ticker.lastPrice);
-          if (!isNaN(p)) price = p.toFixed(4);
-        }
+        if (info) price = (info.current_price || 0).toFixed(4);
         let condition = 'Netral';
         if (rsi < 30) condition = 'Jenuh Jual';
         else if (rsi > 70) condition = 'Jenuh Beli';
@@ -91,24 +61,31 @@ export default async function handler(req, res) {
           condition
         });
       } catch (e) {
-        console.warn(`[Altcoins] Gagal RSI ${sym}:`, e.message);
+        // abaikan
       }
     }
 
-    const narrative = topGainers.length > 0
-      ? `🔥 Top gainer: ${topGainers[0].symbol} (+${topGainers[0].change24h}). `
-      : '';
+    const narrative = gainers.length > 0
+      ? `🔥 Top gainer: ${gainers[0].symbol} (+${gainers[0].change24h}). ` +
+        (rsiExtremes.filter(r => r.condition === 'Jenuh Jual').map(r => r.symbol).join(', ') || 'Tidak ada RSI jenuh jual.')
+      : 'Belum ada data gainer.';
 
     res.status(200).json({
       timestamp: new Date().toISOString(),
-      topGainers,
+      topGainers: gainers,
       volumeBreakouts: breakouts,
       rsiExtremes,
-      narrative: narrative || 'Belum ada data gainer signifikan.'
+      narrative
     });
   } catch (e) {
     console.error('[Altcoins] Error:', e.message);
-    res.status(200).json(fallback);
+    res.status(200).json({
+      timestamp: new Date().toISOString(),
+      topGainers: [],
+      volumeBreakouts: [],
+      rsiExtremes: [],
+      narrative: 'Data altcoin sementara tidak tersedia.'
+    });
   }
 }
 
