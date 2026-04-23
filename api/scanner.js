@@ -1,154 +1,141 @@
-// api/scanner.js - Mesin Pemindai Altcoin Cerdas AC369 FUSION
+// api/scanner-full.js - AC369 FUSION Scanner (Versi Ringan)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'max-age=0, s-maxage=60'); // Cache 1 menit
+  res.setHeader('Cache-Control', 'max-age=0, s-maxage=300');
 
   try {
-    // Ambil data dari berbagai sumber secara paralel
-    const [tickers, topGainers, volumeBreakouts, rsiExtremes] = await Promise.allSettled([
-      fetchAllTickers(),
-      fetchTopGainers(),
-      fetchVolumeBreakouts(),
-      fetchRSIExtremes()
-    ]);
+    const allCoins = [];
+    const pages = 2; // 500 koin
+    
+    for (let page = 1; page <= pages; page++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      
+      try {
+        const response = await fetch(
+          `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=${page}&sparkline=false&price_change_percentage=24h`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeoutId);
+        const data = await response.json();
+        for (let i = 0; i < data.length; i++) allCoins.push(data[i]);
+      } catch (e) {
+        clearTimeout(timeoutId);
+      }
+      
+      if (page < pages) await new Promise(r => setTimeout(r, 1000));
+    }
 
-    const result = {
+    const filteredCoins = [];
+    for (let i = 0; i < allCoins.length; i++) {
+      const c = allCoins[i];
+      if (c.total_volume > 3000000 && c.market_cap > 30000000) {
+        filteredCoins.push(c);
+      }
+    }
+
+    const results = [];
+    for (let i = 0; i < filteredCoins.length; i += 5) {
+      const batch = filteredCoins.slice(i, i + 5).map(coin => analyzeCoinSimple(coin));
+      const settled = await Promise.allSettled(batch);
+      for (let j = 0; j < settled.length; j++) {
+        if (settled[j].status === 'fulfilled' && settled[j].value) {
+          results.push(settled[j].value);
+        }
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    results.sort((a, b) => b.breakoutProbability.score - a.breakoutProbability.score);
+
+    res.status(200).json({
       timestamp: new Date().toISOString(),
-      dailyOpportunities: getValue(topGainers, []).slice(0, 5), // 5 koin teratas untuk daily
-      swingOpportunities: getValue(volumeBreakouts, []), // Koin dengan volume spike untuk swing
-      rsiAlerts: getValue(rsiExtremes, []), // Koin dengan RSI ekstrem
-      marketSummary: generateSummary(getValue(topGainers, []), getValue(volumeBreakouts, []))
-    };
-
-    res.status(200).json(result);
+      totalScanned: filteredCoins.length,
+      results: results.slice(0, 40)
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 }
 
-function getValue(promise, fallback) {
-  return promise.status === 'fulfilled' ? promise.value : fallback;
-}
-
-// Mengambil semua ticker USDT dari Binance
-async function fetchAllTickers() {
-  const res = await fetch('https://api.binance.com/api/v3/ticker/24hr');
-  const data = await res.json();
-  // Filter hanya pair USDT, volume > $2M, dan bukan stablecoin
-  return data.filter(t => 
-    t.symbol.endsWith('USDT') && 
-    !t.symbol.includes('BUSD') && 
-    !t.symbol.includes('TUSD') &&
-    !t.symbol.includes('USDC') &&
-    parseFloat(t.quoteVolume) > 2000000
-  );
-}
-
-// Mendapatkan koin dengan kenaikan harga tertinggi (untuk daily trading)
-async function fetchTopGainers() {
-  const tickers = await fetchAllTickers();
-  return tickers
-    .sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent))
-    .slice(0, 15)
-    .map(t => ({
-      symbol: t.symbol.replace('USDT', ''),
-      price: parseFloat(t.lastPrice).toFixed(4),
-      change24h: parseFloat(t.priceChangePercent).toFixed(2) + '%',
-      volume24h: (parseFloat(t.quoteVolume) / 1e6).toFixed(2) + 'M',
-      strategy: 'Daily Momentum'
-    }));
-}
-
-// Mendeteksi koin dengan volume spike (untuk swing trading)
-async function fetchVolumeBreakouts() {
-  const tickers = await fetchAllTickers();
-  const breakouts = [];
+async function analyzeCoinSimple(coin) {
+  const symbol = coin.symbol.toUpperCase();
   
-  // Batasi ke 30 koin teratas untuk efisiensi
-  for (const t of tickers.slice(0, 40)) {
-    try {
-      const klinesRes = await fetch(`https://api.binance.com/api/v3/klines?symbol=${t.symbol}&interval=1h&limit=48`);
-      const klines = await klinesRes.json();
-      
-      // Hitung volume rata-rata 24 jam terakhir
-      const volumes = klines.slice(-24).map(k => parseFloat(k[5]));
-      const avgVolume = volumes.reduce((a, b) => a + b, 0) / 24;
-      const lastVolume = volumes[volumes.length - 1];
-      const volumeRatio = lastVolume / avgVolume;
-      
-      // Jika volume saat ini 3x lebih besar dari rata-rata, itu adalah sinyal breakout
-      if (volumeRatio > 3.0) {
-        // Hitung juga kenaikan harga dalam 1 jam terakhir
-        const prices = klines.slice(-2).map(k => parseFloat(k[4]));
-        const priceChange = ((prices[1] - prices[0]) / prices[0]) * 100;
-        
-        breakouts.push({
-          symbol: t.symbol.replace('USDT', ''),
-          price: parseFloat(t.lastPrice).toFixed(4),
-          volumeRatio: volumeRatio.toFixed(2) + 'x',
-          priceChange1h: priceChange.toFixed(2) + '%',
-          change24h: parseFloat(t.priceChangePercent).toFixed(2) + '%',
-          strategy: 'Swing Breakout',
-          strength: volumeRatio > 5 ? 'Sangat Kuat' : 'Kuat'
-        });
-      }
-    } catch (e) {
-      console.error(`Gagal memproses ${t.symbol}:`, e.message);
+  let ohlcv = null;
+  let chartPatterns = [];
+  
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=1d&limit=30`, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    
+    if (res.ok) {
+      const data = await res.json();
+      ohlcv = data.map(c => ({
+        open: parseFloat(c[1]), high: parseFloat(c[2]), low: parseFloat(c[3]), close: parseFloat(c[4]), volume: parseFloat(c[5])
+      }));
+      if (ohlcv.length >= 3) chartPatterns = detectChartPatterns(ohlcv);
     }
+  } catch (e) {
+    // Lanjut tanpa OHLCV
   }
-  
-  return breakouts.sort((a, b) => parseFloat(b.volumeRatio) - parseFloat(a.volumeRatio)).slice(0, 10);
+
+  const breakoutProb = calculateBreakoutScore(coin, ohlcv, chartPatterns);
+
+  return {
+    symbol,
+    name: coin.name,
+    price: coin.current_price,
+    volume24h: coin.total_volume,
+    priceChange24h: coin.price_change_percentage_24h,
+    breakoutProbability: breakoutProb,
+    chartPatterns: chartPatterns.slice(0, 3),
+    elliottWave: { wave: '-', confidence: 0, description: '' },
+    smc: { signal: 'Neutral', summary: '' }
+  };
 }
 
-// Mendeteksi koin dengan RSI oversold/overbought
-async function fetchRSIExtremes() {
-  const tickers = await fetchAllTickers();
-  const results = [];
+function detectChartPatterns(ohlcv) {
+  const patterns = [];
+  const last = ohlcv[ohlcv.length - 1];
+  const prev = ohlcv[ohlcv.length - 2];
   
-  for (const t of tickers.slice(0, 50)) {
-    try {
-      const klinesRes = await fetch(`https://api.binance.com/api/v3/klines?symbol=${t.symbol}&interval=1h&limit=100`);
-      const klines = await klinesRes.json();
-      const closes = klines.map(k => parseFloat(k[4]));
-      const rsi = calculateRSI(closes, 14);
-      
-      let condition = '';
-      if (rsi < 30) condition = 'Oversold (Potensi Bounce)';
-      else if (rsi > 70) condition = 'Overbought (Waspada Koreksi)';
-      
-      if (condition) {
-        results.push({
-          symbol: t.symbol.replace('USDT', ''),
-          price: closes[closes.length - 1].toFixed(4),
-          rsi: rsi.toFixed(2),
-          condition: condition,
-          strategy: rsi < 30 ? 'Buy the Dip' : 'Take Profit'
-        });
-      }
-    } catch (e) {
-      // Abaikan jika gagal
-    }
+  if (prev.close < prev.open && last.close > last.open && last.close > prev.open) {
+    patterns.push({ name: 'Bullish Engulfing', signal: 'bullish', probability: 70 });
   }
+  if (prev.close > prev.open && last.close < last.open && last.close < prev.open) {
+    patterns.push({ name: 'Bearish Engulfing', signal: 'bearish', probability: 70 });
+  }
+  const body = Math.abs(last.close - last.open);
+  const lowerWick = Math.min(last.open, last.close) - last.low;
+  if (lowerWick > body * 2) patterns.push({ name: 'Hammer', signal: 'bullish', probability: 65 });
   
-  return results.sort((a, b) => a.rsi - b.rsi);
+  return patterns;
 }
 
-function calculateRSI(prices, period = 14) {
-  if (prices.length < period + 1) return 50;
-  let gains = 0, losses = 0;
-  for (let i = prices.length - period; i < prices.length; i++) {
-    const diff = prices[i] - prices[i - 1];
-    if (diff > 0) gains += diff;
-    else losses -= diff;
-  }
-  const avgGain = gains / period;
-  const avgLoss = losses / period;
-  if (avgLoss === 0) return 100;
-  return 100 - (100 / (1 + avgGain / avgLoss));
-}
+function calculateBreakoutScore(coin, ohlcv, patterns) {
+  let score = 50;
+  const reasons = [];
+  const change = coin.price_change_percentage_24h || 0;
+  
+  if (change > 10) { score += 20; reasons.push(`+${change.toFixed(1)}%`); }
+  else if (change > 5) { score += 10; reasons.push(`+${change.toFixed(1)}%`); }
+  else if (change < -5) { score -= 10; reasons.push(`${change.toFixed(1)}%`); }
 
-function generateSummary(gainers, breakouts) {
-  const topGainer = gainers[0]?.symbol || 'N/A';
-  const breakoutCount = breakouts.length;
-  return `Peluang hari ini: ${topGainer} memimpin kenaikan. Terdeteksi ${breakoutCount} altcoin dengan volume breakout >3x.`;
+  if (ohlcv && ohlcv.length >= 20) {
+    const last = ohlcv[ohlcv.length - 1];
+    const avgVol = ohlcv.slice(-20, -1).reduce((s, c) => s + c.volume, 0) / 20;
+    if (last.volume > avgVol * 2) { score += 15; reasons.push('Volume spike'); }
+  }
+
+  const bullish = patterns.filter(p => p.signal === 'bullish');
+  if (bullish.length) { score += 10; reasons.push(bullish[0].name); }
+
+  score = Math.max(0, Math.min(100, score));
+  return {
+    score: Math.round(score),
+    reasons: reasons.slice(0, 3),
+    interpretation: score >= 70 ? '🔥 Tinggi' : score >= 50 ? '📈 Pantau' : '💤 Rendah'
+  };
 }
