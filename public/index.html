@@ -153,6 +153,35 @@
     </div>
   </div>
 
+  <!-- SECTION 4: Rekomendasi & Trading Plan -->
+  <h2>🎯 Rekomendasi & Rencana Trading Harian</h2>
+  <div class="grid" id="recommendation-grid">
+    <div class="card" style="border-left: 4px solid #F7931A;">
+      <h3>₿ Bitcoin (BTC) - Rekomendasi</h3>
+      <div id="btc-recommendation" class="card-content">Memuat...</div>
+    </div>
+    <div class="card" style="border-left: 4px solid #627EEA;">
+      <h3>💎 Ethereum (ETH) - Rekomendasi</h3>
+      <div id="eth-recommendation" class="card-content">Memuat...</div>
+    </div>
+    <div class="card">
+      <h3>📅 Rencana Daily Trading</h3>
+      <div id="daily-plan" class="card-content">Memuat...</div>
+    </div>
+    <div class="card">
+      <h3>📈 Rencana Swing Trading</h3>
+      <div id="swing-plan" class="card-content">Memuat...</div>
+    </div>
+    <div class="card">
+      <h3>👀 Watchlist (RSI Oversold)</h3>
+      <div id="watchlist" class="card-content">Memuat...</div>
+    </div>
+    <div class="card" style="grid-column: 1/-1; background: #1a1a3a;">
+      <h3>📢 Narasi Pasar Lengkap</h3>
+      <div id="full-narrative" class="card-content" style="font-size: 1rem; line-height: 1.6;">Memuat...</div>
+    </div>
+  </div>
+
   <div class="footer" id="footer">
     AC369 FUSION v4.0 • Data Real-time
   </div>
@@ -163,7 +192,8 @@
       await Promise.all([
         fetchAnalytics(),
         fetchMacro(),
-        fetchAltcoins()
+        fetchAltcoins(),
+        fetchRecommendation()
       ]);
       updateTimestamp();
     }
@@ -186,15 +216,15 @@
           <div class="signal-row"><span>Harga:</span> <strong>$${parseFloat(btc.currentPrice).toLocaleString()}</strong></div>
           <div class="signal-row"><span>Probabilitas:</span> <strong>${btc.probabilityScore}%</strong></div>
           <div class="signal-row"><span>Sinyal Konfluensi:</span> 
-            <span class="badge ${btc.confluenceSignal.includes('Buy') ? 'badge-buy' : btc.confluenceSignal.includes('Sell') ? 'badge-sell' : 'badge-neutral'}">${btc.confluenceSignal} (${btc.confluenceStrength})</span>
+            <span class="badge ${btc.confluenceSignal?.includes('Buy') ? 'badge-buy' : btc.confluenceSignal?.includes('Sell') ? 'badge-sell' : 'badge-neutral'}">${btc.confluenceSignal} (${btc.confluenceStrength})</span>
           </div>
-          <div class="signal-row"><span>Status MA:</span> ${btc.maStatus.position}</div>
+          <div class="signal-row"><span>Status MA:</span> ${btc.maStatus?.position || 'N/A'}</div>
           <div style="margin-top: 10px;"><strong>Sinyal Aktif:</strong></div>
         `;
         btc.keySignals?.forEach(s => {
           btcHtml += `<div class="signal-row">• ${s.name} <span style="color:${s.bullish ? '#7bffb1' : '#ff7b7b'}">${s.bullish ? '▲' : '▼'}</span></div>`;
         });
-        btcHtml += `<div style="margin-top: 10px; font-style: italic;">${btc.technicalSummary}</div>`;
+        btcHtml += `<div style="margin-top: 10px; font-style: italic;">${btc.technicalSummary || ''}</div>`;
         document.getElementById('btc-content').innerHTML = btcHtml;
 
         // ETH
@@ -203,20 +233,20 @@
           <div class="signal-row"><span>Harga:</span> <strong>$${parseFloat(eth.currentPrice).toLocaleString()}</strong></div>
           <div class="signal-row"><span>Probabilitas:</span> <strong>${eth.probabilityScore}%</strong></div>
           <div class="signal-row"><span>Sinyal Konfluensi:</span> 
-            <span class="badge ${eth.confluenceSignal.includes('Buy') ? 'badge-buy' : eth.confluenceSignal.includes('Sell') ? 'badge-sell' : 'badge-neutral'}">${eth.confluenceSignal} (${eth.confluenceStrength})</span>
+            <span class="badge ${eth.confluenceSignal?.includes('Buy') ? 'badge-buy' : eth.confluenceSignal?.includes('Sell') ? 'badge-sell' : 'badge-neutral'}">${eth.confluenceSignal} (${eth.confluenceStrength})</span>
           </div>
-          <div class="signal-row"><span>Status MA:</span> ${eth.maStatus.position}</div>
+          <div class="signal-row"><span>Status MA:</span> ${eth.maStatus?.position || 'N/A'}</div>
           <div style="margin-top: 10px;"><strong>Sinyal Aktif:</strong></div>
         `;
         eth.keySignals?.forEach(s => {
           ethHtml += `<div class="signal-row">• ${s.name} <span style="color:${s.bullish ? '#7bffb1' : '#ff7b7b'}">${s.bullish ? '▲' : '▼'}</span></div>`;
         });
-        ethHtml += `<div style="margin-top: 10px; font-style: italic;">${eth.technicalSummary}</div>`;
+        ethHtml += `<div style="margin-top: 10px; font-style: italic;">${eth.technicalSummary || ''}</div>`;
         document.getElementById('eth-content').innerHTML = ethHtml;
 
         // Narasi
         document.getElementById('narrative-content').innerHTML = `
-          <div style="font-size: 1rem; line-height: 1.6;">💬 ${data.smartMoneyNarrative}</div>
+          <div style="font-size: 1rem; line-height: 1.6;">💬 ${data.smartMoneyNarrative || 'Tidak ada narasi'}</div>
         `;
 
       } catch (e) {
@@ -231,39 +261,34 @@
         const res = await fetch('/api/macro');
         const data = await res.json();
         
-        // Fear & Greed
-        const fg = data.fearGreed;
+        const fg = data.fearGreed || {};
         document.getElementById('fg-content').innerHTML = `
           <div style="font-size: 2rem; font-weight: bold;">${fg.value || '—'}</div>
           <div>${fg.classification || 'Data tidak tersedia'}</div>
         `;
 
-        // BTC Dominance
-        const dom = data.btcDominance;
+        const dom = data.btcDominance || {};
         document.getElementById('dom-content').innerHTML = `
           <div style="font-size: 1.5rem; font-weight: bold;">${dom.dominance || '—'}</div>
           <div>${dom.interpretation || ''}</div>
         `;
 
-        // MVRV
-        const mvrv = data.mvrvZScore;
+        const mvrv = data.mvrvZScore || {};
         document.getElementById('mvrv-content').innerHTML = `
           <div style="font-size: 1.5rem; font-weight: bold;">${mvrv.value || '—'}</div>
           <div>${mvrv.zone || ''}</div>
           <div style="margin-top: 8px;">${mvrv.interpretation || ''}</div>
         `;
 
-        // Altcoin Season
-        const alt = data.altcoinSeason;
+        const alt = data.altcoinSeason || {};
         document.getElementById('altseason-content').innerHTML = `
           <div style="font-size: 1.5rem; font-weight: bold;">${alt.index || '—'}/100</div>
           <div>${alt.season || ''}</div>
           <div style="margin-top: 8px; font-size: 0.8rem;">${alt.note || ''}</div>
         `;
 
-        // Cycle Summary
         document.getElementById('cycle-summary').innerHTML = `
-          <div style="font-size: 1rem;">📋 ${data.cycleSummary || 'Data tidak lengkap'}</div>
+          <div style="font-size: 1rem;">📋 ${data.cycleSummary || 'Pasar dalam fase transisi.'}</div>
         `;
 
       } catch (e) {
@@ -277,17 +302,15 @@
         const res = await fetch('/api/altcoins');
         const data = await res.json();
         
-        // Top Gainers
         let gainersHtml = '';
         data.topGainers?.slice(0, 8).forEach(c => {
           gainersHtml += `<div class="signal-row">
             <span><strong>${c.symbol}</strong> $${c.price}</span>
-            <span style="color:${c.change24h.includes('-') ? '#ff7b7b' : '#7bffb1'}">${c.change24h}</span>
+            <span style="color:${c.change24h?.includes('-') ? '#ff7b7b' : '#7bffb1'}">${c.change24h}</span>
           </div>`;
         });
         document.getElementById('gainers-content').innerHTML = gainersHtml || 'Tidak ada data';
 
-        // Volume Breakouts
         let breakoutsHtml = '';
         data.volumeBreakouts?.forEach(c => {
           breakoutsHtml += `<div class="signal-row">
@@ -298,7 +321,6 @@
         });
         document.getElementById('breakouts-content').innerHTML = breakoutsHtml || 'Tidak ada breakout signifikan';
 
-        // RSI Extremes
         let rsiHtml = '';
         data.rsiExtremes?.forEach(r => {
           const color = r.condition?.includes('Oversold') ? '#7bffb1' : r.condition?.includes('Overbought') ? '#ff7b7b' : '#ccc';
@@ -309,13 +331,93 @@
         });
         document.getElementById('rsi-content').innerHTML = rsiHtml || 'Tidak ada data';
 
-        // Altcoin Narrative
         document.getElementById('alt-narrative').innerHTML = `
           <div style="font-size: 1rem;">📢 ${data.narrative || 'Tidak ada narasi'}</div>
         `;
 
       } catch (e) {
         document.getElementById('gainers-content').innerHTML = `<span class="error">Gagal memuat</span>`;
+      }
+    }
+
+    // ==================== REKOMENDASI ====================
+    async function fetchRecommendation() {
+      try {
+        const res = await fetch('/api/recommendation');
+        const data = await res.json();
+        
+        // BTC Recommendation
+        const btc = data.btc || {};
+        document.getElementById('btc-recommendation').innerHTML = `
+          <div class="signal-row"><span>Harga:</span> <strong>$${parseFloat(btc.price || 0).toLocaleString()}</strong></div>
+          <div class="signal-row"><span>Probabilitas:</span> <strong>${btc.probabilityScore || 0}%</strong></div>
+          <div class="signal-row"><span>Sinyal:</span> <span class="badge ${btc.confluenceSignal?.includes('Buy') ? 'badge-buy' : 'badge-neutral'}">${btc.confluenceSignal || 'N/A'}</span></div>
+          <div class="signal-row"><span>Aksi:</span> <span class="badge ${btc.action?.includes('BUY') ? 'badge-buy' : btc.action?.includes('SELL') ? 'badge-sell' : 'badge-neutral'}" style="font-size:1rem;">${btc.action || 'HOLD'}</span></div>
+          <div style="margin-top: 10px;"><strong>Level Kunci:</strong></div>
+          <div class="signal-row"><span>Support:</span> $${btc.keyLevels?.support || '—'}</div>
+          <div class="signal-row"><span>Resistance:</span> $${btc.keyLevels?.resistance || '—'}</div>
+          <div style="margin-top: 10px; font-style: italic;">${btc.reasoning?.join('. ') || ''}</div>
+        `;
+        
+        // ETH Recommendation
+        const eth = data.eth || {};
+        document.getElementById('eth-recommendation').innerHTML = `
+          <div class="signal-row"><span>Harga:</span> <strong>$${parseFloat(eth.price || 0).toLocaleString()}</strong></div>
+          <div class="signal-row"><span>Probabilitas:</span> <strong>${eth.probabilityScore || 0}%</strong></div>
+          <div class="signal-row"><span>Sinyal:</span> <span class="badge ${eth.confluenceSignal?.includes('Buy') ? 'badge-buy' : 'badge-neutral'}">${eth.confluenceSignal || 'N/A'}</span></div>
+          <div class="signal-row"><span>Aksi:</span> <span class="badge ${eth.action?.includes('BUY') ? 'badge-buy' : eth.action?.includes('SELL') ? 'badge-sell' : 'badge-neutral'}" style="font-size:1rem;">${eth.action || 'HOLD'}</span></div>
+          <div style="margin-top: 10px;"><strong>Level Kunci:</strong></div>
+          <div class="signal-row"><span>Support:</span> $${eth.keyLevels?.support || '—'}</div>
+          <div class="signal-row"><span>Resistance:</span> $${eth.keyLevels?.resistance || '—'}</div>
+          <div style="margin-top: 10px; font-style: italic;">${eth.reasoning?.join('. ') || ''}</div>
+        `;
+        
+        // Daily Plan
+        let dailyHtml = '';
+        data.tradingPlan?.daily?.forEach(p => {
+          dailyHtml += `
+            <div style="border-bottom:1px solid #2a2a4a; padding:8px 0;">
+              <div class="signal-row"><span><strong>${p.symbol}</strong></span> <span>Entry: $${p.entry}</span></div>
+              <div class="signal-row"><span>Target: $${p.target}</span> <span>Stop: $${p.stopLoss}</span></div>
+              <div style="font-size:0.75rem; color:#aaa;">${p.rationale}</div>
+            </div>
+          `;
+        });
+        document.getElementById('daily-plan').innerHTML = dailyHtml || 'Tidak ada rencana daily saat ini.';
+        
+        // Swing Plan
+        let swingHtml = '';
+        data.tradingPlan?.swing?.forEach(p => {
+          swingHtml += `
+            <div style="border-bottom:1px solid #2a2a4a; padding:8px 0;">
+              <div class="signal-row"><span><strong>${p.symbol}</strong></span> <span>Entry: $${p.entry}</span></div>
+              <div class="signal-row"><span>Target: $${p.target}</span> <span>Stop: $${p.stopLoss}</span></div>
+              <div style="font-size:0.75rem; color:#aaa;">${p.rationale}</div>
+            </div>
+          `;
+        });
+        document.getElementById('swing-plan').innerHTML = swingHtml || 'Tidak ada rencana swing saat ini.';
+        
+        // Watchlist
+        let watchlistHtml = '';
+        data.tradingPlan?.watchlist?.forEach(w => {
+          watchlistHtml += `
+            <div class="signal-row">
+              <span><strong>${w.symbol}</strong> $${w.currentPrice}</span>
+              <span style="color:#7bffb1">RSI ${w.rsi}</span>
+            </div>
+            <div style="font-size:0.75rem; margin-bottom:6px;">${w.note}</div>
+          `;
+        });
+        document.getElementById('watchlist').innerHTML = watchlistHtml || 'Tidak ada koin dalam watchlist.';
+        
+        // Full Narrative
+        document.getElementById('full-narrative').innerHTML = `
+          <div>💬 ${data.marketNarrative || 'Tidak ada narasi'}</div>
+        `;
+        
+      } catch (e) {
+        console.error('Gagal fetch rekomendasi:', e);
       }
     }
 
