@@ -1,35 +1,24 @@
-// api/analytics.js - AC369 FUSION Stable Fix
+// api/analytics.js - AC369 FUSION (Final Stable)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'max-age=0, s-maxage=60');
 
   try {
-    const [btc, eth] = await Promise.allSettled([
+    const [btc, eth] = await Promise.all([
       analyzeAsset('BTCUSDT'),
       analyzeAsset('ETHUSDT')
     ]);
 
-    const btcData = getValue(btc, null);
-    const ethData = getValue(eth, null);
-
-    // JANGAN gunakan fallback statis. Jika gagal, kembalikan error.
-    if (!btcData || !ethData) {
-      throw new Error('Gagal mengambil data real-time');
-    }
-
     res.status(200).json({
       timestamp: new Date().toISOString(),
-      btc: btcData,
-      eth: ethData,
-      smartMoneyNarrative: generateNarrative(btcData, ethData)
+      btc: btc,
+      eth: eth,
+      smartMoneyNarrative: generateNarrative(btc, eth)
     });
   } catch (error) {
+    console.error('Analytics Error:', error);
     res.status(500).json({ error: error.message });
   }
-}
-
-function getValue(promise, fallback) {
-  return promise.status === 'fulfilled' ? promise.value : fallback;
 }
 
 async function analyzeAsset(symbol) {
@@ -55,29 +44,34 @@ async function analyzeAsset(symbol) {
 
     let score = 50;
     const signals = [];
-    if (rsi < 35) { score += 15; signals.push({ name: 'RSI Oversold', bullish: true, active: true, weight: 15 }); }
-    else if (rsi > 65) { score -= 15; signals.push({ name: 'RSI Overbought', bullish: false, active: true, weight: 15 }); }
-    if (currentPrice > ma200) { score += 10; signals.push({ name: 'Above 200MA', bullish: true, active: true, weight: 10 }); }
-    else { score -= 10; signals.push({ name: 'Below 200MA', bullish: false, active: true, weight: 10 }); }
-    if (change24h > 5) { score += 10; signals.push({ name: 'Momentum positif', bullish: true, active: true, weight: 10 }); }
-    else if (change24h < -5) { score -= 10; signals.push({ name: 'Momentum negatif', bullish: false, active: true, weight: 10 }); }
+    if (rsi < 35) { score += 15; signals.push({ name: 'RSI Oversold (1H)', bullish: true, active: true, weight: 15 }); }
+    else if (rsi > 65) { score -= 15; signals.push({ name: 'RSI Overbought (1H)', bullish: false, active: true, weight: 15 }); }
+    if (currentPrice > ma200) { score += 10; signals.push({ name: 'Di atas 200MA', bullish: true, active: true, weight: 10 }); }
+    else { score -= 10; signals.push({ name: 'Di bawah 200MA', bullish: false, active: true, weight: 10 }); }
+    if (change24h > 5) { score += 10; signals.push({ name: 'Momentum 24h positif', bullish: true, active: true, weight: 10 }); }
+    else if (change24h < -5) { score -= 10; signals.push({ name: 'Momentum 24h negatif', bullish: false, active: true, weight: 10 }); }
 
-    score = Math.max(0, Math.min(100, score));
+    score = Math.max(0, Math.min(100, Math.round(score)));
+    
     let signal = 'Neutral', strength = 'Rendah';
-    if (score >= 65) { signal = 'Buy'; strength = 'Sedang'; }
-    else if (score >= 80) { signal = 'Strong Buy'; strength = 'Tinggi'; }
-    else if (score <= 35) { signal = 'Sell'; strength = 'Sedang'; }
-    else if (score <= 20) { signal = 'Strong Sell'; strength = 'Tinggi'; }
+    if (score >= 70) { signal = 'Strong Buy'; strength = 'Tinggi'; }
+    else if (score >= 60) { signal = 'Buy'; strength = 'Sedang'; }
+    else if (score <= 30) { signal = 'Strong Sell'; strength = 'Tinggi'; }
+    else if (score <= 40) { signal = 'Sell'; strength = 'Sedang'; }
 
     return {
       symbol: symbol.replace('USDT', ''),
       currentPrice: currentPrice.toFixed(2),
-      probabilityScore: Math.round(score),
+      probabilityScore: score,
       confluenceSignal: signal,
       confluenceStrength: strength,
       keySignals: signals,
-      technicalSummary: `RSI: ${rsi.toFixed(1)} | ${currentPrice > ma200 ? 'Di atas' : 'Di bawah'} 200MA`,
-      maStatus: { ma50: ma50.toFixed(2), ma200: ma200.toFixed(2), position: currentPrice > ma200 ? 'Above 200MA' : 'Below 200MA' }
+      technicalSummary: `RSI 1H: ${rsi.toFixed(1)} | Harga ${currentPrice > ma200 ? 'di atas' : 'di bawah'} 200MA`,
+      maStatus: {
+        ma50: ma50.toFixed(2),
+        ma200: ma200.toFixed(2),
+        position: currentPrice > ma200 ? 'Above 200MA (Bull)' : 'Below 200MA (Bear)'
+      }
     };
   } catch (e) {
     clearTimeout(timeoutId);
@@ -100,8 +94,12 @@ function calculateRSI(prices, period = 14) {
 }
 
 function generateNarrative(btc, eth) {
-  if (btc.confluenceSignal.includes('Buy') && eth.confluenceSignal.includes('Buy')) return '💰 BTC & ETH sinyal beli. Konfluensi positif.';
-  if (btc.confluenceSignal.includes('Buy')) return '📈 Bitcoin memimpin dengan sinyal beli.';
-  if (eth.confluenceSignal.includes('Buy')) return '💎 Ethereum menunjukkan kekuatan.';
-  return '📊 Pasar dalam fase konsolidasi.';
+  if (btc.confluenceSignal.includes('Buy') && eth.confluenceSignal.includes('Buy')) {
+    return '💰 BTC & ETH menunjukkan sinyal beli. Konfluensi positif, potensi rally.';
+  } else if (btc.confluenceSignal.includes('Buy')) {
+    return '📈 Bitcoin memimpin dengan sinyal beli. Fokus pada BTC.';
+  } else if (eth.confluenceSignal.includes('Buy')) {
+    return '💎 Ethereum menunjukkan kekuatan relatif. Altcoin mungkin mengikuti.';
+  }
+  return '📊 Pasar dalam fase konsolidasi. Tunggu konfirmasi sinyal.';
 }
