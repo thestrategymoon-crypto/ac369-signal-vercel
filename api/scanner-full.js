@@ -210,9 +210,3 @@ function calculateBreakoutScore(coin, ohlcv, patterns) {
     interpretation: score >= 70 ? '🔥 Tinggi' : score >= 50 ? '📈 Pantau' : '💤 Rendah'
   };
 }
-// Fallback: Jika tidak ada pola terdeteksi, cek simple price action
-if (patterns.length === 0) {
-  const change = ((last.close - prev.close) / prev.close) * 100;
-  if (change > 5) patterns.push({ name: 'Breakout Bullish', signal: 'bullish', probability: 60 });
-  else if (change < -5) patterns.push({ name: 'Breakdown Bearish', signal: 'bearish', probability: 60 });
-}
