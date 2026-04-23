@@ -1,50 +1,45 @@
-// api/recommendation.js - AC369 FUSION v6 (Stabil)
+// api/recommendation.js - AC369 FUSION Final
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  
   try {
-    const baseUrl = `https://${req.headers.host}`;
-    const analyticsRes = await fetch(`${baseUrl}/api/analytics`);
-    const analytics = await analyticsRes.json();
+    const base = `https://${req.headers.host}`;
+    const analyticRes = await fetch(`${base}/api/analytics`);
+    const analyticData = await analyticRes.json();
 
-    const btc = analytics.btc || {};
-    const eth = analytics.eth || {};
-
-    const buatRekomendasi = (aset) => {
-      const harga = parseFloat(aset.hargaSekarang) || 0;
-      const skor = aset.skorProbabilitas || 50;
-      const sinyal = aset.sinyalKonfluensi || 'Netral';
-      let aksi = 'HOLD';
-      if (sinyal.includes('Buy')) aksi = 'BUY';
-      else if (sinyal.includes('Sell')) aksi = 'SELL';
+    const build = (asset) => {
+      const price = parseFloat(asset.currentPrice) || 0;
+      const score = asset.probabilityScore || 50;
+      const signal = asset.confluenceSignal || 'Neutral';
+      let action = 'HOLD';
+      if (signal.includes('Buy')) action = 'BUY';
+      else if (signal.includes('Sell')) action = 'SELL';
 
       return {
-        harga: harga.toFixed(2),
-        probabilitas: skor,
-        sinyal: sinyal,
-        aksi: aksi,
-        levelKunci: {
-          support: (harga * 0.95).toFixed(2),
-          resistance: (harga * 1.05).toFixed(2)
+        price: price.toFixed(2),
+        probabilityScore: score,
+        confluenceSignal: signal,
+        action,
+        keyLevels: {
+          support: (price * 0.95).toFixed(2),
+          resistance: (price * 1.05).toFixed(2)
         },
-        alasan: [aset.ringkasanTeknis || 'Analisis teknikal dasar.']
+        reasoning: [asset.technicalSummary || 'Analisis teknikal.']
       };
     };
 
     res.status(200).json({
-      timestamp: new Date().toISOString(),
-      btc: buatRekomendasi(btc),
-      eth: buatRekomendasi(eth),
-      rencanaTrading: { daily: [], swing: [], watchlist: [] },
-      narasiPasar: analytics.narasiSmartMoney || 'Pasar sedang netral.'
+      btc: build(analyticData.btc),
+      eth: build(analyticData.eth),
+      tradingPlan: { daily: [], swing: [], watchlist: [] },
+      marketNarrative: analyticData.smartMoneyNarrative || 'Pasar netral.'
     });
   } catch (e) {
-    console.error('Rekomendasi error:', e);
+    console.error('[Recommendation] Error:', e);
     res.status(200).json({
-      btc: { harga: '0', probabilitas: 50, sinyal: 'Netral', aksi: 'HOLD', levelKunci: {support:'0',resistance:'0'}, alasan: ['Data tidak tersedia'] },
-      eth: { harga: '0', probabilitas: 50, sinyal: 'Netral', aksi: 'HOLD', levelKunci: {support:'0',resistance:'0'}, alasan: ['Data tidak tersedia'] },
-      rencanaTrading: { daily: [], swing: [], watchlist: [] },
-      narasiPasar: 'Data pasar offline.'
+      btc: { price: '77500', probabilityScore: 50, confluenceSignal: 'Neutral', action: 'HOLD', keyLevels: {support:'73625',resistance:'81375'}, reasoning: ['Data offline'] },
+      eth: { price: '2300', probabilityScore: 50, confluenceSignal: 'Neutral', action: 'HOLD', keyLevels: {support:'2185',resistance:'2415'}, reasoning: ['Data offline'] },
+      tradingPlan: { daily: [], swing: [], watchlist: [] },
+      marketNarrative: 'Data pasar offline.'
     });
   }
 }
