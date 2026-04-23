@@ -1,56 +1,21 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-  <title>AC369 FUSION - Enhanced</title>
+  <title>AC369 FUSION v4.0</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: #0b0b1a;
+      background: #0a0a1a;
       color: #e0e0ff;
       font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
       padding: 16px;
-    }
-    h1 { font-size: 1.8rem; margin-bottom: 8px; color: #a0a0ff; }
-    .subtitle { color: #888; margin-bottom: 20px; font-size: 0.9rem; }
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 16px;
-    }
-    @media (min-width: 640px) {
-      .grid { grid-template-columns: repeat(2, 1fr); }
-    }
-    @media (min-width: 1024px) {
-      .grid { grid-template-columns: repeat(4, 1fr); }
-    }
-    .card {
-      background: #16162a;
-      border-radius: 18px;
-      padding: 18px 16px;
-      border: 1px solid #2a2a4a;
-      box-shadow: 0 6px 10px rgba(0,0,0,0.4);
-      transition: all 0.1s ease;
-    }
-    .card h3 {
-      font-size: 1rem;
-      font-weight: 600;
-      margin-bottom: 12px;
-      color: #b0b0ff;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      border-bottom: 1px solid #2a2a4a;
-      padding-bottom: 8px;
-    }
-    .card-content {
-      font-size: 0.9rem;
       line-height: 1.5;
-      word-break: break-word;
     }
-    .error { color: #ff7b7b; }
-    .success { color: #7bffb1; }
+    h1 { font-size: 1.8rem; color: #a0a0ff; margin-bottom: 4px; }
+    h2 { font-size: 1.2rem; color: #b0b0ff; margin: 20px 0 12px; border-bottom: 1px solid #2a2a4a; padding-bottom: 6px; }
+    .subtitle { color: #888; margin-bottom: 16px; font-size: 0.85rem; }
     .refresh-btn {
       background: #2a2a5a;
       border: none;
@@ -58,202 +23,305 @@
       padding: 10px 20px;
       border-radius: 30px;
       font-weight: 600;
-      margin: 20px 0;
+      margin-bottom: 16px;
       cursor: pointer;
       border: 1px solid #4a4a8a;
     }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+    @media (min-width: 640px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 1024px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+    
+    .card {
+      background: #12122a;
+      border-radius: 16px;
+      padding: 16px;
+      border: 1px solid #2a2a4a;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+    .card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #c0c0ff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .card-content { font-size: 0.9rem; }
+    
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge-buy { background: #1a4a1a; color: #7bffb1; }
+    .badge-sell { background: #4a1a1a; color: #ff7b7b; }
+    .badge-neutral { background: #2a2a4a; color: #ccc; }
+    
+    .signal-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid #1a1a3a;
+    }
+    
     .footer {
-      margin-top: 24px;
+      margin-top: 30px;
+      text-align: center;
       font-size: 0.8rem;
       color: #5a5a8a;
-      text-align: center;
+      padding: 16px;
     }
+    
+    .loading { color: #888; font-style: italic; }
+    .error { color: #ff7b7b; }
+    .success { color: #7bffb1; }
   </style>
 </head>
 <body>
-  <h1>📊 AC369 FUSION</h1>
-  <div class="subtitle">Real-time Enhanced Analytics • Auto-refresh 60s</div>
+  <h1>🧠 AC369 FUSION v4.0</h1>
+  <div class="subtitle">Analisis Probabilitas • Konfluensi Sinyal • Narasi Smart Money</div>
   
-  <button class="refresh-btn" onclick="fetchEnhancedData()">🔄 Refresh Now</button>
+  <button class="refresh-btn" onclick="refreshAll()">🔄 Refresh Semua Data</button>
 
-  <div class="grid" id="dashboardGrid">
-    <!-- Kartu akan diisi oleh JavaScript -->
+  <!-- SECTION 1: Analisis BTC & ETH (Probabilitas) -->
+  <h2>📊 Analisis Probabilitas & Konfluensi</h2>
+  <div class="grid" id="analytics-grid">
+    <div class="card" id="btc-card">
+      <h3>₿ Bitcoin (BTC)</h3>
+      <div class="card-content" id="btc-content">Memuat...</div>
+    </div>
+    <div class="card" id="eth-card">
+      <h3>💎 Ethereum (ETH)</h3>
+      <div class="card-content" id="eth-content">Memuat...</div>
+    </div>
+    <div class="card">
+      <h3>🧠 Narasi Smart Money</h3>
+      <div class="card-content" id="narrative-content">Memuat...</div>
+    </div>
   </div>
-  
-  <div class="footer">
-    Data dari Binance, Coinbase • v2.0
+
+  <!-- SECTION 2: Data Makro & Siklus -->
+  <h2>🌍 Sinyal Makro & Siklus Pasar</h2>
+  <div class="grid" id="macro-grid">
+    <div class="card">
+      <h3>😨 Fear & Greed Index</h3>
+      <div class="card-content" id="fg-content">Memuat...</div>
+    </div>
+    <div class="card">
+      <h3>👑 BTC Dominance</h3>
+      <div class="card-content" id="dom-content">Memuat...</div>
+    </div>
+    <div class="card">
+      <h3>📈 MVRV Z-Score</h3>
+      <div class="card-content" id="mvrv-content">Memuat...</div>
+    </div>
+    <div class="card">
+      <h3>🚀 Altcoin Season Index</h3>
+      <div class="card-content" id="altseason-content">Memuat...</div>
+    </div>
+    <div class="card" style="grid-column: 1/-1;">
+      <h3>📝 Ringkasan Siklus</h3>
+      <div class="card-content" id="cycle-summary">Memuat...</div>
+    </div>
+  </div>
+
+  <!-- SECTION 3: Altcoin Scanner -->
+  <h2>🔥 Altcoin Scanner & Momentum</h2>
+  <div class="grid" id="altcoin-grid">
+    <div class="card">
+      <h3>🏆 Top Gainers 24 Jam</h3>
+      <div class="card-content" id="gainers-content">Memuat...</div>
+    </div>
+    <div class="card">
+      <h3>📊 Volume Breakout (>3x)</h3>
+      <div class="card-content" id="breakouts-content">Memuat...</div>
+    </div>
+    <div class="card">
+      <h3>📉 RSI Ekstrem (Major Coins)</h3>
+      <div class="card-content" id="rsi-content">Memuat...</div>
+    </div>
+    <div class="card" style="grid-column: 1/-1;">
+      <h3>📢 Narasi Altcoin</h3>
+      <div class="card-content" id="alt-narrative">Memuat...</div>
+    </div>
+  </div>
+
+  <div class="footer" id="footer">
+    AC369 FUSION v4.0 • Data Real-time
   </div>
 
   <script>
-    (function() {
-      // Daftar kartu yang akan dibuat dinamis agar lebih rapi
-      const cardsConfig = [
-        { id: 'orderFlow', title: '📊 Order Flow Imbalance (2%)' },
-        { id: 'premium', title: '🇺🇸 Coinbase Premium Gap' },
-        { id: 'volatility', title: '📉 Volatility Z-Score' },
-        { id: 'smi', title: '🧠 Smart Money Index' },
-        { id: 'liqDelta', title: '💧 Cumulative Liq. Delta' },
-        { id: 'age', title: '⏳ BTC Age Consumed' },
-        { id: 'corr', title: '📈 NVDA-BTC Correlation' },
-        { id: 'vwap', title: '⚓ Anchored VWAP' }
-      ];
+    // ==================== FUNGSI UTAMA ====================
+    async function refreshAll() {
+      await Promise.all([
+        fetchAnalytics(),
+        fetchMacro(),
+        fetchAltcoins()
+      ]);
+      updateTimestamp();
+    }
 
-      const grid = document.getElementById('dashboardGrid');
-      
-      // Buat elemen kartu kosong
-      cardsConfig.forEach(card => {
-        const div = document.createElement('div');
-        div.className = 'card';
-        div.innerHTML = `
-          <h3>${card.title}</h3>
-          <div class="card-content" id="${card.id}Data">Memuat...</div>
+    function updateTimestamp() {
+      const now = new Date();
+      document.getElementById('footer').innerHTML = 
+        `AC369 FUSION v4.0 • Update: ${now.toLocaleTimeString('id-ID')} • Data Real-time`;
+    }
+
+    // ==================== ANALYTICS (BTC & ETH) ====================
+    async function fetchAnalytics() {
+      try {
+        const res = await fetch('/api/analytics');
+        const data = await res.json();
+        
+        // BTC
+        const btc = data.btc;
+        let btcHtml = `
+          <div class="signal-row"><span>Harga:</span> <strong>$${parseFloat(btc.currentPrice).toLocaleString()}</strong></div>
+          <div class="signal-row"><span>Probabilitas:</span> <strong>${btc.probabilityScore}%</strong></div>
+          <div class="signal-row"><span>Sinyal Konfluensi:</span> 
+            <span class="badge ${btc.confluenceSignal.includes('Buy') ? 'badge-buy' : btc.confluenceSignal.includes('Sell') ? 'badge-sell' : 'badge-neutral'}">${btc.confluenceSignal} (${btc.confluenceStrength})</span>
+          </div>
+          <div class="signal-row"><span>Status MA:</span> ${btc.maStatus.position}</div>
+          <div style="margin-top: 10px;"><strong>Sinyal Aktif:</strong></div>
         `;
-        grid.appendChild(div);
-      });
-
-      // Fungsi utama fetch data
-      window.fetchEnhancedData = async function() {
-        // Tampilkan status loading
-        cardsConfig.forEach(c => {
-          const el = document.getElementById(c.id + 'Data');
-          if (el) el.innerHTML = '⏳ Memuat...';
+        btc.keySignals?.forEach(s => {
+          btcHtml += `<div class="signal-row">• ${s.name} <span style="color:${s.bullish ? '#7bffb1' : '#ff7b7b'}">${s.bullish ? '▲' : '▼'}</span></div>`;
         });
+        btcHtml += `<div style="margin-top: 10px; font-style: italic;">${btc.technicalSummary}</div>`;
+        document.getElementById('btc-content').innerHTML = btcHtml;
 
-        try {
-          const response = await fetch('/api/data');
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          
-          const data = await response.json();
-          console.log('Data diterima:', data); // Tidak muncul di iPad, tapi tidak masalah
+        // ETH
+        const eth = data.eth;
+        let ethHtml = `
+          <div class="signal-row"><span>Harga:</span> <strong>$${parseFloat(eth.currentPrice).toLocaleString()}</strong></div>
+          <div class="signal-row"><span>Probabilitas:</span> <strong>${eth.probabilityScore}%</strong></div>
+          <div class="signal-row"><span>Sinyal Konfluensi:</span> 
+            <span class="badge ${eth.confluenceSignal.includes('Buy') ? 'badge-buy' : eth.confluenceSignal.includes('Sell') ? 'badge-sell' : 'badge-neutral'}">${eth.confluenceSignal} (${eth.confluenceStrength})</span>
+          </div>
+          <div class="signal-row"><span>Status MA:</span> ${eth.maStatus.position}</div>
+          <div style="margin-top: 10px;"><strong>Sinyal Aktif:</strong></div>
+        `;
+        eth.keySignals?.forEach(s => {
+          ethHtml += `<div class="signal-row">• ${s.name} <span style="color:${s.bullish ? '#7bffb1' : '#ff7b7b'}">${s.bullish ? '▲' : '▼'}</span></div>`;
+        });
+        ethHtml += `<div style="margin-top: 10px; font-style: italic;">${eth.technicalSummary}</div>`;
+        document.getElementById('eth-content').innerHTML = ethHtml;
 
-          // === Update setiap kartu ===
-          
-          // 1. Order Flow
-          const of = data.orderFlowImbalance;
-          const ofEl = document.getElementById('orderFlowData');
-          if (of && !of.error) {
-            ofEl.innerHTML = `
-              Bid: $${Number(of.bidVolumeUSD).toLocaleString()}<br>
-              Ask: $${Number(of.askVolumeUSD).toLocaleString()}<br>
-              Ratio: ${of.imbalanceRatio}<br>
-              <strong class="${of.signal.includes('Dominant') ? 'success' : ''}">${of.signal}</strong><br>
-              <small>Mid: $${of.midPrice}</small>
-            `;
-          } else {
-            ofEl.innerHTML = `<span class="error">Gagal memuat</span>`;
-          }
+        // Narasi
+        document.getElementById('narrative-content').innerHTML = `
+          <div style="font-size: 1rem; line-height: 1.6;">💬 ${data.smartMoneyNarrative}</div>
+        `;
 
-          // 2. Premium Gap
-          const prem = data.coinbasePremiumGap;
-          const premEl = document.getElementById('premiumData');
-          if (prem && !prem.error) {
-            premEl.innerHTML = `
-              CB: $${prem.coinbasePrice.toLocaleString()}<br>
-              BN: $${prem.binancePrice.toLocaleString()}<br>
-              Gap: ${prem.gapPercent}<br>
-              <strong>${prem.signal}</strong>
-            `;
-          } else {
-            premEl.innerHTML = `<span class="error">Gagal memuat</span>`;
-          }
+      } catch (e) {
+        document.getElementById('btc-content').innerHTML = `<span class="error">Gagal memuat</span>`;
+        document.getElementById('eth-content').innerHTML = `<span class="error">Gagal memuat</span>`;
+      }
+    }
 
-          // 3. Volatility
-          const vol = data.volatilityZScore;
-          const volEl = document.getElementById('volatilityData');
-          if (vol && !vol.error) {
-            volEl.innerHTML = `
-              ATR: ${vol.currentATR}<br>
-              Z-Score: ${vol.zScore}<br>
-              ${vol.signal}
-            `;
-          } else {
-            volEl.innerHTML = `<span class="error">Gagal memuat</span>`;
-          }
+    // ==================== MACRO ====================
+    async function fetchMacro() {
+      try {
+        const res = await fetch('/api/macro');
+        const data = await res.json();
+        
+        // Fear & Greed
+        const fg = data.fearGreed;
+        document.getElementById('fg-content').innerHTML = `
+          <div style="font-size: 2rem; font-weight: bold;">${fg.value || '—'}</div>
+          <div>${fg.classification || 'Data tidak tersedia'}</div>
+        `;
 
-          // 4. Smart Money Index
-          const smi = data.smartMoneyIndex;
-          const smiEl = document.getElementById('smiData');
-          if (smi && !smi.error) {
-            smiEl.innerHTML = `
-              Sesi: ${smi.currentSession}<br>
-              SMI 30m: ${smi.smi30mChangePercent}%<br>
-              ${smi.interpretation}
-            `;
-          } else {
-            smiEl.innerHTML = `<span class="error">Gagal memuat</span>`;
-          }
+        // BTC Dominance
+        const dom = data.btcDominance;
+        document.getElementById('dom-content').innerHTML = `
+          <div style="font-size: 1.5rem; font-weight: bold;">${dom.dominance || '—'}</div>
+          <div>${dom.interpretation || ''}</div>
+        `;
 
-          // 5. Liquidation Delta
-          const liq = data.cumulativeLiquidationDelta;
-          const liqEl = document.getElementById('liqDeltaData');
-          if (liq && !liq.error) {
-            liqEl.innerHTML = `
-              Delta Est: $${Number(liq.estimatedLiquidationDelta24h).toLocaleString()}<br>
-              <small>${liq.note || ''}</small>
-            `;
-          } else {
-            liqEl.innerHTML = `<span class="error">Gagal memuat</span>`;
-          }
+        // MVRV
+        const mvrv = data.mvrvZScore;
+        document.getElementById('mvrv-content').innerHTML = `
+          <div style="font-size: 1.5rem; font-weight: bold;">${mvrv.value || '—'}</div>
+          <div>${mvrv.zone || ''}</div>
+          <div style="margin-top: 8px;">${mvrv.interpretation || ''}</div>
+        `;
 
-          // 6. Age Consumed
-          const age = data.btcAgeConsumed;
-          const ageEl = document.getElementById('ageData');
-          if (age && !age.error) {
-            ageEl.innerHTML = `
-              Latest: ${age.latestValue?.toFixed(4) || 'N/A'}<br>
-              ${age.interpretation}
-            `;
-          } else {
-            ageEl.innerHTML = `<span class="error">Gagal memuat</span>`;
-          }
+        // Altcoin Season
+        const alt = data.altcoinSeason;
+        document.getElementById('altseason-content').innerHTML = `
+          <div style="font-size: 1.5rem; font-weight: bold;">${alt.index || '—'}/100</div>
+          <div>${alt.season || ''}</div>
+          <div style="margin-top: 8px; font-size: 0.8rem;">${alt.note || ''}</div>
+        `;
 
-          // 7. NVDA Correlation
-          const corr = data.nvidiaBTCCorrelation;
-          const corrEl = document.getElementById('corrData');
-          if (corr && !corr.error) {
-            corrEl.innerHTML = `
-              Corr: ${corr.correlation30d}<br>
-              ${corr.signal}
-            `;
-          } else {
-            corrEl.innerHTML = `<span class="error">Gagal memuat</span>`;
-          }
+        // Cycle Summary
+        document.getElementById('cycle-summary').innerHTML = `
+          <div style="font-size: 1rem;">📋 ${data.cycleSummary || 'Data tidak lengkap'}</div>
+        `;
 
-          // 8. Anchored VWAP
-          const vwap = data.anchoredVWAP;
-          const vwapEl = document.getElementById('vwapData');
-          if (vwap && !vwap.error) {
-            vwapEl.innerHTML = `
-              AVWAP: $${Number(vwap.vwapValue).toLocaleString()}<br>
-              Price: $${Number(vwap.currentPrice).toLocaleString()}<br>
-              ${vwap.position}
-            `;
-          } else {
-            vwapEl.innerHTML = `<span class="error">Gagal memuat</span>`;
-          }
+      } catch (e) {
+        document.getElementById('fg-content').innerHTML = `<span class="error">Gagal memuat</span>`;
+      }
+    }
 
-          // Tampilkan timestamp
-          const timeEl = document.createElement('div');
-          // Bisa ditambahkan di footer, opsional
-          document.querySelector('.footer').innerHTML = `Data diperbarui: ${new Date(data.timestamp).toLocaleTimeString()} • AC369 FUSION`;
-          
-        } catch (error) {
-          console.error('Fetch error:', error);
-          // Tampilkan error di semua kartu
-          cardsConfig.forEach(c => {
-            const el = document.getElementById(c.id + 'Data');
-            if (el) el.innerHTML = `<span class="error">Error: ${error.message}</span>`;
-          });
-          document.querySelector('.footer').innerHTML = `Gagal mengambil data. Periksa koneksi.`;
-        }
-      };
+    // ==================== ALTCOINS ====================
+    async function fetchAltcoins() {
+      try {
+        const res = await fetch('/api/altcoins');
+        const data = await res.json();
+        
+        // Top Gainers
+        let gainersHtml = '';
+        data.topGainers?.slice(0, 8).forEach(c => {
+          gainersHtml += `<div class="signal-row">
+            <span><strong>${c.symbol}</strong> $${c.price}</span>
+            <span style="color:${c.change24h.includes('-') ? '#ff7b7b' : '#7bffb1'}">${c.change24h}</span>
+          </div>`;
+        });
+        document.getElementById('gainers-content').innerHTML = gainersHtml || 'Tidak ada data';
 
-      // Panggil pertama kali
-      fetchEnhancedData();
-      
-      // Auto refresh tiap 60 detik
-      setInterval(fetchEnhancedData, 60000);
-    })();
+        // Volume Breakouts
+        let breakoutsHtml = '';
+        data.volumeBreakouts?.forEach(c => {
+          breakoutsHtml += `<div class="signal-row">
+            <span><strong>${c.symbol}</strong> $${c.price}</span>
+            <span style="color:#ffb87b">${c.volumeRatio}</span>
+          </div>
+          <div style="font-size: 0.75rem; margin-bottom: 6px;">${c.narrative || ''}</div>`;
+        });
+        document.getElementById('breakouts-content').innerHTML = breakoutsHtml || 'Tidak ada breakout signifikan';
+
+        // RSI Extremes
+        let rsiHtml = '';
+        data.rsiExtremes?.forEach(r => {
+          const color = r.condition?.includes('Oversold') ? '#7bffb1' : r.condition?.includes('Overbought') ? '#ff7b7b' : '#ccc';
+          rsiHtml += `<div class="signal-row">
+            <span><strong>${r.symbol}</strong> $${r.price}</span>
+            <span style="color:${color}">RSI ${r.rsi}</span>
+          </div>`;
+        });
+        document.getElementById('rsi-content').innerHTML = rsiHtml || 'Tidak ada data';
+
+        // Altcoin Narrative
+        document.getElementById('alt-narrative').innerHTML = `
+          <div style="font-size: 1rem;">📢 ${data.narrative || 'Tidak ada narasi'}</div>
+        `;
+
+      } catch (e) {
+        document.getElementById('gainers-content').innerHTML = `<span class="error">Gagal memuat</span>`;
+      }
+    }
+
+    // ==================== INIT ====================
+    refreshAll();
+    setInterval(refreshAll, 120000); // Refresh tiap 2 menit
   </script>
 </body>
 </html>
