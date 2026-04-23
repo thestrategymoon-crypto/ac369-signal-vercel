@@ -1,0 +1,9 @@
+{
+  "name": "ac369-fusion",
+  "version": "6.0.0",
+  "description": "AC369 FUSION - Dashboard Analisis Kripto Cerdas",
+  "type": "module",
+  "dependencies": {
+    "@liquid/ta": "^0.0.3"
+  }
+}
