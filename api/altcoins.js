@@ -1,119 +1,112 @@
-// api/altcoins.js - AC369 FUSION v6 (Super Detail)
+// api/altcoins.js - AC369 FUSION Final Stable
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'max-age=0, s-maxage=60');
 
+  const fallbackResponse = {
+    timestamp: new Date().toISOString(),
+    topGainers: [],
+    volumeBreakouts: [],
+    rsiExtremes: [],
+    narrative: 'Data altcoin sementara tidak tersedia.'
+  };
+
   try {
-    console.log('Memulai pemindaian altcoin...');
-    // 1. Ambil data ticker
+    console.log('[Altcoins] Fetch ticker...');
     const resp = await fetch('https://api.binance.com/api/v3/ticker/24hr');
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const semua = await resp.json();
+    const all = await resp.json();
 
-    // Filter pair USDT yang valid
-    const pairUSDT = semua.filter(t => 
-      t.symbol.endsWith('USDT') && 
-      !t.symbol.includes('BUSD') && 
+    const usdtPairs = all.filter(t => 
+      t.symbol.endsWith('USDT') &&
+      !t.symbol.includes('BUSD') &&
       !t.symbol.includes('TUSD') &&
       !t.symbol.includes('USDC')
     );
 
-    // 2. Top Gainers
-    const topGainers = pairUSDT
+    // Top Gainers
+    const topGainers = usdtPairs
       .sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent))
       .slice(0, 10)
       .map(t => ({
-        simbol: t.symbol.replace('USDT', ''),
-        harga: parseFloat(t.lastPrice).toFixed(4),
-        perubahan24j: parseFloat(t.priceChangePercent).toFixed(2) + '%'
+        symbol: t.symbol.replace('USDT', ''),
+        price: parseFloat(t.lastPrice).toFixed(4),
+        change24h: parseFloat(t.priceChangePercent).toFixed(2) + '%'
       }));
 
-    // 3. RSI untuk koin utama
-    const koinUtama = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOGEUSDT'];
-    const daftarRSI = [];
+    // Volume Breakouts (sederhana)
+    const volumes = usdtPairs.map(t => parseFloat(t.quoteVolume)).filter(v => !isNaN(v));
+    volumes.sort((a,b) => a-b);
+    const medianVol = volumes[Math.floor(volumes.length/2)] || 1000000;
+    const breakouts = usdtPairs
+      .filter(t => parseFloat(t.quoteVolume) > medianVol * 3)
+      .slice(0, 5)
+      .map(t => ({
+        symbol: t.symbol.replace('USDT', ''),
+        price: parseFloat(t.lastPrice).toFixed(4),
+        volumeRatio: (parseFloat(t.quoteVolume) / medianVol).toFixed(1) + 'x',
+        narrative: 'Volume di atas rata-rata'
+      }));
 
-    for (const simbol of koinUtama) {
+    // RSI untuk koin utama
+    const majors = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOGEUSDT'];
+    const rsiExtremes = [];
+    for (const sym of majors) {
       try {
-        const klinesRes = await fetch(`https://api.binance.com/api/v3/klines?symbol=${simbol}&interval=1h&limit=100`);
-        if (!klinesRes.ok) continue;
-        const klines = await klinesRes.json();
-        const hargaTutup = [];
-        for (let i = 0; i < klines.length; i++) {
-          const tutup = parseFloat(klines[i][4]);
-          if (!isNaN(tutup) && tutup > 0) hargaTutup.push(tutup);
+        const kUrl = `https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1h&limit=100`;
+        const kRes = await fetch(kUrl);
+        if (!kRes.ok) continue;
+        const klines = await kRes.json();
+        const closes = klines.map(k => parseFloat(k[4])).filter(v => !isNaN(v) && v > 0);
+        if (closes.length < 14) continue;
+        const rsi = calculateRSI(closes);
+        if (isNaN(rsi)) continue;
+        const ticker = usdtPairs.find(t => t.symbol === sym);
+        let price = 'N/A';
+        if (ticker) {
+          const p = parseFloat(ticker.lastPrice);
+          if (!isNaN(p)) price = p.toFixed(4);
         }
-        
-        if (hargaTutup.length >= 14) {
-          const rsi = hitungRSI(hargaTutup);
-          const ticker = pairUSDT.find(t => t.symbol === simbol);
-          let harga = 'N/A';
-          if (ticker) {
-            const h = parseFloat(ticker.lastPrice);
-            if (!isNaN(h)) harga = h.toFixed(4);
-          }
-          let kondisi = 'Netral';
-          if (rsi < 30) kondisi = 'Jenuh Jual';
-          else if (rsi > 70) kondisi = 'Jenuh Beli';
-          
-          daftarRSI.push({
-            simbol: simbol.replace('USDT', ''),
-            harga: harga,
-            rsi: rsi.toFixed(2),
-            kondisi: kondisi
-          });
-        }
-      } catch (e) {
-        console.error(`Gagal RSI ${simbol}:`, e.message);
+        let condition = 'Neutral';
+        if (rsi < 30) condition = 'Oversold (Peluang Beli)';
+        else if (rsi > 70) condition = 'Overbought (Hati-hati)';
+        rsiExtremes.push({
+          symbol: sym.replace('USDT', ''),
+          price: price,
+          rsi: rsi.toFixed(2),
+          condition: condition
+        });
+      } catch (ex) {
+        // abaikan
       }
     }
 
-    // 4. Volume Breakout sederhana (dari ticker 24h)
-    const volumeRata = pairUSDT.reduce((sum, t) => sum + parseFloat(t.quoteVolume), 0) / pairUSDT.length;
-    const breakout = pairUSDT
-      .filter(t => parseFloat(t.quoteVolume) > volumeRata * 3)
-      .slice(0, 5)
-      .map(t => ({
-        simbol: t.symbol.replace('USDT', ''),
-        harga: parseFloat(t.lastPrice).toFixed(4),
-        rasioVolume: (parseFloat(t.quoteVolume) / volumeRata).toFixed(1) + 'x'
-      }));
-
-    const narasi = topGainers.length > 0
-      ? `🔥 Top gainer: ${topGainers[0].simbol} (+${topGainers[0].perubahan24j}). `
-      : 'Belum ada data gainer. ';
-    
-    const teksRSI = daftarRSI.filter(r => r.kondisi === 'Jenuh Jual').map(r => r.simbol).join(', ');
-    if (teksRSI) narasi += `RSI jenuh jual pada: ${teksRSI}.`;
+    const narrative = `🔥 Top gainer: ${topGainers[0]?.symbol || 'N/A'} (+${topGainers[0]?.change24h || '0%'}). ` +
+      (rsiExtremes.filter(r => r.condition.includes('Oversold')).map(r => r.symbol).join(', ') || 'Tidak ada RSI oversold.');
 
     res.status(200).json({
       timestamp: new Date().toISOString(),
-      topGainers: topGainers,
-      volumeBreakouts: breakout,
-      rsiEkstrem: daftarRSI,
-      narasi: narasi
+      topGainers,
+      volumeBreakouts: breakouts,
+      rsiExtremes,
+      narrative
     });
-  } catch (e) {
-    console.error('Error altcoins:', e);
-    res.status(200).json({
-      timestamp: new Date().toISOString(),
-      topGainers: [],
-      volumeBreakouts: [],
-      rsiEkstrem: [],
-      narasi: 'Gagal mengambil data altcoin. Coba lagi nanti.'
-    });
+  } catch (error) {
+    console.error('[Altcoins] Error:', error);
+    res.status(200).json(fallbackResponse);
   }
 }
 
-function hitungRSI(harga, periode = 14) {
-  if (harga.length < periode) return 50;
-  let naik = 0, turun = 0;
-  for (let i = harga.length - periode; i < harga.length; i++) {
-    const selisih = harga[i] - harga[i - 1];
-    if (selisih > 0) naik += selisih;
-    else turun -= selisih;
+function calculateRSI(prices, period = 14) {
+  if (prices.length < period + 1) return 50;
+  let gains = 0, losses = 0;
+  for (let i = prices.length - period; i < prices.length; i++) {
+    const diff = prices[i] - prices[i - 1];
+    if (diff > 0) gains += diff;
+    else losses -= diff;
   }
-  const rataNaik = naik / periode;
-  const rataTurun = turun / periode;
-  if (rataTurun === 0) return 100;
-  return 100 - (100 / (1 + rataNaik / rataTurun));
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  if (avgLoss === 0) return 100;
+  return 100 - (100 / (1 + avgGain / avgLoss));
 }
