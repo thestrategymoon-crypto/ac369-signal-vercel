@@ -3,5 +3,6 @@
     "api/*.js": {
       "maxDuration": 10
     }
-  }
+  },
+  "installCommand": "npm install"
 }
