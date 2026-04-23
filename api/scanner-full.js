@@ -1,88 +1,98 @@
-// api/scanner-full.js - AC369 FUSION Full Altcoin Scanner (Fase 1)
+// api/scanner-full.js - AC369 FUSION Full Altcoin Scanner (Fase 2 - Pola Grafik)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'max-age=0, s-maxage=300'); // Cache 5 menit
+  res.setHeader('Cache-Control', 'max-age=0, s-maxage=300');
 
   try {
-    // Ambil data dari CoinGecko (250 koin per halaman, bisa di-loop untuk 600+)
     const allCoins = [];
-    const pages = 3; // 3 halaman = 750 koin (cukup untuk 600+)
+    const pages = 3;
     
     for (let page = 1; page <= pages; page++) {
       const response = await fetch(
         `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=${page}&sparkline=false&price_change_percentage=24h`
       );
       const data = await response.json();
-      allCoins.push(...data);
       
-      // Jeda 1 detik antar halaman untuk menghindari rate limit
+      for (let i = 0; i < data.length; i++) {
+        allCoins.push(data[i]);
+      }
+      
       if (page < pages) await new Promise(r => setTimeout(r, 1000));
     }
 
-    // Filter koin dengan volume > $1M dan market cap > $10M (hindari koin sampah)
-    const filteredCoins = allCoins.filter(c => 
-      c.total_volume > 1000000 && c.market_cap > 10000000
-    );
+    const filteredCoins = [];
+    for (let i = 0; i < allCoins.length; i++) {
+      const c = allCoins[i];
+      if (c.total_volume > 1000000 && c.market_cap > 10000000) {
+        filteredCoins.push(c);
+      }
+    }
 
-    // Analisis probabilitas breakout untuk setiap koin (paralel, tapi batasi concurrency)
     const results = [];
     const batchSize = 5;
     
     for (let i = 0; i < filteredCoins.length; i += batchSize) {
-      const batch = filteredCoins.slice(i, i + batchSize);
-      const batchResults = await Promise.allSettled(
-        batch.map(coin => analyzeCoin(coin))
-      );
+      const batch = [];
+      for (let j = i; j < Math.min(i + batchSize, filteredCoins.length); j++) {
+        batch.push(analyzeCoin(filteredCoins[j]));
+      }
       
-      batchResults.forEach((result, idx) => {
+      const batchResults = await Promise.allSettled(batch);
+      
+      for (let k = 0; k < batchResults.length; k++) {
+        const result = batchResults[k];
         if (result.status === 'fulfilled' && result.value) {
           results.push(result.value);
         }
-      });
+      }
       
-      // Jeda antar batch
       await new Promise(r => setTimeout(r, 500));
     }
 
-    // Urutkan berdasarkan probabilitas breakout (tertinggi ke terendah)
     results.sort((a, b) => b.breakoutProbability.score - a.breakoutProbability.score);
 
     res.status(200).json({
       timestamp: new Date().toISOString(),
       totalScanned: filteredCoins.length,
-      results: results.slice(0, 50) // Kembalikan 50 teratas untuk respons cepat
+      results: results.slice(0, 50)
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 }
 
-// Fungsi analisis per koin
 async function analyzeCoin(coin) {
   const symbol = coin.symbol.toUpperCase();
   
-  // Coba ambil data OHLCV dari Binance (jika tersedia)
   let ohlcv = null;
+  let chartPatterns = [];
+  
   try {
     const binanceRes = await fetch(
       `https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=1d&limit=30`
     );
     if (binanceRes.ok) {
       const data = await binanceRes.json();
-      ohlcv = data.map(c => ({
-        open: parseFloat(c[1]),
-        high: parseFloat(c[2]),
-        low: parseFloat(c[3]),
-        close: parseFloat(c[4]),
-        volume: parseFloat(c[5])
-      }));
+      ohlcv = [];
+      for (let i = 0; i < data.length; i++) {
+        ohlcv.push({
+          open: parseFloat(data[i][1]),
+          high: parseFloat(data[i][2]),
+          low: parseFloat(data[i][3]),
+          close: parseFloat(data[i][4]),
+          volume: parseFloat(data[i][5])
+        });
+      }
+      
+      if (ohlcv.length >= 3) {
+        chartPatterns = detectChartPatterns(ohlcv);
+      }
     }
   } catch (e) {
-    // Jika tidak ada di Binance, lanjutkan tanpa data OHLCV
+    // Lanjut tanpa data OHLCV
   }
 
-  // Hitung probabilitas breakout
-  const breakoutProb = calculateBreakoutProbability(coin, ohlcv);
+  const breakoutProb = calculateBreakoutProbability(coin, ohlcv, chartPatterns);
 
   return {
     symbol: symbol,
@@ -92,16 +102,79 @@ async function analyzeCoin(coin) {
     volume24h: coin.total_volume,
     priceChange24h: coin.price_change_percentage_24h,
     breakoutProbability: breakoutProb,
-    hasOHLCV: !!ohlcv
+    chartPatterns: chartPatterns.slice(0, 3),
+    hasOHLCV: ohlcv !== null
   };
 }
 
-// Fungsi hitung probabilitas breakout
-function calculateBreakoutProbability(coin, ohlcv) {
+function detectChartPatterns(ohlcv) {
+  const patterns = [];
+  const lastIdx = ohlcv.length - 1;
+  const prevIdx = lastIdx - 1;
+  const prev2Idx = lastIdx - 2;
+  
+  const last = ohlcv[lastIdx];
+  const prev = ohlcv[prevIdx];
+  const prev2 = ohlcv[prev2Idx];
+  
+  // 1. Bullish Engulfing
+  if (prev.close < prev.open && 
+      last.close > last.open && 
+      last.open < prev.close &&
+      last.close > prev.open) {
+    patterns.push({ name: 'Bullish Engulfing', signal: 'bullish', probability: 70 });
+  }
+  
+  // 2. Bearish Engulfing
+  if (prev.close > prev.open && 
+      last.close < last.open && 
+      last.open > prev.close &&
+      last.close < prev.open) {
+    patterns.push({ name: 'Bearish Engulfing', signal: 'bearish', probability: 70 });
+  }
+  
+  // 3. Hammer
+  const body = Math.abs(last.close - last.open);
+  const lowerWick = Math.min(last.open, last.close) - last.low;
+  const upperWick = last.high - Math.max(last.open, last.close);
+  if (lowerWick > body * 2 && upperWick < body * 0.5) {
+    patterns.push({ name: 'Hammer', signal: 'bullish', probability: 65 });
+  }
+  
+  // 4. Shooting Star
+  if (upperWick > body * 2 && lowerWick < body * 0.5) {
+    patterns.push({ name: 'Shooting Star', signal: 'bearish', probability: 65 });
+  }
+  
+  // 5. Doji
+  if (body < (last.high - last.low) * 0.1) {
+    patterns.push({ name: 'Doji', signal: 'neutral', probability: 50 });
+  }
+  
+  // 6. Morning Star
+  if (ohlcv.length >= 3) {
+    const first = prev2;
+    const second = prev;
+    const third = last;
+    
+    if (first.close < first.open) {
+      const secondBody = Math.abs(second.close - second.open);
+      const secondRange = second.high - second.low;
+      if (secondBody < secondRange * 0.3) {
+        if (third.close > third.open && third.close > (first.open + first.close) / 2) {
+          patterns.push({ name: 'Morning Star', signal: 'bullish', probability: 80 });
+        }
+      }
+    }
+  }
+  
+  return patterns;
+}
+
+function calculateBreakoutProbability(coin, ohlcv, chartPatterns) {
   let score = 0;
   const reasons = [];
 
-  // 1. Perubahan harga 24 jam (momentum)
   const change = coin.price_change_percentage_24h || 0;
   if (change > 10) {
     score += 25;
@@ -114,13 +187,14 @@ function calculateBreakoutProbability(coin, ohlcv) {
     reasons.push(`Momentum negatif (${change.toFixed(1)}%)`);
   }
 
-  // 2. Analisis OHLCV (jika tersedia)
   if (ohlcv && ohlcv.length >= 20) {
     const last = ohlcv[ohlcv.length - 1];
-    const prevVolumes = ohlcv.slice(-20, -1).map(c => c.volume);
+    const prevVolumes = [];
+    for (let i = ohlcv.length - 20; i < ohlcv.length - 1; i++) {
+      prevVolumes.push(ohlcv[i].volume);
+    }
     const avgVolume = prevVolumes.reduce((a, b) => a + b, 0) / prevVolumes.length;
     
-    // Volume spike
     const volumeRatio = last.volume / avgVolume;
     if (volumeRatio > 2.5) {
       score += 30;
@@ -130,7 +204,6 @@ function calculateBreakoutProbability(coin, ohlcv) {
       reasons.push(`Volume meningkat ${volumeRatio.toFixed(1)}x`);
     }
 
-    // Harga dekat resistance 20-hari
     const highest20 = Math.max(...ohlcv.slice(-20, -1).map(c => c.high));
     const distanceToResistance = ((highest20 - last.close) / last.close) * 100;
     if (distanceToResistance < 2 && distanceToResistance > 0) {
@@ -138,20 +211,33 @@ function calculateBreakoutProbability(coin, ohlcv) {
       reasons.push(`Harga dekat resistance (${distanceToResistance.toFixed(1)}% lagi)`);
     }
 
-    // Harga di atas MA20
     const ma20 = ohlcv.slice(-20).reduce((sum, c) => sum + c.close, 0) / 20;
     if (last.close > ma20) {
       score += 10;
       reasons.push('Harga di atas MA20');
     }
   }
+  
+  let patternBonus = 0;
+  const bullishPatterns = chartPatterns.filter(p => p.signal === 'bullish');
+  const bearishPatterns = chartPatterns.filter(p => p.signal === 'bearish');
+  
+  if (bullishPatterns.length > 0) {
+    patternBonus += bullishPatterns.reduce((sum, p) => sum + p.probability / 10, 0);
+    reasons.push(`Pola bullish: ${bullishPatterns.map(p => p.name).join(', ')}`);
+  }
+  if (bearishPatterns.length > 0) {
+    patternBonus -= bearishPatterns.reduce((sum, p) => sum + p.probability / 10, 0);
+    reasons.push(`Pola bearish: ${bearishPatterns.map(p => p.name).join(', ')}`);
+  }
+  
+  score += patternBonus;
 
-  // Normalisasi skor ke 0-100
   const normalizedScore = Math.max(0, Math.min(100, score + 50));
   
   return {
-    score: normalizedScore,
-    reasons: reasons.slice(0, 3),
+    score: Math.round(normalizedScore),
+    reasons: reasons.slice(0, 4),
     interpretation: normalizedScore >= 70 ? '🔥 Probabilitas Tinggi' : 
                      normalizedScore >= 50 ? '📈 Perlu Dipantau' : 
                      '💤 Probabilitas Rendah'
