@@ -1,4 +1,6 @@
-// api/scanner-full.js - AC369 FUSION Full Altcoin Scanner (Fase 2 - Pola Grafik)
+// api/scanner-full.js - AC369 FUSION Full Altcoin Scanner (Fase 3 - Elliott Wave & SMC)
+import { detectElliottWave, analyzeSMC } from './elliott-smc.js';
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'max-age=0, s-maxage=300');
@@ -66,10 +68,12 @@ async function analyzeCoin(coin) {
   
   let ohlcv = null;
   let chartPatterns = [];
+  let elliottWave = { wave: 'Tidak terdeteksi', confidence: 0, description: '' };
+  let smcAnalysis = { signal: 'Neutral', summary: 'Tidak ada sinyal SMC' };
   
   try {
     const binanceRes = await fetch(
-      `https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=1d&limit=30`
+      `https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=1d&limit=100`
     );
     if (binanceRes.ok) {
       const data = await binanceRes.json();
@@ -87,12 +91,17 @@ async function analyzeCoin(coin) {
       if (ohlcv.length >= 3) {
         chartPatterns = detectChartPatterns(ohlcv);
       }
+      
+      if (ohlcv.length >= 50) {
+        elliottWave = detectElliottWave(ohlcv);
+        smcAnalysis = analyzeSMC(ohlcv);
+      }
     }
   } catch (e) {
     // Lanjut tanpa data OHLCV
   }
 
-  const breakoutProb = calculateBreakoutProbability(coin, ohlcv, chartPatterns);
+  const breakoutProb = calculateBreakoutProbability(coin, ohlcv, chartPatterns, elliottWave, smcAnalysis);
 
   return {
     symbol: symbol,
@@ -103,6 +112,8 @@ async function analyzeCoin(coin) {
     priceChange24h: coin.price_change_percentage_24h,
     breakoutProbability: breakoutProb,
     chartPatterns: chartPatterns.slice(0, 3),
+    elliottWave,
+    smc: smcAnalysis,
     hasOHLCV: ohlcv !== null
   };
 }
@@ -171,7 +182,7 @@ function detectChartPatterns(ohlcv) {
   return patterns;
 }
 
-function calculateBreakoutProbability(coin, ohlcv, chartPatterns) {
+function calculateBreakoutProbability(coin, ohlcv, chartPatterns, elliottWave, smcAnalysis) {
   let score = 0;
   const reasons = [];
 
@@ -218,6 +229,23 @@ function calculateBreakoutProbability(coin, ohlcv, chartPatterns) {
     }
   }
   
+  // Skor dari Elliott Wave
+  if (elliottWave && elliottWave.confidence > 50) {
+    if (elliottWave.wave.includes('3') || elliottWave.wave.includes('5')) {
+      score += 15;
+      reasons.push(`Elliott: ${elliottWave.wave} (${elliottWave.confidence}%)`);
+    }
+  }
+
+  // Skor dari SMC
+  if (smcAnalysis && smcAnalysis.signal === 'Bullish') {
+    score += 20;
+    reasons.push(`SMC: ${smcAnalysis.orderBlock?.type || 'Liquidity Sweep'}`);
+  } else if (smcAnalysis && smcAnalysis.signal === 'Bearish') {
+    score -= 15;
+    reasons.push(`SMC: ${smcAnalysis.orderBlock?.type || 'Liquidity Sweep'}`);
+  }
+  
   let patternBonus = 0;
   const bullishPatterns = chartPatterns.filter(p => p.signal === 'bullish');
   const bearishPatterns = chartPatterns.filter(p => p.signal === 'bearish');
@@ -237,7 +265,7 @@ function calculateBreakoutProbability(coin, ohlcv, chartPatterns) {
   
   return {
     score: Math.round(normalizedScore),
-    reasons: reasons.slice(0, 4),
+    reasons: reasons.slice(0, 5),
     interpretation: normalizedScore >= 70 ? '🔥 Probabilitas Tinggi' : 
                      normalizedScore >= 50 ? '📈 Perlu Dipantau' : 
                      '💤 Probabilitas Rendah'
