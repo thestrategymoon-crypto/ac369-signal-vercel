@@ -1,30 +1,50 @@
-// api/analytics.js - AC369 FUSION Final Stable
+// api/analytics.js - AC369 FUSION Final (Anti Blokir)
+const FETCH_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'application/json',
+  'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7'
+};
+
+async function fetchWithRetry(url, retries = 2) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url, { headers: FETCH_HEADERS, signal: controller.signal });
+      clearTimeout(timeout);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'max-age=0, s-maxage=60');
 
-  // Fungsi bantu untuk membuat objek fallback
-  const createFallback = (symbol) => ({
-    symbol: symbol,
+  const fallback = (symbol) => ({
+    symbol,
     currentPrice: symbol === 'BTC' ? '78000.00' : '2400.00',
     probabilityScore: 50,
     confluenceSignal: 'Neutral',
     confluenceStrength: 'Rendah',
     keySignals: [{ name: 'Data pasar offline', bullish: true, active: true, weight: 0 }],
-    technicalSummary: 'Menunggu koneksi real-time...',
+    technicalSummary: 'Menunggu data real-time...',
     maStatus: { ma50: 'N/A', ma200: 'N/A', position: 'Tidak tersedia' }
   });
 
   try {
-    console.log('[Analytics] Mulai fetch...');
-    
+    console.log('[Analytics] Mulai fetch dengan User-Agent...');
     const [btc, eth] = await Promise.allSettled([
       analyzeAsset('BTCUSDT'),
       analyzeAsset('ETHUSDT')
     ]);
 
-    const btcData = btc.status === 'fulfilled' ? btc.value : createFallback('BTC');
-    const ethData = eth.status === 'fulfilled' ? eth.value : createFallback('ETH');
+    const btcData = btc.status === 'fulfilled' ? btc.value : fallback('BTC');
+    const ethData = eth.status === 'fulfilled' ? eth.value : fallback('ETH');
 
     const response = {
       timestamp: new Date().toISOString(),
@@ -33,14 +53,14 @@ export default async function handler(req, res) {
       smartMoneyNarrative: generateNarrative(btcData, ethData)
     };
 
-    console.log('[Analytics] Sukses:', response.btc.currentPrice, response.eth.currentPrice);
+    console.log(`[Analytics] BTC: ${btcData.currentPrice}, ETH: ${ethData.currentPrice}`);
     res.status(200).json(response);
   } catch (error) {
-    console.error('[Analytics] Error kritis:', error);
+    console.error('[Analytics] Error total:', error);
     res.status(200).json({
       timestamp: new Date().toISOString(),
-      btc: createFallback('BTC'),
-      eth: createFallback('ETH'),
+      btc: fallback('BTC'),
+      eth: fallback('ETH'),
       smartMoneyNarrative: 'Gangguan koneksi data.'
     });
   }
@@ -55,31 +75,24 @@ async function analyzeAsset(symbol) {
   let ma200 = 'N/A';
   let maPosition = 'Tidak tersedia';
 
+  // 1. Ambil ticker
   try {
-    // 1. Ambil ticker
-    const tickerUrl = `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`;
-    const tickerRes = await fetch(tickerUrl);
-    if (!tickerRes.ok) throw new Error(`Ticker HTTP ${tickerRes.status}`);
-    const ticker = await tickerRes.json();
-    
+    const ticker = await fetchWithRetry(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`);
     currentPrice = parseFloat(ticker.lastPrice);
     if (isNaN(currentPrice) || currentPrice <= 0) {
       currentPrice = parseFloat(ticker.weightedAvgPrice);
     }
     change24h = parseFloat(ticker.priceChangePercent) || 0;
-    if (isNaN(currentPrice)) throw new Error('Harga tidak valid');
+    if (isNaN(currentPrice)) throw new Error('Harga NaN');
+    console.log(`[${displaySymbol}] Harga: ${currentPrice}, Ubah: ${change24h}%`);
   } catch (e) {
-    console.warn(`[${displaySymbol}] Gagal ticker:`, e.message);
-    currentPrice = displaySymbol === 'BTC' ? 78000 : 2400;
-    change24h = 0;
+    console.error(`[${displaySymbol}] Gagal ticker:`, e.message);
+    throw e; // Lempar agar fallback digunakan
   }
 
   // 2. Ambil klines untuk RSI dan MA
   try {
-    const klinesUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&limit=100`;
-    const klinesRes = await fetch(klinesUrl);
-    if (!klinesRes.ok) throw new Error(`Klines HTTP ${klinesRes.status}`);
-    const klines = await klinesRes.json();
+    const klines = await fetchWithRetry(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&limit=200`);
     const closes = klines.map(k => parseFloat(k[4])).filter(v => !isNaN(v) && v > 0);
     
     if (closes.length >= 14) {
@@ -87,52 +100,31 @@ async function analyzeAsset(symbol) {
       if (isNaN(rsi)) rsi = 50;
     }
     
-    // Hitung MA50 dan MA200 dari data 1 jam (perkiraan)
     if (closes.length >= 50) {
-      const sum50 = closes.slice(-50).reduce((a,b) => a+b, 0);
-      ma50 = (sum50 / 50).toFixed(2);
+      ma50 = (closes.slice(-50).reduce((a,b) => a+b, 0) / 50).toFixed(2);
     }
     if (closes.length >= 200) {
-      const sum200 = closes.slice(-200).reduce((a,b) => a+b, 0);
-      ma200 = (sum200 / 200).toFixed(2);
+      ma200 = (closes.slice(-200).reduce((a,b) => a+b, 0) / 200).toFixed(2);
       maPosition = currentPrice > parseFloat(ma200) ? 'Above 200MA (Bull)' : 'Below 200MA (Bear)';
     }
+    console.log(`[${displaySymbol}] RSI: ${rsi.toFixed(1)}`);
   } catch (e) {
     console.warn(`[${displaySymbol}] Gagal klines:`, e.message);
   }
 
-  // 3. Hitung skor probabilitas
+  // 3. Hitung skor
   let score = 50;
   const signals = [];
-
-  if (rsi < 30) {
-    score += 20;
-    signals.push({ name: 'RSI Oversold', bullish: true, active: true, weight: 20 });
-  } else if (rsi > 70) {
-    score -= 20;
-    signals.push({ name: 'RSI Overbought', bullish: false, active: true, weight: 20 });
-  }
-
-  if (change24h > 5) {
-    score += 15;
-    signals.push({ name: 'Momentum 24h positif', bullish: true, active: true, weight: 15 });
-  } else if (change24h < -5) {
-    score -= 15;
-    signals.push({ name: 'Momentum 24h negatif', bullish: false, active: true, weight: 15 });
-  }
-
-  if (maPosition.includes('Above')) {
-    score += 10;
-    signals.push({ name: 'Above MA200', bullish: true, active: true, weight: 10 });
-  } else if (maPosition.includes('Below')) {
-    score -= 10;
-    signals.push({ name: 'Below MA200', bullish: false, active: true, weight: 10 });
-  }
+  if (rsi < 30) { score += 20; signals.push({ name: 'RSI Oversold', bullish: true, active: true, weight: 20 }); }
+  else if (rsi > 70) { score -= 20; signals.push({ name: 'RSI Overbought', bullish: false, active: true, weight: 20 }); }
+  if (change24h > 5) { score += 15; signals.push({ name: 'Momentum 24h positif', bullish: true, active: true, weight: 15 }); }
+  else if (change24h < -5) { score -= 15; signals.push({ name: 'Momentum 24h negatif', bullish: false, active: true, weight: 15 }); }
+  if (maPosition.includes('Above')) { score += 10; signals.push({ name: 'Above MA200', bullish: true, active: true, weight: 10 }); }
+  else if (maPosition.includes('Below')) { score -= 10; signals.push({ name: 'Below MA200', bullish: false, active: true, weight: 10 }); }
 
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  let confluenceSignal = 'Neutral';
-  let confluenceStrength = 'Rendah';
+  let confluenceSignal = 'Neutral', confluenceStrength = 'Rendah';
   if (score >= 70) { confluenceSignal = 'Strong Buy'; confluenceStrength = 'Tinggi'; }
   else if (score >= 60) { confluenceSignal = 'Buy'; confluenceStrength = 'Sedang'; }
   else if (score <= 30) { confluenceSignal = 'Strong Sell'; confluenceStrength = 'Tinggi'; }
@@ -142,20 +134,16 @@ async function analyzeAsset(symbol) {
     symbol: displaySymbol,
     currentPrice: currentPrice.toFixed(2),
     probabilityScore: score,
-    confluenceSignal: confluenceSignal,
-    confluenceStrength: confluenceStrength,
+    confluenceSignal,
+    confluenceStrength,
     keySignals: signals,
     technicalSummary: `RSI 1H: ${rsi.toFixed(1)} | 24h: ${change24h.toFixed(1)}%`,
-    maStatus: {
-      ma50: ma50 !== 'N/A' ? ma50 : (currentPrice * 0.95).toFixed(2),
-      ma200: ma200 !== 'N/A' ? ma200 : (currentPrice * 0.90).toFixed(2),
-      position: maPosition
-    }
+    maStatus: { ma50, ma200, position: maPosition }
   };
 }
 
 function calculateRSI(prices, period = 14) {
-  if (!prices || prices.length < period + 1) return 50;
+  if (prices.length < period + 1) return 50;
   let gains = 0, losses = 0;
   for (let i = prices.length - period; i < prices.length; i++) {
     const diff = prices[i] - prices[i - 1];
@@ -169,11 +157,8 @@ function calculateRSI(prices, period = 14) {
 }
 
 function generateNarrative(btc, eth) {
-  if (btc.probabilityScore > 60 && eth.probabilityScore > 60) 
-    return '💰 BTC & ETH momentum positif. Konfluensi sinyal beli.';
-  if (btc.probabilityScore > 60) 
-    return '📈 Bitcoin memimpin dengan sinyal beli.';
-  if (eth.probabilityScore > 60) 
-    return '💎 Ethereum unggul. Altcoin mungkin mengikuti.';
+  if (btc.probabilityScore > 60 && eth.probabilityScore > 60) return '💰 BTC & ETH momentum positif. Sinyal beli terkonfirmasi.';
+  if (btc.probabilityScore > 60) return '📈 Bitcoin memimpin dengan sinyal beli.';
+  if (eth.probabilityScore > 60) return '💎 Ethereum unggul.';
   return '📊 Pasar netral. Tunggu konfirmasi.';
 }
