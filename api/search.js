@@ -1,11 +1,60 @@
-// api/search.js - AC369 FUSION (Final Multi-API)
+// api/search.js - AC369 FUSION (Final Hybrid: Binance 1H/1D + CoinGecko 4H)
+const FETCH_TIMEOUT = 8000;
+
+async function fetchWithTimeout(url, ms = FETCH_TIMEOUT) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+    });
+    clearTimeout(timer);
+    return res.ok ? res : null;
+  } catch (e) {
+    clearTimeout(timer);
+    return null;
+  }
+}
+
+async function fetchBinanceKlines(symbol, interval, limit = 100) {
+  try {
+    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=${interval}&limit=${limit}`;
+    const res = await fetchWithTimeout(url);
+    if (!res) return [];
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data.map(c => ({
+      open: parseFloat(c[1]), high: parseFloat(c[2]), low: parseFloat(c[3]),
+      close: parseFloat(c[4]), volume: parseFloat(c[5])
+    }));
+  } catch (e) {
+    return [];
+  }
+}
+
+async function fetchCoinGeckoOHLCV(coinId, days) {
+  try {
+    const url = `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=${days}`;
+    const res = await fetchWithTimeout(url);
+    if (!res) return [];
+    const json = await res.json();
+    if (!Array.isArray(json)) return [];
+    return json.map(item => ({
+      open: item[1], high: item[2], low: item[3], close: item[4], volume: 0
+    }));
+  } catch (e) {
+    return [];
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'max-age=0, s-maxage=120');
 
   const inputSymbol = (req.query.symbol || '').toUpperCase().trim();
   if (!inputSymbol) {
-    return res.status(400).json({ error: 'Parameter ?symbol= diperlukan. Contoh: /api/search?symbol=ADA' });
+    return res.status(400).json({ error: 'Parameter ?symbol= diperlukan.' });
   }
 
   let coinId = '';
@@ -14,25 +63,23 @@ export default async function handler(req, res) {
   let change24h = 0;
   let marketCap = 0;
   let totalVolume = 0;
+  let found = false;
 
   try {
-    // ====== STRATEGI 1: COINGECKO ======
-    let found = false;
+    // ====== 1. COINGECKO: Cari ID & Harga ======
     try {
-      // 1a. Cari ID dari CoinGecko Search
       const searchUrl = `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(inputSymbol)}`;
-      const searchRes = await fetchWithTimeout(searchUrl, 5000);
-      if (searchRes && searchRes.ok) {
+      const searchRes = await fetchWithTimeout(searchUrl);
+      if (searchRes) {
         const searchData = await searchRes.json();
         const matched = searchData.coins?.find(c => c.symbol.toUpperCase() === inputSymbol);
         if (matched) {
           coinId = matched.id;
           coinName = matched.name || coinName;
 
-          // 1b. Ambil data harga
           const marketUrl = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coinId}&order=market_cap_desc&sparkline=false&price_change_percentage=24h`;
-          const marketRes = await fetchWithTimeout(marketUrl, 5000);
-          if (marketRes && marketRes.ok) {
+          const marketRes = await fetchWithTimeout(marketUrl);
+          if (marketRes) {
             const marketData = await marketRes.json();
             if (marketData && marketData.length > 0) {
               const info = marketData[0];
@@ -40,81 +87,49 @@ export default async function handler(req, res) {
               change24h = info.price_change_percentage_24h || 0;
               marketCap = info.market_cap || 0;
               totalVolume = info.total_volume || 0;
-              found = true;
+              if (currentPrice > 0) found = true;
             }
           }
         }
       }
-    } catch (e) {
-      console.warn('CoinGecko gagal, coba Binance...');
-    }
+    } catch (e) {}
 
-    // ====== STRATEGI 2: BINANCE (JIKA COINGECKO GAGAL) ======
+    // ====== 2. BINANCE FALLBACK: Harga ======
     if (!found || currentPrice === 0) {
       try {
         const tickerUrl = `https://api.binance.com/api/v3/ticker/24hr?symbol=${inputSymbol}USDT`;
-        const tickerRes = await fetchWithTimeout(tickerUrl, 5000);
-        if (tickerRes && tickerRes.ok) {
+        const tickerRes = await fetchWithTimeout(tickerUrl);
+        if (tickerRes) {
           const ticker = await tickerRes.json();
           currentPrice = parseFloat(ticker.lastPrice) || 0;
           change24h = parseFloat(ticker.priceChangePercent) || 0;
           totalVolume = parseFloat(ticker.quoteVolume) || 0;
           if (currentPrice > 0) found = true;
         }
-      } catch (e) {
-        console.warn('Binance juga gagal...');
-      }
+      } catch (e) {}
     }
 
     if (!found || currentPrice === 0) {
-      return res.status(404).json({ error: `Koin "${inputSymbol}" tidak ditemukan di CoinGecko maupun Binance.` });
+      return res.status(404).json({ error: `Koin "${inputSymbol}" tidak ditemukan.` });
     }
 
-    // ====== AMBIL OHLCV DARI COINGECKO (DENGAN FALLBACK) ======
-    let klines1h = [], klines4h = [], klines1d = [];
-    if (coinId) {
-      // CoinGecko OHLCV
-      [klines1h, klines4h, klines1d] = await Promise.all([
-        fetchCoinGeckoOHLCV(coinId, 2, inputSymbol),
-        fetchCoinGeckoOHLCV(coinId, 14, inputSymbol),
-        fetchCoinGeckoOHLCV(coinId, 100, inputSymbol)
-      ]);
-    }
+    // ====== 3. AMBIL OHLCV (HYBRID) ======
+    // 1H & 1D dari Binance (lebih stabil untuk granularity ini)
+    // 4H dari CoinGecko (lebih jarang diblokir)
+    const [klines1h, klines4h, klines1d] = await Promise.all([
+      fetchBinanceKlines(inputSymbol, '1h', 100),          // 1H
+      fetchCoinGeckoOHLCV(coinId, 14).then(r => r.length < 10 ? fetchBinanceKlines(inputSymbol, '4h', 100) : r), // 4H (fallback Binance)
+      fetchBinanceKlines(inputSymbol, '1d', 100)           // 1D
+    ]);
 
-    // Jika CoinGecko OHLCV kosong, coba Binance OHLCV
-    if (klines1d.length < 5) {
-      try {
-        const binanceKlines = await fetchBinanceKlines(inputSymbol, '1d', 100);
-        if (binanceKlines.length > klines1d.length) {
-          klines1d = binanceKlines;
-        }
-      } catch (e) {}
-    }
-    if (klines4h.length < 5) {
-      try {
-        const binanceKlines = await fetchBinanceKlines(inputSymbol, '4h', 100);
-        if (binanceKlines.length > klines4h.length) {
-          klines4h = binanceKlines;
-        }
-      } catch (e) {}
-    }
-    if (klines1h.length < 5) {
-      try {
-        const binanceKlines = await fetchBinanceKlines(inputSymbol, '1h', 100);
-        if (binanceKlines.length > klines1h.length) {
-          klines1h = binanceKlines;
-        }
-      } catch (e) {}
-    }
-
-    // ====== ANALISIS ======
+    // ====== 4. ANALISIS ======
     const tf1h = analyzeTimeframe(klines1h, '1H', currentPrice, change24h);
     const tf4h = analyzeTimeframe(klines4h, '4H', currentPrice, change24h);
     const tf1d = analyzeTimeframe(klines1d, '1D', currentPrice, change24h);
     const recommendation = generateTradeRecommendation(tf1h, tf4h, tf1d, currentPrice, change24h);
     const astrology = getAstrologySignal(new Date());
 
-    // Support & Resistance
+    // Support & Resistance dari 1D
     let support = (currentPrice * 0.95).toFixed(4);
     let resistance = (currentPrice * 1.05).toFixed(4);
     const src = klines1d.length >= 10 ? klines1d : (klines4h.length >= 10 ? klines4h : klines1h);
@@ -142,63 +157,11 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Search Fatal Error:', error.message);
-    res.status(500).json({ error: 'Terjadi kesalahan internal. Coba lagi nanti.' });
+    res.status(500).json({ error: 'Terjadi kesalahan internal.' });
   }
 }
 
-// ==================== HELPER FETCH ====================
-async function fetchWithTimeout(url, timeoutMs = 5000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json'
-      }
-    });
-    clearTimeout(timer);
-    return res;
-  } catch (e) {
-    clearTimeout(timer);
-    return null;
-  }
-}
-
-async function fetchCoinGeckoOHLCV(coinId, days, symbol) {
-  try {
-    // CoinGecko gratis hanya mendukung granularity tertentu
-    const url = `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=${days}`;
-    const res = await fetchWithTimeout(url, 8000);
-    if (!res || !res.ok) return [];
-    const json = await res.json();
-    if (!Array.isArray(json)) return [];
-    return json.map(item => ({
-      open: item[1], high: item[2], low: item[3], close: item[4], volume: 0
-    }));
-  } catch (e) {
-    return [];
-  }
-}
-
-async function fetchBinanceKlines(symbol, interval, limit) {
-  try {
-    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=${interval}&limit=${limit}`;
-    const res = await fetchWithTimeout(url, 6000);
-    if (!res || !res.ok) return [];
-    const data = await res.json();
-    if (!Array.isArray(data)) return [];
-    return data.map(c => ({
-      open: parseFloat(c[1]), high: parseFloat(c[2]), low: parseFloat(c[3]),
-      close: parseFloat(c[4]), volume: parseFloat(c[5])
-    }));
-  } catch (e) {
-    return [];
-  }
-}
-
-// ==================== ANALISIS PER TIMEFRAME ====================
+// ==================== ANALISIS ====================
 function analyzeTimeframe(ohlcv, label, currentPrice, change24h) {
   if (!ohlcv || ohlcv.length < 5) {
     return makeFallbackAnalysis(change24h);
@@ -215,16 +178,16 @@ function makeFallbackAnalysis(change24h) {
   const patterns = [];
   if (change24h > 3) patterns.push({ name: 'Momentum Naik', signal: 'bullish', probability: 55 });
   else if (change24h < -3) patterns.push({ name: 'Momentum Turun', signal: 'bearish', probability: 55 });
-  else patterns.push({ name: 'Sideways (Terbatas)', signal: 'neutral', probability: 40 });
+  else patterns.push({ name: 'Sideways', signal: 'neutral', probability: 40 });
   return {
     rsi: 'N/A',
     patterns,
-    elliottWave: { wave: 'Data terbatas', confidence: 10, description: 'Candle dari API kurang' },
+    elliottWave: { wave: 'Data terbatas', confidence: 10, description: 'Candle API kurang' },
     smc: { signal: 'Neutral', summary: 'Data tidak cukup', orderBlock: null, liquiditySweep: null, fvg: null }
   };
 }
 
-// ==================== POLA GRAFIK ====================
+// ==================== POLA ====================
 function detectAllPatterns(ohlcv) {
   const patterns = [];
   if (ohlcv.length < 3) return patterns;
@@ -236,24 +199,24 @@ function detectAllPatterns(ohlcv) {
   const range = last.high - last.low;
 
   if (prev.close < prev.open && last.close > last.open && last.open <= prev.close && last.close >= prev.open)
-    patterns.push({ name: 'Bullish Engulfing 🔥', signal: 'bullish', probability: 80 });
+    patterns.push({ name: 'Bullish Engulfing', signal: 'bullish', probability: 80 });
   if (prev.close > prev.open && last.close < last.open && last.open >= prev.close && last.close <= prev.open)
-    patterns.push({ name: 'Bearish Engulfing 🔥', signal: 'bearish', probability: 80 });
+    patterns.push({ name: 'Bearish Engulfing', signal: 'bearish', probability: 80 });
   if (lowerWick > body * 2 && upperWick < body * 0.6 && body > 0)
-    patterns.push({ name: 'Hammer (Bullish)', signal: 'bullish', probability: 75 });
+    patterns.push({ name: 'Hammer', signal: 'bullish', probability: 75 });
   if (upperWick > body * 2 && lowerWick < body * 0.6 && body > 0)
-    patterns.push({ name: 'Shooting Star (Bearish)', signal: 'bearish', probability: 75 });
+    patterns.push({ name: 'Shooting Star', signal: 'bearish', probability: 75 });
   if (range > 0 && body < range * 0.1) {
-    if (lowerWick > upperWick * 1.5) patterns.push({ name: 'Dragonfly Doji (Bullish)', signal: 'bullish', probability: 65 });
-    else if (upperWick > lowerWick * 1.5) patterns.push({ name: 'Gravestone Doji (Bearish)', signal: 'bearish', probability: 65 });
+    if (lowerWick > upperWick * 1.5) patterns.push({ name: 'Dragonfly Doji', signal: 'bullish', probability: 65 });
+    else if (upperWick > lowerWick * 1.5) patterns.push({ name: 'Gravestone Doji', signal: 'bearish', probability: 65 });
     else patterns.push({ name: 'Doji', signal: 'neutral', probability: 50 });
   }
   if (ohlcv.length >= 3) {
     const c1 = ohlcv[lastIdx - 2], c2 = ohlcv[lastIdx - 1], c3 = ohlcv[lastIdx];
     if (c1.close > c1.open && c2.close > c2.open && c3.close > c3.open && c2.close > c1.close && c3.close > c2.close)
-      patterns.push({ name: 'Three White Soldiers 🚀', signal: 'bullish', probability: 85 });
+      patterns.push({ name: 'Three White Soldiers', signal: 'bullish', probability: 85 });
     if (c1.close < c1.open && c2.close < c2.open && c3.close < c3.open && c2.close < c1.close && c3.close < c2.close)
-      patterns.push({ name: 'Three Black Crows 📉', signal: 'bearish', probability: 85 });
+      patterns.push({ name: 'Three Black Crows', signal: 'bearish', probability: 85 });
   }
   if (patterns.length === 0) {
     const change = ((last.close - prev.close) / prev.close) * 100;
@@ -264,7 +227,7 @@ function detectAllPatterns(ohlcv) {
   return patterns.slice(0, 4);
 }
 
-// ==================== ELLIOTT WAVE ====================
+// ==================== ELLIOTT ====================
 function detectElliottWave(ohlcv) {
   if (!ohlcv || ohlcv.length < 10) return { wave: 'Data kurang', confidence: 10, description: '' };
   const swings = findSwingPoints(ohlcv, 3);
@@ -278,22 +241,14 @@ function detectElliottWave(ohlcv) {
   const currentPrice = ohlcv[ohlcv.length - 1].close;
 
   if (lastHigh.price > prevHigh.price && lastLow.price > prevLow.price && currentPrice > lastLow.price) {
-    const wave1 = Math.abs((highs[1]?.price || prevHigh.price) - (lows[0]?.price || prevLow.price));
-    const wave3 = Math.abs(lastHigh.price - lastLow.price);
-    const ratio = wave1 > 0 ? wave3 / wave1 : 0;
-    let desc = 'Higher high & higher low, tren naik';
-    if (ratio > 1.5 && ratio < 1.7) desc = `Extension 1.618 (rasio ${ratio.toFixed(2)})`;
-    return { wave: 'Wave 3 (Impulsif)', confidence: 55, description: desc };
+    return { wave: 'Wave 3 (Impulsif)', confidence: 55, description: 'Tren naik terkonfirmasi' };
   }
   if (lastHigh.price < prevHigh.price && lastLow.price < prevLow.price && currentPrice < lastHigh.price) {
-    const fibRetrace = ((prevHigh.price - lastLow.price) / (prevHigh.price - prevLow.price)) * 100;
-    let desc = 'Fase koreksi';
-    if (fibRetrace > 50 && fibRetrace < 62) desc = `Retracement 61.8% (${fibRetrace.toFixed(0)}%)`;
-    return { wave: 'Wave Korektif (ABC)', confidence: 50, description: desc };
+    return { wave: 'Wave Korektif (ABC)', confidence: 50, description: 'Fase koreksi' };
   }
   const ma20 = ohlcv.slice(-20).reduce((s, c) => s + c.close, 0) / Math.min(20, ohlcv.length);
   if (currentPrice > ma20) return { wave: 'Potensi Wave 1/3', confidence: 35, description: 'Di atas MA20' };
-  return { wave: 'Konsolidasi', confidence: 25, description: 'Struktur impulsif tidak jelas' };
+  return { wave: 'Konsolidasi', confidence: 25, description: '' };
 }
 
 function findSwingPoints(ohlcv, lookback) {
@@ -341,9 +296,9 @@ function findOrderBlock(ohlcv) {
   const currentPrice = ohlcv[ohlcv.length - 1].close;
   const blockHigh = obCandle.high, blockLow = obCandle.low;
   if (isBullish && currentPrice >= blockLow * 0.995 && currentPrice <= blockHigh * 1.005)
-    return { detected: true, type: 'Demand Zone', price: blockLow, description: `Support $${blockLow.toFixed(4)}` };
+    return { detected: true, type: 'Demand Zone', description: `Support $${blockLow.toFixed(4)}` };
   if (!isBullish && currentPrice >= blockLow * 0.995 && currentPrice <= blockHigh * 1.005)
-    return { detected: true, type: 'Supply Zone', price: blockHigh, description: `Resistance $${blockHigh.toFixed(4)}` };
+    return { detected: true, type: 'Supply Zone', description: `Resistance $${blockHigh.toFixed(4)}` };
   return { detected: false };
 }
 
@@ -353,8 +308,8 @@ function findLiquiditySweep(ohlcv) {
   const recentHigh = Math.max(...range.map(c => c.high));
   const recentLow = Math.min(...range.map(c => c.low));
   const last = ohlcv[ohlcv.length - 1];
-  if (last.high > recentHigh && last.close < recentHigh) return { detected: true, direction: 'Bearish', description: `Sweep high $${recentHigh.toFixed(4)}` };
-  if (last.low < recentLow && last.close > recentLow) return { detected: true, direction: 'Bullish', description: `Sweep low $${recentLow.toFixed(4)}` };
+  if (last.high > recentHigh && last.close < recentHigh) return { detected: true, direction: 'Bearish', description: 'Sweep resistance' };
+  if (last.low < recentLow && last.close > recentLow) return { detected: true, direction: 'Bullish', description: 'Sweep support' };
   return { detected: false };
 }
 
@@ -394,10 +349,10 @@ function generateTradeRecommendation(tf1h, tf4h, tf1d, price, change24h) {
   else if (change24h < -3) { score -= 8; reasons.push('Momentum 24h negatif'); }
   score = Math.max(0, Math.min(100, score));
   let action = '⚪ HOLD (Tahan)', confidence = 'Netral', explanation = 'Sinyal campuran, pasar konsolidasi.';
-  if (score >= 75) { action = '🟢 LONG (Beli)'; confidence = 'Tinggi'; explanation = 'Konfluensi bullish kuat di semua timeframe.'; }
-  else if (score >= 60) { action = '🟢 LONG (Beli)'; confidence = 'Sedang'; explanation = 'Beberapa sinyal bullish, perlu konfirmasi.'; }
-  else if (score <= 25) { action = '🔴 SHORT (Jual)'; confidence = 'Tinggi'; explanation = 'Konfluensi bearish kuat di semua timeframe.'; }
-  else if (score <= 40) { action = '🔴 SHORT (Jual)'; confidence = 'Sedang'; explanation = 'Beberapa sinyal bearish, perlu konfirmasi.'; }
+  if (score >= 75) { action = '🟢 LONG (Beli)'; confidence = 'Tinggi'; explanation = 'Konfluensi bullish kuat.'; }
+  else if (score >= 60) { action = '🟢 LONG (Beli)'; confidence = 'Sedang'; explanation = 'Beberapa sinyal bullish.'; }
+  else if (score <= 25) { action = '🔴 SHORT (Jual)'; confidence = 'Tinggi'; explanation = 'Konfluensi bearish kuat.'; }
+  else if (score <= 40) { action = '🔴 SHORT (Jual)'; confidence = 'Sedang'; explanation = 'Beberapa sinyal bearish.'; }
   return { action, confidence, score, explanation, reasons: reasons.slice(0, 6), summary: `Skor ${score}/100 → ${action} (${confidence}). ${explanation}` };
 }
 
@@ -428,7 +383,12 @@ function getAstrologySignal(date) {
     'Last Quarter': { signal: '🔻 Pelepasan', interpretation: 'Distribusi, tekanan jual' },
     'Waning Crescent': { signal: '💤 Akhir', interpretation: 'Konsolidasi, volume rendah' }
   };
-  return { moonPhase: phase.name, illumination: phase.illumination, signal: signals[phase.name]?.signal || 'Neutral', interpretation: signals[phase.name]?.interpretation || '' };
+  return {
+    moonPhase: phase.name,
+    illumination: phase.illumination,
+    signal: signals[phase.name]?.signal || 'Neutral',
+    interpretation: signals[phase.name]?.interpretation || ''
+  };
 }
 
 function getMoonPhase(date) {
