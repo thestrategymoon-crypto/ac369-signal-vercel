@@ -16,7 +16,7 @@
     h1 { font-size: 1.8rem; color: #a0a0ff; margin-bottom: 4px; }
     h2 { font-size: 1.2rem; color: #b0b0ff; margin: 20px 0 12px; border-bottom: 1px solid #2a2a4a; padding-bottom: 6px; }
     .subtitle { color: #888; margin-bottom: 16px; font-size: 0.85rem; }
-    .refresh-btn {
+    .refresh-btn, .search-btn {
       background: #2a2a5a;
       border: none;
       color: white;
@@ -26,6 +26,23 @@
       margin-bottom: 16px;
       cursor: pointer;
       border: 1px solid #4a4a8a;
+    }
+    .search-btn { background: #4a4aff; }
+    .search-box {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .search-box input {
+      flex: 1;
+      min-width: 150px;
+      padding: 10px 16px;
+      border-radius: 30px;
+      border: 1px solid #4a4a8a;
+      background: #12122a;
+      color: white;
+      font-size: 1rem;
     }
     .grid {
       display: grid;
@@ -99,11 +116,7 @@
       color: #e0e0ff;
       font-weight: 600;
     }
-    .scan-btn {
-      background: #3a3a8a;
-      padding: 12px 24px;
-      font-size: 1.1rem;
-    }
+    .scan-btn { background: #3a3a8a; padding: 12px 24px; font-size: 1.1rem; }
   </style>
 </head>
 <body>
@@ -111,6 +124,14 @@
   <div class="subtitle">Analisis Probabilitas • Pola Grafik • Elliott Wave • SMC • Financial Astrology</div>
   
   <button class="refresh-btn" onclick="refreshAll()">🔄 Refresh Semua Data</button>
+
+  <!-- SEARCH PANEL -->
+  <h2>🔍 Cari & Analisis Altcoin</h2>
+  <div class="search-box">
+    <input type="text" id="search-input" placeholder="Ketik simbol koin (contoh: ADA, SOL, AVAX)...">
+    <button class="search-btn" onclick="searchCoin()">🔬 Analisis Sekarang</button>
+  </div>
+  <div id="search-result" style="margin-bottom: 20px;"></div>
 
   <!-- SECTION 1: Analisis BTC & ETH -->
   <h2>📊 Analisis Probabilitas & Konfluensi</h2>
@@ -207,45 +228,69 @@
   <!-- SECTION 5: Scanner 600+ -->
   <h2>🔍 Scanner 600+ Altcoin (Elliott Wave, SMC, Astro)</h2>
   <div style="margin: 20px 0;">
-    <button class="refresh-btn scan-btn" onclick="performFullScan()">
-      🚀 Mulai Pemindaian Penuh
-    </button>
+    <button class="refresh-btn scan-btn" onclick="performFullScan()">🚀 Mulai Pemindaian Penuh</button>
     <span id="scan-status" style="margin-left: 15px; color: #aaa;"></span>
   </div>
   <div style="overflow-x: auto; margin-top: 20px;">
     <table id="scan-results-table" style="display: none;">
       <thead>
         <tr>
-          <th>#</th>
-          <th>Koin</th>
-          <th>Harga</th>
-          <th>24h %</th>
-          <th>Pola Grafik</th>
-          <th>Elliott Wave</th>
-          <th>SMC</th>
-          <th>Astro</th>
-          <th>Prob.</th>
-          <th>Alasan</th>
+          <th>#</th><th>Koin</th><th>Harga</th><th>24h %</th><th>Pola Grafik</th><th>Elliott Wave</th><th>SMC</th><th>Astro</th><th>Prob.</th><th>Alasan</th>
         </tr>
       </thead>
       <tbody id="scan-results-body"></tbody>
     </table>
   </div>
 
-  <div class="footer" id="footer">
-    AC369 FUSION v9.0 • Data Real-time
-  </div>
+  <div class="footer" id="footer">AC369 FUSION v9.0 • Data Real-time</div>
 
   <script>
     // ==================== UTILS ====================
     function updateTimestamp() {
       var now = new Date();
-      document.getElementById('footer').innerHTML = 'AC369 FUSION v9.0 • Update: ' + now.toLocaleTimeString('id-ID') + ' • Data Real-time';
+      document.getElementById('footer').innerHTML = 'AC369 FUSION v9.0 • Update: ' + now.toLocaleTimeString('id-ID');
     }
 
     async function refreshAll() {
       await Promise.all([fetchAnalytics(), fetchMacro(), fetchAltcoins(), fetchRecommendation()]);
       updateTimestamp();
+    }
+
+    // ==================== SEARCH ====================
+    async function searchCoin() {
+      var input = document.getElementById('search-input');
+      var resultDiv = document.getElementById('search-result');
+      var symbol = input.value.trim().toUpperCase();
+      if (!symbol) { resultDiv.innerHTML = '<div class="error">Masukkan simbol koin.</div>'; return; }
+      resultDiv.innerHTML = '<div class="loading">🔬 Menganalisis ' + symbol + '...</div>';
+      try {
+        var res = await fetch('/api/search?symbol=' + symbol);
+        var data = await res.json();
+        if (data.error) { resultDiv.innerHTML = '<div class="error">' + data.error + '</div>'; return; }
+        
+        var patternsHtml = '';
+        (data.chartPatterns || []).forEach(function(p) {
+          var c = p.signal === 'bullish' ? '#7bffb1' : p.signal === 'bearish' ? '#ff7b7b' : '#ccc';
+          patternsHtml += '<span style="color:' + c + '; display:inline-block; margin:2px 4px; padding:2px 8px; background:#1a1a3a; border-radius:10px;">' + p.name + '</span>';
+        });
+
+        resultDiv.innerHTML = 
+          '<div class="card" style="border: 2px solid #4a4aff;">' +
+            '<h3>🔬 ' + data.symbol + ' — ' + data.name + '</h3>' +
+            '<div class="signal-row"><span><b>Harga:</b></span> <strong>$' + (data.price || 0).toLocaleString() + '</strong></div>' +
+            '<div class="signal-row"><span><b>24h:</b></span> <span style="color:' + (data.change24h >= 0 ? '#7bffb1' : '#ff7b7b') + '">' + (data.change24h || 0).toFixed(2) + '%</span></div>' +
+            '<div class="signal-row"><span><b>RSI:</b></span> ' + (data.rsi || 'N/A') + '</div>' +
+            '<div class="signal-row"><span><b>Support:</b></span> $' + (data.support || '—') + '</div>' +
+            '<div class="signal-row"><span><b>Resistance:</b></span> $' + (data.resistance || '—') + '</div>' +
+            '<div class="signal-row"><span><b>Volume:</b></span> ' + (data.volumeNote || 'Normal') + '</div>' +
+            '<div style="margin-top:12px;"><b>Pola Grafik:</b></div><div>' + (patternsHtml || 'Tidak terdeteksi') + '</div>' +
+            '<div style="margin-top:12px;"><b>Elliott Wave:</b> ' + (data.elliottWave ? data.elliottWave.wave + ' (' + data.elliottWave.confidence + '%)<br><small>' + data.elliottWave.description + '</small>' : 'N/A') + '</div>' +
+            '<div style="margin-top:12px;"><b>SMC:</b> <span style="color:' + (data.smc && data.smc.signal === 'Bullish' ? '#7bffb1' : data.smc && data.smc.signal === 'Bearish' ? '#ff7b7b' : '#ccc') + '">' + (data.smc ? data.smc.signal : 'N/A') + '</span><br><small>' + (data.smc ? data.smc.summary : '') + '</small></div>' +
+            '<div style="margin-top:12px;"><b>Astrologi:</b> ' + (data.astrology ? data.astrology.signal + ' (' + data.astrology.moonPhase + ' ' + data.astrology.illumination + '%)<br><small>' + data.astrology.interpretation + '</small>' : 'N/A') + '</div>' +
+          '</div>';
+      } catch (e) {
+        resultDiv.innerHTML = '<div class="error">Gagal terhubung ke server.</div>';
+      }
     }
 
     // ==================== ANALYTICS ====================
@@ -341,12 +386,10 @@
         document.getElementById('swing-plan').innerHTML = 'Belum ada rencana.';
         document.getElementById('watchlist').innerHTML = 'Tidak ada koin.';
         document.getElementById('full-narrative').innerHTML = '<div>💬 ' + (data.marketNarrative || 'Tidak ada narasi.') + '</div>';
-      } catch (e) {
-        console.error(e);
-      }
+      } catch (e) { console.error(e); }
     }
 
-    // ==================== FULL SCANNER (FASE 9) ====================
+    // ==================== FULL SCANNER ====================
     async function performFullScan() {
       var btn = document.querySelector('.scan-btn');
       var status = document.getElementById('scan-status');
