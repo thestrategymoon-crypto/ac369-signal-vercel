@@ -255,7 +255,6 @@
       await Promise.all([fetchAnalytics(), fetchMacro(), fetchAltcoins(), fetchRecommendation()]);
       updateTimestamp();
     }
-
     // ==================== SEARCH (MULTI-TIMEFRAME) ====================
     async function searchCoin() {
       var input = document.getElementById('search-input');
@@ -287,6 +286,7 @@
               '</div>';
           }
         }
+
 
         var rec = data.recommendation || {};
         var recColor = rec.action.includes('LONG') ? '#7bffb1' : rec.action.includes('SHORT') ? '#ff7b7b' : '#ffb87b';
