@@ -1,16 +1,40 @@
-// api/analytics.js — AC369 FUSION v10.1
-// FIXED: RSI kalkulasi real (bukan default 50), MA real, semua indikator akurat
+// api/analytics.js — AC369 FUSION v10.2
+// FIXED: Response format {btc:{}, eth:{}, smartMoneyNarrative}
+// FIXED: RSI Wilder's smoothing, MA real values, MACD proper calculation
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { symbol = 'BTCUSDT', interval = '1h', limit = '200' } = req.query;
+  try {
+    // Fetch BTC dan ETH bersamaan
+    const [btcData, ethData] = await Promise.all([
+      analyzeAsset('BTCUSDT'),
+      analyzeAsset('ETHUSDT'),
+    ]);
+
+    // Generate Smart Money Narrative
+    const narrative = generateSmartMoneyNarrative(btcData, ethData);
+
+    res.setHeader('Cache-Control', 's-maxage=30');
+    return res.status(200).json({
+      btc: btcData,
+      eth: ethData,
+      smartMoneyNarrative: narrative,
+      timestamp: Date.now(),
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ── ANALYZE ONE ASSET ─────────────────────────────────────────────────────
+async function analyzeAsset(symbol) {
+  const ticker = symbol.replace('USDT', '');
 
   try {
-    // ── FETCH MULTI-TIMEFRAME DATA IN PARALLEL ────────────────────
-    const [k1h, k4h, k1d, ticker, depth, funding] = await Promise.allSettled([
+    const [k1h, k4h, k1d, tickerRes, depthRes, fundingRes] = await Promise.allSettled([
       fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=200`, { signal: AbortSignal.timeout(10000) }).then(r => r.json()),
       fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=200`, { signal: AbortSignal.timeout(10000) }).then(r => r.json()),
       fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=1d&limit=100`, { signal: AbortSignal.timeout(10000) }).then(r => r.json()),
@@ -19,340 +43,264 @@ export default async function handler(req, res) {
       fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`, { signal: AbortSignal.timeout(8000) }).then(r => r.json()),
     ]);
 
-    const parseK = raw => Array.isArray(raw) ? raw.map(k => ({
-      t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5]
-    })) : [];
-
+    const parseK = raw => Array.isArray(raw) ? raw.map(k => ({ t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5] })) : [];
     const K1h = k1h.status === 'fulfilled' ? parseK(k1h.value) : [];
     const K4h = k4h.status === 'fulfilled' ? parseK(k4h.value) : [];
     const K1d = k1d.status === 'fulfilled' ? parseK(k1d.value) : [];
 
     if (!K1h.length && !K4h.length) throw new Error('No candle data');
 
-    // ── MATH FUNCTIONS ────────────────────────────────────────────
-    const closes1h = K1h.map(k => k.c);
-    const closes4h = K4h.map(k => k.c);
-    const closes1d = K1d.map(k => k.c);
-    const currentPrice = closes1h.length ? closes1h[closes1h.length - 1] : (closes4h[closes4h.length - 1] || 0);
+    const c1h = K1h.map(k => k.c);
+    const c4h = K4h.map(k => k.c);
+    const c1d = K1d.map(k => k.c);
+    const currentPrice = c1h.length ? c1h[c1h.length - 1] : (c4h[c4h.length - 1] || 0);
 
-    // EMA — proper calculation
-    const calcEMA = (closes, period) => {
-      if (!closes || closes.length < period) return closes ? closes[closes.length - 1] : 0;
-      const k = 2 / (period + 1);
-      let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
-      for (let i = period; i < closes.length; i++) ema = closes[i] * k + ema * (1 - k);
-      return ema;
+    // ── MATH ────────────────────────────────────────────────────
+    const EMA = (c, p) => {
+      if (!c || c.length < p) return c ? c[c.length - 1] || 0 : 0;
+      const k = 2 / (p + 1);
+      let e = c.slice(0, p).reduce((a, b) => a + b, 0) / p;
+      for (let i = p; i < c.length; i++) e = c[i] * k + e * (1 - k);
+      return e;
     };
 
-    // SMA
-    const calcSMA = (closes, period) => {
-      if (!closes || closes.length < period) return closes ? closes[closes.length - 1] : 0;
-      return closes.slice(-period).reduce((a, b) => a + b, 0) / period;
+    const SMA = (c, p) => {
+      if (!c || c.length < p) return c ? c[c.length - 1] || 0 : 0;
+      return c.slice(-p).reduce((a, b) => a + b, 0) / p;
     };
 
-    // RSI — proper Wilder's smoothing
-    const calcRSI = (closes, period = 14) => {
-      if (!closes || closes.length < period + 1) return 50;
+    // RSI dengan Wilder's smoothing yang benar
+    const RSI = (c, p = 14) => {
+      if (!c || c.length < p + 1) return 50;
       let gains = 0, losses = 0;
-      // Initial average
-      for (let i = 1; i <= period; i++) {
-        const d = closes[i] - closes[i - 1];
+      for (let i = 1; i <= p; i++) {
+        const d = c[i] - c[i - 1];
         if (d >= 0) gains += d; else losses -= d;
       }
-      let avgGain = gains / period;
-      let avgLoss = losses / period;
-      // Wilder's smoothing for the rest
-      for (let i = period + 1; i < closes.length; i++) {
-        const d = closes[i] - closes[i - 1];
-        const g = d >= 0 ? d : 0;
-        const l = d < 0 ? -d : 0;
-        avgGain = (avgGain * (period - 1) + g) / period;
-        avgLoss = (avgLoss * (period - 1) + l) / period;
+      let ag = gains / p, al = losses / p;
+      for (let i = p + 1; i < c.length; i++) {
+        const d = c[i] - c[i - 1];
+        ag = (ag * (p - 1) + (d >= 0 ? d : 0)) / p;
+        al = (al * (p - 1) + (d < 0 ? -d : 0)) / p;
       }
-      if (avgLoss === 0) return 100;
-      const rs = avgGain / avgLoss;
-      return parseFloat((100 - 100 / (1 + rs)).toFixed(2));
+      if (al === 0) return 100;
+      return parseFloat((100 - 100 / (1 + ag / al)).toFixed(2));
     };
 
-    // MACD
-    const calcMACD = (closes) => {
-      const ema12 = calcEMA(closes, 12);
-      const ema26 = calcEMA(closes, 26);
-      const macdLine = ema12 - ema26;
-      // Signal: 9-period EMA of MACD values
-      const macdValues = [];
-      const k = 2 / (26 + 1);
-      let e26 = closes.slice(0, 26).reduce((a, b) => a + b, 0) / 26;
-      const k12 = 2 / (12 + 1);
-      let e12 = closes.slice(0, 12).reduce((a, b) => a + b, 0) / 12;
-      for (let i = 26; i < closes.length; i++) {
-        e12 = closes[i] * k12 + e12 * (1 - k12);
-        e26 = closes[i] * k + e26 * (1 - k);
-        macdValues.push(e12 - e26);
+    const ATR = (K, p = 14) => {
+      if (K.length < 2) return 0;
+      const trs = K.slice(1).map((k, i) => Math.max(k.h - k.l, Math.abs(k.h - K[i].c), Math.abs(k.l - K[i].c)));
+      return trs.slice(-p).reduce((a, b) => a + b, 0) / Math.min(p, trs.length);
+    };
+
+    const BB = (c, p = 20) => {
+      if (!c || c.length < p) return { upper: 0, lower: 0, mid: 0, width: 0, position: 50 };
+      const sl = c.slice(-p);
+      const m = sl.reduce((a, b) => a + b, 0) / p;
+      const sd = Math.sqrt(sl.reduce((s, v) => s + (v - m) ** 2, 0) / p);
+      const upper = m + 2 * sd, lower = m - 2 * sd;
+      return {
+        upper: parseFloat(upper.toFixed(6)),
+        lower: parseFloat(lower.toFixed(6)),
+        mid: parseFloat(m.toFixed(6)),
+        width: parseFloat((sd > 0 ? (4 * sd / m) * 100 : 0).toFixed(2)),
+        position: parseFloat(sd > 0 ? ((c[c.length - 1] - lower) / (4 * sd) * 100).toFixed(1) : '50'),
+      };
+    };
+
+    const MACD = (c) => {
+      if (!c || c.length < 35) return { macd: 0, signal: 0, histogram: 0, bullish: false, bearish: false, crossUp: false, crossDown: false };
+      const k12 = 2 / 13, k26 = 2 / 27, k9 = 2 / 10;
+      let e12 = c.slice(0, 12).reduce((a, b) => a + b, 0) / 12;
+      let e26 = c.slice(0, 26).reduce((a, b) => a + b, 0) / 26;
+      const macdVals = [];
+      for (let i = 12; i < c.length; i++) { e12 = c[i] * k12 + e12 * (1 - k12); }
+      e12 = c.slice(0, 12).reduce((a, b) => a + b, 0) / 12;
+      for (let i = 26; i < c.length; i++) {
+        e12 = c[i] * k12 + e12 * (1 - k12);
+        e26 = c[i] * k26 + e26 * (1 - k26);
+        macdVals.push(e12 - e26);
       }
-      const signal = macdValues.length >= 9 ? calcEMA(macdValues, 9) : macdValues[macdValues.length - 1] || 0;
-      const histogram = (macdValues[macdValues.length - 1] || macdLine) - signal;
+      let sig = macdVals.slice(0, 9).reduce((a, b) => a + b, 0) / 9;
+      for (let i = 9; i < macdVals.length; i++) sig = macdVals[i] * k9 + sig * (1 - k9);
+      const macdLine = macdVals[macdVals.length - 1];
+      const prevMacd = macdVals[macdVals.length - 2] || macdLine;
+      const histogram = macdLine - sig;
+      const prevHist = prevMacd - sig;
       return {
         macd: parseFloat(macdLine.toFixed(6)),
-        signal: parseFloat(signal.toFixed(6)),
+        signal: parseFloat(sig.toFixed(6)),
         histogram: parseFloat(histogram.toFixed(6)),
-        bullish: histogram > 0 && macdLine > 0,
-        bearish: histogram < 0 && macdLine < 0,
-        crossUp: histogram > 0 && macdValues.length >= 2 && (macdValues[macdValues.length - 2] - signal) < 0,
-        crossDown: histogram < 0 && macdValues.length >= 2 && (macdValues[macdValues.length - 2] - signal) > 0,
+        bullish: macdLine > 0 && histogram > 0,
+        bearish: macdLine < 0 && histogram < 0,
+        crossUp: histogram > 0 && prevHist <= 0,
+        crossDown: histogram < 0 && prevHist >= 0,
       };
     };
 
-    // ATR
-    const calcATR = (K, period = 14) => {
-      if (K.length < 2) return 0;
-      const trs = K.slice(1).map((k, i) =>
-        Math.max(k.h - k.l, Math.abs(k.h - K[i].c), Math.abs(k.l - K[i].c))
-      );
-      return trs.slice(-period).reduce((a, b) => a + b, 0) / Math.min(period, trs.length);
-    };
+    // ── CALCULATE INDICATORS ────────────────────────────────────
+    const rsi1h = RSI(c1h, 14);
+    const rsi4h = RSI(c4h, 14);
+    const rsi1d = RSI(c1d, 14);
 
-    // Bollinger Bands
-    const calcBB = (closes, period = 20) => {
-      const slice = closes.slice(-period);
-      if (slice.length < period) return { upper: 0, lower: 0, mid: 0, width: 0 };
-      const mid = slice.reduce((a, b) => a + b, 0) / period;
-      const std = Math.sqrt(slice.reduce((s, v) => s + (v - mid) ** 2, 0) / period);
-      return {
-        upper: parseFloat((mid + 2 * std).toFixed(6)),
-        lower: parseFloat((mid - 2 * std).toFixed(6)),
-        mid: parseFloat(mid.toFixed(6)),
-        width: parseFloat(((4 * std / mid) * 100).toFixed(2)),
-        position: parseFloat(((closes[closes.length - 1] - (mid - 2 * std)) / (4 * std) * 100).toFixed(1)),
-      };
-    };
+    const ema9_1h = EMA(c1h, 9);
+    const ema21_1h = EMA(c1h, 21);
+    const ema50_1h = EMA(c1h, 50);
+    const sma200_1h = SMA(c1h, Math.min(200, c1h.length));
 
-    // Stochastic RSI
-    const calcStochRSI = (closes, period = 14) => {
-      if (closes.length < period + 14) return { k: 50, d: 50 };
-      const rsiValues = [];
-      for (let i = period; i <= closes.length; i++) {
-        rsiValues.push(calcRSI(closes.slice(0, i), period));
-      }
-      const recent = rsiValues.slice(-period);
-      const min = Math.min(...recent);
-      const max = Math.max(...recent);
-      const stochK = max === min ? 50 : ((rsiValues[rsiValues.length - 1] - min) / (max - min)) * 100;
-      const stochD = rsiValues.slice(-3).reduce((a, b) => a + b, 0) / 3;
-      return { k: parseFloat(stochK.toFixed(2)), d: parseFloat(stochD.toFixed(2)) };
-    };
+    const ema20_4h = EMA(c4h, 20);
+    const ema50_4h = EMA(c4h, 50);
+    const ema200_4h = EMA(c4h, Math.min(200, c4h.length));
 
-    // Volume analysis
-    const calcVolumeSignal = (K) => {
-      if (K.length < 20) return { trend: 'neutral', ratio: 1 };
-      const avgVol = K.slice(-20, -1).reduce((s, k) => s + k.v, 0) / 19;
-      const currVol = K[K.length - 1].v;
-      const ratio = currVol / avgVol;
-      const trend = ratio > 2 ? 'very_high' : ratio > 1.5 ? 'high' : ratio > 0.8 ? 'normal' : 'low';
-      return { trend, ratio: parseFloat(ratio.toFixed(2)) };
-    };
+    const ema50_1d = EMA(c1d, Math.min(50, c1d.length));
+    const ema200_1d = EMA(c1d, Math.min(200, c1d.length));
 
-    // Pivot Points (Classic)
-    const calcPivots = (K) => {
-      if (!K.length) return null;
-      const prev = K[K.length - 2] || K[K.length - 1];
-      const H = prev.h, L = prev.l, C = prev.c;
-      const P = (H + L + C) / 3;
-      return {
-        P: parseFloat(P.toFixed(6)),
-        R1: parseFloat((2 * P - L).toFixed(6)),
-        R2: parseFloat((P + (H - L)).toFixed(6)),
-        R3: parseFloat((H + 2 * (P - L)).toFixed(6)),
-        S1: parseFloat((2 * P - H).toFixed(6)),
-        S2: parseFloat((P - (H - L)).toFixed(6)),
-        S3: parseFloat((L - 2 * (H - P)).toFixed(6)),
-      };
-    };
+    const bb4h = BB(c4h, 20);
+    const atr4h = ATR(K4h, 14);
+    const macd4h = MACD(c4h);
+    const macd1d = MACD(c1d);
 
-    // ── CALCULATE ALL INDICATORS ──────────────────────────────────
-    // 1H indicators
-    const rsi1h = closes1h.length >= 15 ? calcRSI(closes1h, 14) : 50;
-    const ema9_1h = closes1h.length >= 9 ? calcEMA(closes1h, 9) : currentPrice;
-    const ema21_1h = closes1h.length >= 21 ? calcEMA(closes1h, 21) : currentPrice;
-    const ema50_1h = closes1h.length >= 50 ? calcEMA(closes1h, 50) : currentPrice;
-    const macd1h = closes1h.length >= 35 ? calcMACD(closes1h) : { macd: 0, signal: 0, histogram: 0, bullish: false, bearish: false };
-    const bb1h = closes1h.length >= 20 ? calcBB(closes1h) : { upper: 0, lower: 0, mid: 0, width: 0, position: 50 };
-    const atr1h = K1h.length >= 15 ? calcATR(K1h) : 0;
-    const vol1h = calcVolumeSignal(K1h);
-    const stochRsi1h = calcStochRSI(closes1h);
-    const sma200_1h = closes1h.length >= 200 ? calcSMA(closes1h, 200) : calcSMA(closes1h, closes1h.length);
+    // ── TREND SCORING ────────────────────────────────────────────
+    const ts1h = (currentPrice > ema9_1h ? 1 : -1) + (currentPrice > ema21_1h ? 1 : -1) + (currentPrice > ema50_1h ? 1 : -1) + (macd4h.bullish ? 0.5 : -0.5) + (rsi1h > 50 ? 0.5 : -0.5);
+    const ts4h = (currentPrice > ema20_4h ? 2 : -2) + (currentPrice > ema50_4h ? 2 : -2) + (currentPrice > ema200_4h ? 2 : -2) + (macd4h.bullish ? 1 : -1) + (rsi4h > 50 ? 0.5 : -0.5);
+    const ts1d = (currentPrice > ema50_1d ? 2 : -2) + (currentPrice > ema200_1d ? 2 : -2) + (macd1d.bullish ? 1 : -1) + (rsi1d > 50 ? 0.5 : -0.5);
 
-    // 4H indicators
-    const rsi4h = closes4h.length >= 15 ? calcRSI(closes4h, 14) : 50;
-    const ema20_4h = closes4h.length >= 20 ? calcEMA(closes4h, 20) : currentPrice;
-    const ema50_4h = closes4h.length >= 50 ? calcEMA(closes4h, 50) : currentPrice;
-    const ema200_4h = closes4h.length >= 200 ? calcEMA(closes4h, 200) : calcEMA(closes4h, closes4h.length);
-    const macd4h = closes4h.length >= 35 ? calcMACD(closes4h) : { macd: 0, signal: 0, histogram: 0, bullish: false, bearish: false };
-    const bb4h = closes4h.length >= 20 ? calcBB(closes4h) : { upper: 0, lower: 0, mid: 0, width: 0, position: 50 };
-    const atr4h = K4h.length >= 15 ? calcATR(K4h) : 0;
-    const pivots4h = K4h.length >= 2 ? calcPivots(K4h) : null;
+    const getTrend = (s, t) => s > t ? 'BULLISH' : s > 0 ? 'BULLISH_WEAK' : s < -t ? 'BEARISH' : s < 0 ? 'BEARISH_WEAK' : 'NEUTRAL';
+    const trend1h = getTrend(ts1h, 2);
+    const trend4h = getTrend(ts4h, 3);
+    const trend1d = getTrend(ts1d, 2);
+    const overallScore = ts1h * 0.2 + ts4h * 0.4 + ts1d * 0.4;
+    const overallTrend = getTrend(overallScore, 2);
 
-    // 1D indicators
-    const rsi1d = closes1d.length >= 15 ? calcRSI(closes1d, 14) : 50;
-    const ema50_1d = closes1d.length >= 50 ? calcEMA(closes1d, 50) : currentPrice;
-    const ema200_1d = closes1d.length >= 100 ? calcEMA(closes1d, Math.min(200, closes1d.length)) : currentPrice;
-    const macd1d = closes1d.length >= 35 ? calcMACD(closes1d) : { macd: 0, signal: 0, histogram: 0, bullish: false, bearish: false };
-    const atr1d = K1d.length >= 15 ? calcATR(K1d) : 0;
-
-    // ── TREND DETERMINATION ───────────────────────────────────────
-    const trendScore1h = (currentPrice > ema9_1h ? 1 : -1) + (currentPrice > ema21_1h ? 1 : -1) + (currentPrice > ema50_1h ? 1 : -1) + (macd1h.bullish ? 1 : -1) + (rsi1h > 50 ? 0.5 : -0.5);
-    const trendScore4h = (currentPrice > ema20_4h ? 1.5 : -1.5) + (currentPrice > ema50_4h ? 2 : -2) + (currentPrice > ema200_4h ? 2 : -2) + (macd4h.bullish ? 1 : -1) + (rsi4h > 50 ? 0.5 : -0.5);
-    const trendScore1d = (currentPrice > ema50_1d ? 2 : -2) + (currentPrice > ema200_1d ? 2 : -2) + (macd1d.bullish ? 1 : -1) + (rsi1d > 50 ? 0.5 : -0.5);
-
-    const getTrend = (score, thresholds = [2, 0]) => {
-      if (score > thresholds[0]) return 'BULLISH';
-      if (score > thresholds[1]) return 'BULLISH_WEAK';
-      if (score < -thresholds[0]) return 'BEARISH';
-      if (score < -thresholds[1]) return 'BEARISH_WEAK';
-      return 'NEUTRAL';
-    };
-
-    const trend1h = getTrend(trendScore1h, [2, 0.5]);
-    const trend4h = getTrend(trendScore4h, [3, 1]);
-    const trend1d = getTrend(trendScore1d, [2, 0.5]);
-
-    // Overall trend (weighted)
-    const overallScore = trendScore1h * 0.2 + trendScore4h * 0.4 + trendScore1d * 0.4;
-    const overallTrend = getTrend(overallScore, [2, 0.5]);
-
-    // MA Signal (1H)
-    const maSignal = {
-      ema9: parseFloat(ema9_1h.toFixed(6)),
-      ema21: parseFloat(ema21_1h.toFixed(6)),
-      ema50: parseFloat(ema50_1h.toFixed(6)),
-      sma200: parseFloat(sma200_1h.toFixed(6)),
-      crossSignal: ema9_1h > ema21_1h ? (ema21_1h > ema50_1h ? 'GOLDEN CROSS BULLISH' : 'EMA9>EMA21') : 'EMA9<EMA21',
-      trend: currentPrice > sma200_1h ? 'ABOVE MA200' : 'BELOW MA200',
-    };
-
-    // ── SUPPORT & RESISTANCE ──────────────────────────────────────
-    const findSR = (K, lookback = 5) => {
-      const highs = [], lows = [];
-      for (let i = lookback; i < K.length - lookback; i++) {
+    // ── SUPPORT/RESISTANCE ───────────────────────────────────────
+    const findSR = (K, lb = 5) => {
+      const hh = [], ll = [];
+      for (let i = lb; i < K.length - lb; i++) {
         let isH = true, isL = true;
-        for (let j = i - lookback; j <= i + lookback; j++) {
+        for (let j = i - lb; j <= i + lb; j++) {
           if (j === i) continue;
           if (K[j].h >= K[i].h) isH = false;
           if (K[j].l <= K[i].l) isL = false;
         }
-        if (isH) highs.push(K[i].h);
-        if (isL) lows.push(K[i].l);
+        if (isH) hh.push(K[i].h);
+        if (isL) ll.push(K[i].l);
       }
-      const nearR = highs.filter(h => h > currentPrice).sort((a, b) => a - b).slice(0, 3);
-      const nearS = lows.filter(l => l < currentPrice).sort((a, b) => b - a).slice(0, 3);
-      return { resistance: nearR, support: nearS };
+      return {
+        resistance: hh.filter(h => h > currentPrice).sort((a, b) => a - b).slice(0, 2),
+        support: ll.filter(l => l < currentPrice).sort((a, b) => b - a).slice(0, 2),
+      };
     };
 
-    const sr4h = K4h.length >= 10 ? findSR(K4h, 5) : { resistance: [], support: [] };
+    const sr4h = K4h.length >= 15 ? findSR(K4h, 5) : { resistance: [], support: [] };
     const sr1d = K1d.length >= 10 ? findSR(K1d, 3) : { resistance: [], support: [] };
+    const nearestSupport = sr1d.support[0] || sr4h.support[0] || currentPrice * 0.95;
+    const nearestResistance = sr1d.resistance[0] || sr4h.resistance[0] || currentPrice * 1.05;
 
-    const strongestSupport = sr1d.support[0] || sr4h.support[0] || currentPrice * 0.95;
-    const strongestResistance = sr1d.resistance[0] || sr4h.resistance[0] || currentPrice * 1.05;
+    // ── PIVOT POINTS ─────────────────────────────────────────────
+    let pivots = null;
+    if (K4h.length >= 2) {
+      const prev = K4h[K4h.length - 2];
+      const P = (prev.h + prev.l + prev.c) / 3;
+      pivots = {
+        P: parseFloat(P.toFixed(6)),
+        R1: parseFloat((2 * P - prev.l).toFixed(6)),
+        R2: parseFloat((P + prev.h - prev.l).toFixed(6)),
+        R3: parseFloat((prev.h + 2 * (P - prev.l)).toFixed(6)),
+        S1: parseFloat((2 * P - prev.h).toFixed(6)),
+        S2: parseFloat((P - (prev.h - prev.l)).toFixed(6)),
+        S3: parseFloat((prev.l - 2 * (prev.h - P)).toFixed(6)),
+      };
+    }
 
-    // ── PROBABILITAS SCORE ────────────────────────────────────────
+    // ── PROBABILITY SCORE ────────────────────────────────────────
     let bullScore = 0, bearScore = 0;
 
-    // Trend alignment (40%)
-    if (trend1d === 'BULLISH') bullScore += 15; else if (trend1d === 'BEARISH') bearScore += 15;
-    else if (trend1d === 'BULLISH_WEAK') bullScore += 7; else bearScore += 7;
-    if (trend4h === 'BULLISH') bullScore += 12; else if (trend4h === 'BEARISH') bearScore += 12;
-    else if (trend4h === 'BULLISH_WEAK') bullScore += 5; else bearScore += 5;
-    if (trend1h === 'BULLISH') bullScore += 8; else if (trend1h === 'BEARISH') bearScore += 8;
-    else if (trend1h === 'BULLISH_WEAK') bullScore += 3; else bearScore += 3;
+    // Trend (40 pts max)
+    if (trend1d === 'BULLISH') bullScore += 15; else if (trend1d === 'BEARISH') bearScore += 15; else if (trend1d === 'BULLISH_WEAK') bullScore += 7; else bearScore += 7;
+    if (trend4h === 'BULLISH') bullScore += 12; else if (trend4h === 'BEARISH') bearScore += 12; else if (trend4h === 'BULLISH_WEAK') bullScore += 5; else bearScore += 5;
+    if (trend1h === 'BULLISH') bullScore += 8; else if (trend1h === 'BEARISH') bearScore += 8; else if (trend1h === 'BULLISH_WEAK') bullScore += 3; else bearScore += 3;
 
-    // RSI (20%)
-    if (rsi4h < 30) bullScore += 12; else if (rsi4h > 75) bearScore += 12;
-    else if (rsi4h < 45) bullScore += 5; else if (rsi4h > 60) bearScore += 5;
+    // RSI (15 pts max)
+    if (rsi4h < 30) bullScore += 15; else if (rsi4h > 70) bearScore += 15; else if (rsi4h < 45) bullScore += 5; else if (rsi4h > 55) bearScore += 5;
 
-    // MACD (20%)
-    if (macd4h.bullish && macd4h.histogram > 0) bullScore += 10;
-    else if (macd4h.bearish && macd4h.histogram < 0) bearScore += 10;
-    if (macd4h.crossUp) bullScore += 5;
-    if (macd4h.crossDown) bearScore += 5;
+    // MACD (15 pts max)
+    if (macd4h.bullish) bullScore += 10; else if (macd4h.bearish) bearScore += 10;
+    if (macd4h.crossUp) bullScore += 5; else if (macd4h.crossDown) bearScore += 5;
 
-    // BB Position (10%)
-    if (bb4h.position < 15) bullScore += 8; else if (bb4h.position > 85) bearScore += 8;
-    else if (bb4h.position < 35) bullScore += 3; else if (bb4h.position > 65) bearScore += 3;
+    // BB (10 pts max)
+    if (bb4h.position < 15) bullScore += 10; else if (bb4h.position > 85) bearScore += 10; else if (bb4h.position < 35) bullScore += 4; else if (bb4h.position > 65) bearScore += 4;
 
-    // Volume (10%)
-    if (vol1h.ratio > 1.5 && trend1h === 'BULLISH') bullScore += 7;
-    if (vol1h.ratio > 1.5 && trend1h === 'BEARISH') bearScore += 7;
+    // Volume (10 pts)
+    if (K1h.length >= 20) {
+      const avgVol = K1h.slice(-20, -1).reduce((s, k) => s + k.v, 0) / 19;
+      const currVol = K1h[K1h.length - 1].v;
+      const volRatio = avgVol > 0 ? currVol / avgVol : 1;
+      if (volRatio > 1.5) {
+        if (trend1h === 'BULLISH') bullScore += 10; else bearScore += 10;
+      }
+    }
 
     const totalScore = bullScore + bearScore;
-    const probability = totalScore > 0 ? Math.round((Math.max(bullScore, bearScore) / totalScore) * 100) : 50;
-    const signal = bullScore > bearScore ? (probability >= 65 ? 'BULLISH' : 'BULLISH_WEAK') : bearScore > bullScore ? (probability >= 65 ? 'BEARISH' : 'BEARISH_WEAK') : 'NEUTRAL';
+    const probabilityScore = totalScore > 0 ? Math.round((Math.max(bullScore, bearScore) / totalScore) * 100) : 50;
+    const rawSignal = bullScore > bearScore ? (probabilityScore >= 65 ? 'Strong Buy' : 'Buy') : bearScore > bullScore ? (probabilityScore >= 65 ? 'Strong Sell' : 'Sell') : 'Neutral';
 
-    // ── SIGNAL NARRATIVE ──────────────────────────────────────────
-    const generateNarrative = () => {
-      const parts = [];
-      if (overallTrend === 'BULLISH') parts.push('Tren makro bullish — semua timeframe aligned.');
-      else if (overallTrend === 'BEARISH') parts.push('Tren makro bearish — semua timeframe bearish.');
-      else parts.push('Tren mixed — perlu konfirmasi lebih lanjut.');
+    // ── MA POSITION ──────────────────────────────────────────────
+    let maPosition = 'N/A';
+    if (ema200_4h > 0) {
+      const pct = ((currentPrice - ema200_4h) / ema200_4h * 100).toFixed(1);
+      maPosition = currentPrice > ema200_4h ? `Above EMA200 (+${pct}%)` : `Below EMA200 (${pct}%)`;
+    }
 
-      if (rsi4h < 30) parts.push(`RSI 4H oversold (${rsi4h}) — potensi reversal atau bounce kuat.`);
-      else if (rsi4h > 75) parts.push(`RSI 4H overbought (${rsi4h}) — waspada distribusi atau koreksi.`);
-      else parts.push(`RSI 4H di ${rsi4h} — zona ${rsi4h > 50 ? 'momentum bullish' : 'momentum bearish'}.`);
+    // ── TECHNICAL SUMMARY ────────────────────────────────────────
+    const techParts = [];
+    if (overallTrend === 'BULLISH') techParts.push('Tren makro bullish — semua timeframe aligned bullish.');
+    else if (overallTrend === 'BEARISH') techParts.push('Tren makro bearish — tekanan jual dominan.');
+    else techParts.push(`Tren mixed — konfirmasi diperlukan.`);
+    if (rsi4h < 30) techParts.push(`RSI 4H oversold (${rsi4h}) — potensi reversal.`);
+    else if (rsi4h > 70) techParts.push(`RSI 4H overbought (${rsi4h}) — waspada distribusi.`);
+    else techParts.push(`RSI 4H: ${rsi4h} (${rsi4h > 50 ? 'bullish zone' : 'bearish zone'}).`);
+    if (macd4h.crossUp) techParts.push('MACD 4H cross up — sinyal beli.');
+    else if (macd4h.crossDown) techParts.push('MACD 4H cross down — sinyal jual.');
+    if (bb4h.width < 3) techParts.push(`BB squeeze (${bb4h.width}%) — breakout imminent.`);
 
-      if (macd4h.crossUp) parts.push('MACD 4H golden cross — sinyal beli kuat.');
-      else if (macd4h.crossDown) parts.push('MACD 4H death cross — sinyal jual kuat.');
-      else if (macd4h.bullish) parts.push('MACD 4H positif — momentum bullish berlanjut.');
-      else parts.push('MACD 4H negatif — tekanan jual dominan.');
+    // ── DERIVATIVES ──────────────────────────────────────────────
+    let change24h = 0, fundingRate = 0;
+    if (tickerRes.status === 'fulfilled') change24h = parseFloat(tickerRes.value.priceChangePercent || 0);
+    if (fundingRes.status === 'fulfilled') fundingRate = parseFloat(fundingRes.value.lastFundingRate || 0) * 100;
 
-      if (bb4h.width < 3) parts.push(`BB squeeze (width ${bb4h.width}%) — ekspansi volatilitas akan terjadi.`);
-      if (bb4h.position < 10) parts.push('Harga mendekati BB lower — potensi bounce.');
-      if (bb4h.position > 90) parts.push('Harga mendekati BB upper — potensi resistance.');
-
-      return parts.join(' ');
-    };
-
-    // ── 24H CHANGE ────────────────────────────────────────────────
-    let change24h = 0;
-    if (ticker.status === 'fulfilled') change24h = parseFloat(ticker.value.priceChangePercent || 0);
-
-    // ── FUNDING RATE ──────────────────────────────────────────────
-    let fundingRate = 0;
-    if (funding.status === 'fulfilled') fundingRate = parseFloat(funding.value.lastFundingRate || 0) * 100;
-
-    // ── ORDER BOOK IMBALANCE ──────────────────────────────────────
     let obImbalance = 50;
-    if (depth.status === 'fulfilled' && depth.value.bids) {
-      const bidVol = depth.value.bids.reduce((s, b) => s + parseFloat(b[1]), 0);
-      const askVol = depth.value.asks.reduce((s, a) => s + parseFloat(a[1]), 0);
+    if (depthRes.status === 'fulfilled' && depthRes.value.bids) {
+      const bidVol = depthRes.value.bids.reduce((s, b) => s + parseFloat(b[1]), 0);
+      const askVol = depthRes.value.asks.reduce((s, a) => s + parseFloat(a[1]), 0);
       obImbalance = parseFloat((bidVol / (bidVol + askVol) * 100).toFixed(1));
     }
 
-    // ── RESPONSE ──────────────────────────────────────────────────
-    const result = {
+    return {
       symbol,
-      timestamp: Date.now(),
+      ticker,
       currentPrice: parseFloat(currentPrice.toFixed(6)),
       change24h: parseFloat(change24h.toFixed(2)),
 
-      // Core signal
-      signal,
-      probability,
+      // Core signal — used by recommendation.js and index.html
+      probabilityScore,
+      confluenceSignal: rawSignal,
+      action: rawSignal.includes('Buy') ? 'BUY' : rawSignal.includes('Sell') ? 'SELL' : 'HOLD',
       overallTrend,
-      narrative: generateNarrative(),
-      action: signal === 'BULLISH' ? 'BUY' : signal === 'BEARISH' ? 'SELL' : signal === 'BULLISH_WEAK' ? 'WATCH_BUY' : signal === 'BEARISH_WEAK' ? 'WATCH_SELL' : 'HOLD',
+      technicalSummary: techParts.join(' '),
 
-      // RSI — all properly calculated
+      // Detailed RSI
       rsi: {
         '1h': rsi1h,
         '4h': rsi4h,
         '1d': rsi1d,
-        signal1h: rsi1h < 30 ? 'OVERSOLD' : rsi1h > 70 ? 'OVERBOUGHT' : rsi1h > 50 ? 'BULLISH_ZONE' : 'BEARISH_ZONE',
-        signal4h: rsi4h < 30 ? 'OVERSOLD' : rsi4h > 70 ? 'OVERBOUGHT' : rsi4h > 50 ? 'BULLISH_ZONE' : 'BEARISH_ZONE',
-        signal1d: rsi1d < 30 ? 'OVERSOLD' : rsi1d > 70 ? 'OVERBOUGHT' : rsi1d > 50 ? 'BULLISH_ZONE' : 'BEARISH_ZONE',
-        stochRsi1h,
+        signal1h: rsi1h < 30 ? 'OVERSOLD' : rsi1h > 70 ? 'OVERBOUGHT' : rsi1h > 50 ? 'BULLISH' : 'BEARISH',
+        signal4h: rsi4h < 30 ? 'OVERSOLD' : rsi4h > 70 ? 'OVERBOUGHT' : rsi4h > 50 ? 'BULLISH' : 'BEARISH',
+        signal1d: rsi1d < 30 ? 'OVERSOLD' : rsi1d > 70 ? 'OVERBOUGHT' : rsi1d > 50 ? 'BULLISH' : 'BEARISH',
       },
 
-      // Moving Averages — all real values
-      ma: {
+      // Moving Averages
+      maStatus: {
+        position: maPosition,
         ema9_1h: parseFloat(ema9_1h.toFixed(6)),
         ema21_1h: parseFloat(ema21_1h.toFixed(6)),
         ema50_1h: parseFloat(ema50_1h.toFixed(6)),
@@ -362,78 +310,96 @@ export default async function handler(req, res) {
         ema200_4h: parseFloat(ema200_4h.toFixed(6)),
         ema50_1d: parseFloat(ema50_1d.toFixed(6)),
         ema200_1d: parseFloat(ema200_1d.toFixed(6)),
-        signal: maSignal,
-        trend: currentPrice > ema200_4h ? 'ABOVE EMA200 4H (Bullish)' : 'BELOW EMA200 4H (Bearish)',
+        crossSignal: ema9_1h > ema21_1h ? (ema21_1h > ema50_1h ? 'Golden Cross' : 'EMA9>EMA21') : 'EMA9<EMA21',
       },
 
       // MACD
-      macd: {
-        '1h': macd1h,
-        '4h': macd4h,
-        '1d': macd1d,
-      },
+      macd: { '4h': macd4h, '1d': macd1d },
 
       // Bollinger Bands
       bb: {
-        '1h': bb1h,
         '4h': bb4h,
         squeeze: bb4h.width < 3,
-        squeezeDetail: bb4h.width < 3 ? `BB squeeze aktif (width ${bb4h.width}%) — ekspansi imminent` : null,
+        squeezeDetail: bb4h.width < 3 ? `BB squeeze (${bb4h.width}%) — ekspansi imminent` : null,
       },
 
       // ATR
       atr: {
-        '1h': parseFloat(atr1h.toFixed(6)),
         '4h': parseFloat(atr4h.toFixed(6)),
-        '1d': parseFloat(atr1d.toFixed(6)),
-        atrPct4h: parseFloat((atr4h / currentPrice * 100).toFixed(2)),
+        atrPct: parseFloat((atr4h / currentPrice * 100).toFixed(2)),
         volatility: atr4h / currentPrice * 100 > 5 ? 'HIGH' : atr4h / currentPrice * 100 > 2 ? 'MEDIUM' : 'LOW',
       },
 
-      // Pivot Points
-      pivots: pivots4h,
-
-      // Support/Resistance
-      supportResistance: {
-        support: [strongestSupport, sr4h.support[1] || strongestSupport * 0.97].map(s => parseFloat(s.toFixed(6))),
-        resistance: [strongestResistance, sr4h.resistance[1] || strongestResistance * 1.03].map(r => parseFloat(r.toFixed(6))),
-        strongestSupport: parseFloat(strongestSupport.toFixed(6)),
-        strongestResistance: parseFloat(strongestResistance.toFixed(6)),
+      // Key levels
+      keyLevels: {
+        support: parseFloat(nearestSupport.toFixed(6)),
+        resistance: parseFloat(nearestResistance.toFixed(6)),
+        supportLevels: sr4h.support.slice(0, 2).map(s => parseFloat(s.toFixed(6))),
+        resistanceLevels: sr4h.resistance.slice(0, 2).map(r => parseFloat(r.toFixed(6))),
       },
 
-      // Volume
-      volume: vol1h,
+      pivots,
 
-      // Derivatives
-      fundingRate: parseFloat(fundingRate.toFixed(4)),
-      orderBookImbalance: obImbalance,
-
-      // Trend per TF
+      // Trends per TF
       trends: {
         '1h': trend1h,
         '4h': trend4h,
         '1d': trend1d,
         overall: overallTrend,
-        score: {
-          '1h': parseFloat(trendScore1h.toFixed(2)),
-          '4h': parseFloat(trendScore4h.toFixed(2)),
-          '1d': parseFloat(trendScore1d.toFixed(2)),
-        },
+        scores: { ts1h: parseFloat(ts1h.toFixed(2)), ts4h: parseFloat(ts4h.toFixed(2)), ts1d: parseFloat(ts1d.toFixed(2)) },
       },
 
       // Score breakdown
       scoreBreakdown: {
-        bull: bullScore,
-        bear: bearScore,
-        total: totalScore,
+        bull: bullScore, bear: bearScore, total: totalScore,
         bullPct: totalScore > 0 ? Math.round(bullScore / totalScore * 100) : 50,
       },
+
+      fundingRate: parseFloat(fundingRate.toFixed(4)),
+      orderBookImbalance: obImbalance,
     };
 
-    res.setHeader('Cache-Control', 's-maxage=30');
-    return res.status(200).json(result);
-
   } catch (e) {
-    return res.status(500).json({ error: e.message, symbol });
+    // Return safe fallback so UI doesn't break
+    return {
+      symbol, ticker: symbol.replace('USDT', ''),
+      currentPrice: 0, change24h: 0,
+      probabilityScore: 50, confluenceSignal: 'Neutral', action: 'HOLD',
+      overallTrend: 'NEUTRAL', technicalSummary: 'Data tidak tersedia.',
+      rsi: { '1h': 50, '4h': 50, '1d': 50 },
+      maStatus: { position: 'N/A' },
+      macd: {}, bb: {}, atr: {},
+      keyLevels: { support: 0, resistance: 0 },
+      trends: { '1h': 'NEUTRAL', '4h': 'NEUTRAL', '1d': 'NEUTRAL', overall: 'NEUTRAL' },
+      scoreBreakdown: { bull: 0, bear: 0, total: 0, bullPct: 50 },
+      fundingRate: 0, orderBookImbalance: 50, pivots: null,
+      error: e.message,
+    };
   }
+}
+
+// ── SMART MONEY NARRATIVE ─────────────────────────────────────────────────
+function generateSmartMoneyNarrative(btc, eth) {
+  const parts = [];
+  if (!btc || btc.currentPrice === 0) return 'Data pasar sedang dimuat...';
+
+  const btcTrend = btc.overallTrend || 'NEUTRAL';
+  const ethTrend = eth?.overallTrend || 'NEUTRAL';
+
+  if (btcTrend === 'BULLISH' && ethTrend === 'BULLISH') parts.push('BTC dan ETH keduanya bullish — risk-on market aktif, altcoin berpotensi ikut naik.');
+  else if (btcTrend === 'BULLISH') parts.push('BTC bullish tapi ETH masih laggard — kapital terfokus di BTC dulu sebelum rotasi ke altcoin.');
+  else if (btcTrend === 'BEARISH') parts.push('BTC bearish — smart money dalam mode distribusi, jaga posisi dan manajemen risiko ketat.');
+  else parts.push('Market dalam fase transisi — tunggu konfirmasi tren sebelum entry besar.');
+
+  const btcRsi = btc.rsi?.['4h'] || 50;
+  if (btcRsi < 30) parts.push(`RSI BTC oversold (${btcRsi}) — historis ini zona akumulasi institusional.`);
+  else if (btcRsi > 70) parts.push(`RSI BTC overbought (${btcRsi}) — smart money mungkin mulai distribusi.`);
+
+  if (btc.macd?.['4h']?.crossUp) parts.push('MACD BTC 4H golden cross — sinyal momentum bullish baru dimulai.');
+  if (btc.macd?.['4h']?.crossDown) parts.push('MACD BTC 4H death cross — momentum bearish menguat.');
+
+  if (btc.fundingRate < -0.04) parts.push(`Funding rate negatif (${btc.fundingRate}%) — short dominan, potensi short squeeze.`);
+  else if (btc.fundingRate > 0.08) parts.push(`Funding rate tinggi (${btc.fundingRate}%) — market overleveraged long, waspada.`);
+
+  return parts.join(' ') || 'Pasar dalam kondisi normal — pantau level kunci.';
 }
