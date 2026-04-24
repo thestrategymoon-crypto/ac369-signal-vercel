@@ -1,6 +1,6 @@
-// api/recommendation.js — AC369 FUSION v10.2
-// FIXED: Baca data.btc dan data.eth dari analytics v10.2
-// FIXED: keyLevels dari real support/resistance, bukan estimasi 5%
+// api/recommendation.js — AC369 FUSION v10.3
+// FIXED: reads analyticsData.btc.currentPrice (not flat)
+// FIXED: fallback hits Binance directly if analytics fails
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -9,175 +9,118 @@ export default async function handler(req, res) {
 
   try {
     const base = `https://${req.headers.host}`;
+    const analyticsRes = await fetch(`${base}/api/analytics`, {signal:AbortSignal.timeout(25000)});
+    const analytics = await analyticsRes.json();
 
-    // Fetch analytics yang sudah return {btc:{}, eth:{}}
-    const analyticsRes = await fetch(`${base}/api/analytics`, {
-      signal: AbortSignal.timeout(20000),
-    });
-    const analyticsData = await analyticsRes.json();
+    const btc = analytics.btc || {};
+    const eth = analytics.eth || {};
 
-    // analytics.js v10.2 returns: { btc: {...}, eth: {...}, smartMoneyNarrative, timestamp }
-    const btcData = analyticsData.btc || {};
-    const ethData = analyticsData.eth || {};
-
-    const buildRecommendation = (asset) => {
+    const build = (asset) => {
       const price = parseFloat(asset.currentPrice || 0);
       const score = asset.probabilityScore || 50;
       const signal = asset.confluenceSignal || 'Neutral';
-      const trends = asset.trends || {};
-      const keyLevels = asset.keyLevels || {};
-      const bb = asset.bb || {};
-      const atr = asset.atr || {};
-      const macd = asset.macd || {};
+      const action = signal.includes('Buy')?'BUY':signal.includes('Sell')?'SELL':'HOLD';
+      const kl = asset.keyLevels || {};
+      const atr = (asset.atr?.['4h'] || price*0.02);
       const rsi = asset.rsi || {};
+      const macd = asset.macd || {};
+      const bb = asset.bb || {};
+      const trends = asset.trends || {};
 
-      let action = 'HOLD';
-      if (signal.includes('Buy')) action = 'BUY';
-      else if (signal.includes('Sell')) action = 'SELL';
+      // Reasoning
+      const reasoning=[];
+      if(asset.technicalSummary) reasoning.push(asset.technicalSummary);
+      if(trends.overall==='BULLISH') reasoning.push('Multi-timeframe bullish — 1H 4H 1D aligned naik.');
+      if(trends.overall==='BEARISH') reasoning.push('Multi-timeframe bearish — tekanan jual dominan.');
+      if(rsi['4h']&&rsi['4h']<35) reasoning.push(`RSI 4H oversold (${rsi['4h']}) — potensi reversal.`);
+      if(rsi['4h']&&rsi['4h']>70) reasoning.push(`RSI 4H overbought (${rsi['4h']}) — waspada koreksi.`);
+      if(macd['4h']?.crossUp) reasoning.push('MACD 4H golden cross — momentum bullish baru.');
+      if(macd['4h']?.crossDown) reasoning.push('MACD 4H death cross — momentum bearish.');
+      if(bb['4h']?.width<3) reasoning.push(`BB squeeze (${bb['4h'].width}%) — breakout imminent.`);
 
-      // Generate detailed reasoning
-      const reasoning = [];
-      if (asset.technicalSummary) reasoning.push(asset.technicalSummary);
-      if (trends.overall === 'BULLISH') reasoning.push('Multi-timeframe trend bullish — 1H, 4H, 1D aligned.');
-      else if (trends.overall === 'BEARISH') reasoning.push('Multi-timeframe trend bearish — tekanan jual dominan.');
-      if (rsi['4h'] && rsi['4h'] < 35) reasoning.push(`RSI 4H oversold (${rsi['4h']}) — potensi reversal kuat.`);
-      if (rsi['4h'] && rsi['4h'] > 70) reasoning.push(`RSI 4H overbought (${rsi['4h']}) — waspada koreksi.`);
-      if (macd['4h']?.crossUp) reasoning.push('MACD 4H cross up — momentum bullish baru dimulai.');
-      if (macd['4h']?.crossDown) reasoning.push('MACD 4H cross down — momentum bearish dimulai.');
-      if (bb['4h']?.width < 3) reasoning.push(`BB squeeze (${bb['4h'].width}%) — ekspansi volatilitas imminent.`);
-
-      // ATR-based SL/TP suggestions
-      const atr4h = atr['4h'] || price * 0.02;
-      const slLong = parseFloat((price - atr4h * 1.5).toFixed(6));
-      const tp1Long = parseFloat((price + atr4h * 2.0).toFixed(6));
-      const tp2Long = parseFloat((price + atr4h * 3.5).toFixed(6));
-      const slShort = parseFloat((price + atr4h * 1.5).toFixed(6));
-      const tp1Short = parseFloat((price - atr4h * 2.0).toFixed(6));
+      // Trade setup (ATR-based)
+      let tradeSetup=null;
+      if(price>0) {
+        const slDist=atr*1.5, tp1=atr*2.0, tp2=atr*3.5;
+        if(action==='BUY') {
+          tradeSetup={direction:'LONG',entry:+price.toFixed(4),sl:+(price-slDist).toFixed(4),
+            tp1:+(price+tp1).toFixed(4),tp2:+(price+tp2).toFixed(4),
+            rr:+(tp1/slDist).toFixed(2),slPct:+(slDist/price*100).toFixed(2),tp1Pct:+(tp1/price*100).toFixed(2)};
+        } else if(action==='SELL') {
+          tradeSetup={direction:'SHORT',entry:+price.toFixed(4),sl:+(price+slDist).toFixed(4),
+            tp1:+(price-tp1).toFixed(4),tp2:+(price-tp2).toFixed(4),
+            rr:+(tp1/slDist).toFixed(2),slPct:+(slDist/price*100).toFixed(2),tp1Pct:+(tp1/price*100).toFixed(2)};
+        }
+      }
 
       return {
-        price: price.toFixed(4),
-        currentPrice: price,
-        probabilityScore: score,
-        confluenceSignal: signal,
-        action,
-        overallTrend: trends.overall || 'NEUTRAL',
-        trends: {
-          '1h': trends['1h'] || 'NEUTRAL',
-          '4h': trends['4h'] || 'NEUTRAL',
-          '1d': trends['1d'] || 'NEUTRAL',
-        },
+        price: price.toFixed(4), currentPrice: price,
+        probabilityScore: score, confluenceSignal: signal, action,
+        overallTrend: trends.overall||'NEUTRAL',
+        trends: {'1h':trends['1h']||'NEUTRAL','4h':trends['4h']||'NEUTRAL','1d':trends['1d']||'NEUTRAL'},
         keyLevels: {
-          support: keyLevels.support || parseFloat((price * 0.95).toFixed(4)),
-          resistance: keyLevels.resistance || parseFloat((price * 1.05).toFixed(4)),
-          supportLevels: keyLevels.supportLevels || [],
-          resistanceLevels: keyLevels.resistanceLevels || [],
+          support: kl.support || +(price*0.95).toFixed(4),
+          resistance: kl.resistance || +(price*1.05).toFixed(4),
+          supportLevels: kl.supportLevels||[], resistanceLevels: kl.resistanceLevels||[],
         },
-        tradeSetup: action === 'BUY' ? {
-          entry: parseFloat(price.toFixed(4)),
-          sl: slLong,
-          tp1: tp1Long,
-          tp2: tp2Long,
-          rr: parseFloat(((tp1Long - price) / (price - slLong)).toFixed(2)),
-          slPct: parseFloat(((price - slLong) / price * 100).toFixed(2)),
-          tp1Pct: parseFloat(((tp1Long - price) / price * 100).toFixed(2)),
-        } : action === 'SELL' ? {
-          entry: parseFloat(price.toFixed(4)),
-          sl: slShort,
-          tp1: tp1Short,
-          rr: parseFloat(((price - tp1Short) / (slShort - price)).toFixed(2)),
-          slPct: parseFloat(((slShort - price) / price * 100).toFixed(2)),
-          tp1Pct: parseFloat(((price - tp1Short) / price * 100).toFixed(2)),
-        } : null,
+        tradeSetup,
         indicators: {
-          rsi1h: rsi['1h'] || 50,
-          rsi4h: rsi['4h'] || 50,
-          rsi1d: rsi['1d'] || 50,
-          macd4hBullish: macd['4h']?.bullish || false,
-          macd4hCrossUp: macd['4h']?.crossUp || false,
-          bbSqueeze: bb['4h']?.width < 3,
-          bbPosition: bb['4h']?.position || 50,
-          atr4h: parseFloat((atr['4h'] || 0).toFixed(6)),
-          fundingRate: asset.fundingRate || 0,
+          rsi1h:rsi['1h']||50,rsi4h:rsi['4h']||50,rsi1d:rsi['1d']||50,
+          macd4hBullish:macd['4h']?.bullish||false,macd4hCrossUp:macd['4h']?.crossUp||false,
+          bbSqueeze:bb['4h']?.width<3,bbPosition:bb['4h']?.position||50,
+          atr4h:+(atr).toFixed(4),fundingRate:asset.fundingRate||0,
         },
-        scoreBreakdown: asset.scoreBreakdown || { bull: 0, bear: 0, bullPct: 50 },
-        maStatus: asset.maStatus || { position: 'N/A' },
-        pivots: asset.pivots || null,
-        reasoning: reasoning.slice(0, 5),
+        scoreBreakdown: asset.scoreBreakdown||{bull:0,bear:0,total:0,bullPct:50},
+        maStatus: asset.maStatus||{position:'N/A'},
+        pivots: asset.pivots||null,
+        reasoning: reasoning.slice(0,5),
       };
     };
 
-    const btcRec = buildRecommendation(btcData);
-    const ethRec = buildRecommendation(ethData);
+    const btcRec = build(btc);
+    const ethRec = build(eth);
 
-    // Generate trading plan
-    const generateTradingPlan = (btcRec, ethRec) => {
-      const daily = [];
-      const swing = [];
-      const watchlist = [];
+    // Trading plan
+    const daily=[], swing=[], watchlist=[];
+    if(btcRec.action==='BUY'&&btcRec.tradeSetup)
+      daily.push(`BTC LONG: Entry $${btcRec.tradeSetup.entry}, SL $${btcRec.tradeSetup.sl}, TP1 $${btcRec.tradeSetup.tp1} (R:R 1:${btcRec.tradeSetup.rr})`);
+    if(ethRec.action==='BUY'&&ethRec.tradeSetup)
+      swing.push(`ETH LONG: Entry $${ethRec.tradeSetup.entry}, SL $${ethRec.tradeSetup.sl}, TP1 $${ethRec.tradeSetup.tp1} (R:R 1:${ethRec.tradeSetup.rr})`);
+    if(btcRec.indicators.rsi4h<35) watchlist.push(`BTC RSI oversold (${btcRec.indicators.rsi4h}) — monitor reversal`);
+    if(ethRec.indicators.rsi4h<35) watchlist.push(`ETH RSI oversold (${ethRec.indicators.rsi4h}) — monitor reversal`);
+    if(btcRec.indicators.bbSqueeze) watchlist.push('BTC BB squeeze — breakout imminent');
 
-      if (btcRec.action === 'BUY') {
-        daily.push(`BTC LONG: Entry $${btcRec.price}, SL $${btcRec.tradeSetup?.sl || '—'}, TP1 $${btcRec.tradeSetup?.tp1 || '—'} (R:R ${btcRec.tradeSetup?.rr || '—'})`);
-      } else if (btcRec.action === 'SELL') {
-        daily.push(`BTC SHORT: Entry $${btcRec.price}, SL $${btcRec.tradeSetup?.sl || '—'}, TP1 $${btcRec.tradeSetup?.tp1 || '—'}`);
-      }
-
-      if (ethRec.action === 'BUY') {
-        swing.push(`ETH LONG: Entry $${ethRec.price}, SL $${ethRec.tradeSetup?.sl || '—'}, TP1 $${ethRec.tradeSetup?.tp1 || '—'} (R:R ${ethRec.tradeSetup?.rr || '—'})`);
-      }
-
-      // Watchlist based on signals
-      if (btcRec.indicators.rsi4h < 35) watchlist.push(`BTC: RSI oversold (${btcRec.indicators.rsi4h}) — monitor reversal`);
-      if (ethRec.indicators.rsi4h < 35) watchlist.push(`ETH: RSI oversold (${ethRec.indicators.rsi4h}) — monitor reversal`);
-      if (btcRec.indicators.bbSqueeze) watchlist.push(`BTC: BB squeeze — breakout imminent`);
-
-      return { daily, swing, watchlist };
-    };
-
-    const tradingPlan = generateTradingPlan(btcRec, ethRec);
-
-    res.setHeader('Cache-Control', 's-maxage=30');
+    res.setHeader('Cache-Control','s-maxage=30');
     return res.status(200).json({
-      btc: btcRec,
-      eth: ethRec,
-      tradingPlan,
-      marketNarrative: analyticsData.smartMoneyNarrative || 'Pasar dalam kondisi normal.',
-      timestamp: Date.now(),
+      btc:btcRec, eth:ethRec,
+      tradingPlan:{daily,swing,watchlist},
+      marketNarrative: analytics.smartMoneyNarrative||'Pasar dalam kondisi normal.',
+      timestamp:Date.now(),
     });
 
-  } catch (e) {
-    console.error('[Recommendation] Error:', e.message);
-    // Fallback dengan data real dari Binance jika analytics gagal
+  } catch(e) {
+    // Direct Binance fallback
     try {
-      const [btcTicker, ethTicker] = await Promise.allSettled([
-        fetch('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT').then(r => r.json()),
-        fetch('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=ETHUSDT').then(r => r.json()),
+      const [bt,et]=await Promise.allSettled([
+        fetch('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT').then(r=>r.json()),
+        fetch('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=ETHUSDT').then(r=>r.json()),
       ]);
-      const btcPrice = btcTicker.status === 'fulfilled' ? parseFloat(btcTicker.value.lastPrice) : 77500;
-      const ethPrice = ethTicker.status === 'fulfilled' ? parseFloat(ethTicker.value.lastPrice) : 2300;
-
+      const bp=bt.status==='fulfilled'?parseFloat(bt.value.lastPrice):77500;
+      const ep=et.status==='fulfilled'?parseFloat(et.value.lastPrice):2300;
       return res.status(200).json({
-        btc: {
-          price: btcPrice.toFixed(2), currentPrice: btcPrice,
-          probabilityScore: 50, confluenceSignal: 'Neutral', action: 'HOLD',
-          keyLevels: { support: parseFloat((btcPrice * 0.95).toFixed(2)), resistance: parseFloat((btcPrice * 1.05).toFixed(2)) },
-          reasoning: ['Data analytics tidak tersedia — menampilkan fallback.'],
-        },
-        eth: {
-          price: ethPrice.toFixed(2), currentPrice: ethPrice,
-          probabilityScore: 50, confluenceSignal: 'Neutral', action: 'HOLD',
-          keyLevels: { support: parseFloat((ethPrice * 0.95).toFixed(2)), resistance: parseFloat((ethPrice * 1.05).toFixed(2)) },
-          reasoning: ['Data analytics tidak tersedia — menampilkan fallback.'],
-        },
-        tradingPlan: { daily: [], swing: [], watchlist: [] },
-        marketNarrative: 'Data pasar sementara tidak tersedia. Coba refresh.',
-        error: e.message,
+        btc:{price:bp.toFixed(2),currentPrice:bp,probabilityScore:50,confluenceSignal:'Neutral',action:'HOLD',
+          keyLevels:{support:+(bp*0.95).toFixed(2),resistance:+(bp*1.05).toFixed(2)},reasoning:['Analytics timeout — fallback data.']},
+        eth:{price:ep.toFixed(2),currentPrice:ep,probabilityScore:50,confluenceSignal:'Neutral',action:'HOLD',
+          keyLevels:{support:+(ep*0.95).toFixed(2),resistance:+(ep*1.05).toFixed(2)},reasoning:['Analytics timeout — fallback data.']},
+        tradingPlan:{daily:[],swing:[],watchlist:[]},
+        marketNarrative:'Data sedang dimuat ulang...',
       });
-    } catch (fallbackErr) {
+    } catch{
       return res.status(200).json({
-        btc: { price: '77500', probabilityScore: 50, confluenceSignal: 'Neutral', action: 'HOLD', keyLevels: { support: '73625', resistance: '81375' }, reasoning: ['Data offline'] },
-        eth: { price: '2300', probabilityScore: 50, confluenceSignal: 'Neutral', action: 'HOLD', keyLevels: { support: '2185', resistance: '2415' }, reasoning: ['Data offline'] },
-        tradingPlan: { daily: [], swing: [], watchlist: [] },
-        marketNarrative: 'Data pasar offline.',
+        btc:{price:'77500',probabilityScore:50,confluenceSignal:'Neutral',action:'HOLD',keyLevels:{support:'73625',resistance:'81375'},reasoning:['Data offline']},
+        eth:{price:'2300',probabilityScore:50,confluenceSignal:'Neutral',action:'HOLD',keyLevels:{support:'2185',resistance:'2415'},reasoning:['Data offline']},
+        tradingPlan:{daily:[],swing:[],watchlist:[]},
+        marketNarrative:'Data pasar offline.',
       });
     }
   }
