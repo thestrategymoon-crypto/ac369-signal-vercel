@@ -3,46 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-  <title>AC369 FUSION v12.4</title>
-  
-  <!-- PERISAI ANTI-ERROR: Matikan semua error cache & Service Worker -->
-  <script>
-    // 1. Tangkap dan abaikan error MercuryShadow dari sumber manapun
-    window.addEventListener('error', function(e) {
-      if (e.message && e.message.includes('MercuryShadow')) {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }
-    });
-    
-    // 2. Buat objek dummy jika ada kode yang memanggilnya
-    if (typeof MercuryShadow === 'undefined') {
-      window.MercuryShadow = {
-        init: function() { return {}; },
-        version: '0.0.0'
-      };
-    }
-    
-    // 3. Bersihkan Service Worker lama yang mungkin menyimpan cache
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(function(registrations) {
-        registrations.forEach(function(registration) {
-          registration.unregister();
-        });
-      });
-    }
-    
-    // 4. Paksa reload jika ada error fatal
-    var reloadAttempted = false;
-    window.addEventListener('error', function(e) {
-      if (!reloadAttempted) {
-        reloadAttempted = true;
-        setTimeout(function() { window.location.reload(true); }, 1000);
-      }
-    });
-  </script>
-  
+  <title>AC369 FUSION v12.5</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -140,11 +101,10 @@
       display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0;
       padding: 10px; background: #1a1a3a; border-radius: 10px; font-size: 0.85rem;
     }
-    .hidden { display: none; }
   </style>
 </head>
 <body>
-  <h1>🧠 AC369 FUSION v12.4</h1>
+  <h1>🧠 AC369 FUSION v12.5</h1>
   <div class="subtitle">Live Institutional Grade · SMC · Elliott Wave · Derivatives · Liquidation Map</div>
   
   <button class="btn" onclick="refreshAll()">🔄 Refresh All</button>
@@ -153,7 +113,7 @@
   <h2>🔍 Cari & Analisis Koin (Multi-Timeframe Super Detail)</h2>
   <div class="search-box">
     <input type="text" id="search-input" placeholder="Ketik simbol koin (contoh: ADA, SOL, BTC)...">
-    <button class="btn btn-search" onclick="searchCoin()">🔬 Analisis Sekarang</button>
+    <button class="btn btn-search" onclick="window.searchCoin()">🔬 Analisis Sekarang</button>
   </div>
   <div id="search-result" style="margin-bottom: 20px;"></div>
 
@@ -206,15 +166,17 @@
     </table>
   </div>
 
-  <div class="footer" id="footer">AC369 FUSION v12.4 • Data Real-time</div>
+  <div class="footer" id="footer">AC369 FUSION v12.5 • Data Real-time</div>
 
+  <!-- LOAD SEARCH MODULE -->
+  <script src="search.js"></script>
+  
   <script>
-    // ==================== GLOBAL ====================
     var scanResults = [];
     var currentFilter = 'ALL';
 
     function updateTimestamp() {
-      document.getElementById('footer').innerHTML = 'AC369 FUSION v12.4 • Update: ' + new Date().toLocaleTimeString('id-ID');
+      document.getElementById('footer').innerHTML = 'AC369 FUSION v12.5 • Update: ' + new Date().toLocaleTimeString('id-ID');
     }
 
     async function refreshAll() {
@@ -222,59 +184,6 @@
       updateTimestamp();
     }
 
-    // ==================== SEARCH ====================
-    async function searchCoin() {
-      var input = document.getElementById('search-input');
-      var resultDiv = document.getElementById('search-result');
-      var symbol = input.value.trim().toUpperCase();
-      if (!symbol) { resultDiv.innerHTML = '<div class="error">Masukkan simbol koin.</div>'; return; }
-      resultDiv.innerHTML = '<div class="loading">Menganalisis ' + symbol + '...</div>';
-      try {
-        var res = await fetch('/api/search?symbol=' + encodeURIComponent(symbol));
-        var data = await res.json();
-        if (data.error) { resultDiv.innerHTML = '<div class="error">' + data.error + '</div>'; return; }
-        
-        var tfHtml = '';
-        if (data.timeframes) {
-          ['1H','4H','1D'].forEach(function(tf) {
-            var d = data.timeframes[tf] || {};
-            var patHtml = '';
-            (d.patterns||[]).forEach(function(p) {
-              patHtml += '<span style="color:'+(p.signal==='bullish'?'#00ff88':p.signal==='bearish'?'#ff4444':'#ccc')+';display:inline-block;margin:2px 3px;padding:2px 6px;background:#1a1a3a;border-radius:8px;">'+p.name+'</span>';
-            });
-            tfHtml += '<div style="background:#0d0d22;border-radius:10px;padding:12px;margin:8px 0;border-left:3px solid #4a4aff;">'+
-              '<b style="color:#a0a0ff;">Timeframe '+tf+'</b>'+
-              '<div class="signal-row"><span>RSI:</span> <span>'+(d.rsi||'N/A')+'</span></div>'+
-              '<div><b>Pola:</b> '+(patHtml||'<span style="color:#888;">-</span>')+'</div>'+
-              '<div><b>Elliott Wave:</b> '+((d.elliottWave||{}).wave||'N/A')+' ('+((d.elliottWave||{}).confidence||0)+'%)<br><small>'+((d.elliottWave||{}).description||'')+'</small></div>'+
-              '<div><b>SMC:</b> <span style="color:'+((d.smc||{}).signal==='Bullish'?'#00ff88':(d.smc||{}).signal==='Bearish'?'#ff4444':'#ccc')+';">'+((d.smc||{}).signal||'Neutral')+'</span><br><small>'+((d.smc||{}).summary||'')+'</small></div>'+
-              '</div>';
-          });
-        }
-        var rec = data.recommendation || {};
-        var recColor = (rec.action||'').includes('LONG')?'#00ff88':(rec.action||'').includes('SHORT')?'#ff4444':'#ffaa00';
-        var recBg = (rec.action||'').includes('LONG')?'#1a2a1a':(rec.action||'').includes('SHORT')?'#2a1a1a':'#1a1a2a';
-        var astro = data.astrology || {};
-        resultDiv.innerHTML = '<div class="card" style="border:2px solid #4a4aff;">'+
-          '<h3>'+data.symbol+' — '+(data.name||'')+'</h3>'+
-          '<div class="signal-row"><span><b>Harga:</b></span> <strong>$'+(data.price||0).toLocaleString()+'</strong></div>'+
-          '<div class="signal-row"><span><b>24h:</b></span> <span style="color:'+((data.change24h||0)>=0?'#00ff88':'#ff4444')+';">'+(data.change24h||0).toFixed(2)+'%</span></div>'+
-          '<div class="signal-row"><span><b>Support:</b></span> <span style="color:#00ff88;">$'+(data.support||'—')+'</span></div>'+
-          '<div class="signal-row"><span><b>Resistance:</b></span> <span style="color:#ff4444;">$'+(data.resistance||'—')+'</span></div>'+
-          '<div style="margin-top:15px;padding:14px;background:'+recBg+';border-radius:12px;text-align:center;">'+
-            '<b style="font-size:1.3rem;color:'+recColor+';">REKOMENDASI: '+(rec.action||'HOLD')+'</b>'+
-            '<div style="margin-top:4px;">Keyakinan: '+(rec.confidence||'Netral')+' | Skor: '+(rec.score||50)+'/100</div>'+
-            '<div style="margin-top:8px;">'+(rec.summary||rec.explanation||'')+'</div>'+
-          '</div>'+
-          '<div style="margin-top:15px;">'+tfHtml+'</div>'+
-          '<div style="margin-top:12px;padding:10px;background:#1a1a2a;border-radius:8px;"><b>Astrologi:</b> '+(astro.signal||'N/A')+' ('+(astro.moonPhase||'')+' '+(astro.illumination||'')+'%)<br><small>'+(astro.interpretation||'')+'</small></div>'+
-          '</div>';
-      } catch(e) {
-        resultDiv.innerHTML = '<div class="error">Gagal terhubung ke server.</div>';
-      }
-    }
-
-    // ==================== BIAS ====================
     async function fetchBias() {
       try {
         var res = await fetch('/api/bias');
@@ -287,7 +196,6 @@
       } catch(e) {}
     }
 
-    // ==================== ANALYTICS ====================
     async function fetchAnalytics() {
       try {
         var res = await fetch('/api/analytics');
@@ -308,7 +216,6 @@
       } catch(e) {}
     }
 
-    // ==================== MACRO ====================
     async function fetchMacro() {
       try {
         var res = await fetch('/api/macro');
@@ -320,7 +227,6 @@
       } catch(e) {}
     }
 
-    // ==================== SCANNER ====================
     async function performInstitutionalScan() {
       var tbody = document.getElementById('scan-tbody');
       var statsEl = document.getElementById('scan-stats');
