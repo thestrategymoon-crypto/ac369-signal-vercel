@@ -16,7 +16,7 @@
     h1 { font-size: 1.8rem; color: #a0a0ff; margin-bottom: 4px; }
     h2 { font-size: 1.2rem; color: #b0b0ff; margin: 20px 0 12px; border-bottom: 1px solid #2a2a4a; padding-bottom: 6px; }
     .subtitle { color: #888; margin-bottom: 16px; font-size: 0.85rem; }
-    .refresh-btn, .scan-btn {
+    .refresh-btn, .scan-btn, .search-btn {
       background: #2a2a5a;
       border: none;
       color: white;
@@ -28,6 +28,23 @@
       border: 1px solid #4a4a8a;
     }
     .scan-btn { background: #3a3a8a; padding: 12px 24px; font-size: 1.1rem; }
+    .search-btn { background: #4a4aff; }
+    .search-box {
+      display: flex;
+      gap: 10px;
+      margin: 15px 0;
+      flex-wrap: wrap;
+    }
+    .search-box input {
+      flex: 1;
+      min-width: 150px;
+      padding: 10px 16px;
+      border-radius: 30px;
+      border: 1px solid #4a4a8a;
+      background: #12122a;
+      color: white;
+      font-size: 1rem;
+    }
     .grid {
       display: grid;
       grid-template-columns: 1fr;
@@ -48,9 +65,6 @@
       font-weight: 600;
       margin-bottom: 12px;
       color: #c0c0ff;
-      display: flex;
-      align-items: center;
-      gap: 6px;
     }
     .card-content { font-size: 0.9rem; }
     
@@ -117,6 +131,14 @@
   <div class="subtitle">Live Institutional Grade · SMC · Elliott Wave · Derivatives · Liquidation Map</div>
   
   <button class="refresh-btn" onclick="refreshAll()">🔄 Refresh All</button>
+
+  <!-- SEARCH BAR -->
+  <h2>🔍 Cari & Analisis Koin (Multi-Timeframe Super Detail)</h2>
+  <div class="search-box">
+    <input type="text" id="search-input" placeholder="Ketik simbol koin (contoh: ADA, SOL, BTC)...">
+    <button class="search-btn" onclick="searchCoin()">🔬 Analisis Sekarang</button>
+  </div>
+  <div id="search-result" style="margin-bottom: 20px;"></div>
 
   <!-- DAILY MARKET BIAS -->
   <h2>📊 Daily Market Bias</h2>
@@ -207,6 +229,60 @@
       updateTimestamp();
     }
 
+    // ==================== SEARCH COIN ====================
+    async function searchCoin() {
+      var input = document.getElementById('search-input');
+      var resultDiv = document.getElementById('search-result');
+      var symbol = input.value.trim().toUpperCase();
+      if (!symbol) { resultDiv.innerHTML = '<div class="error">Masukkan simbol koin.</div>'; return; }
+      resultDiv.innerHTML = '<div class="loading">🔬 Menganalisis ' + symbol + ' multi-timeframe...</div>';
+      try {
+        var res = await fetch('/api/search?symbol=' + symbol);
+        var data = await res.json();
+        if (data.error) { resultDiv.innerHTML = '<div class="error">' + data.error + '</div>'; return; }
+        
+        var tfHtml = '';
+        if (data.timeframes) {
+          for (var tf in data.timeframes) {
+            var tfData = data.timeframes[tf];
+            var patternsHtml = '';
+            (tfData.patterns || []).forEach(function(p) {
+              var c = p.signal === 'bullish' ? '#00ff88' : p.signal === 'bearish' ? '#ff4444' : '#ccc';
+              patternsHtml += '<span style="color:' + c + '; display:inline-block; margin:2px 3px; padding:2px 6px; background:#1a1a3a; border-radius:8px;">' + p.name + '</span>';
+            });
+            tfHtml += 
+              '<div style="background:#0d0d22; border-radius:10px; padding:10px; margin:8px 0;">' +
+                '<b style="color:#a0a0ff;">⏱ Timeframe ' + tf + '</b>' +
+                '<div class="signal-row"><span>RSI:</span> <span>' + (tfData.rsi || 'N/A') + '</span></div>' +
+                '<div><b>Pola:</b> ' + (patternsHtml || '-') + '</div>' +
+                '<div><b>Elliott Wave:</b> ' + (tfData.elliottWave ? tfData.elliottWave.wave + ' (' + tfData.elliottWave.confidence + '%)' : 'N/A') + '<br><small>' + (tfData.elliottWave ? tfData.elliottWave.description : '') + '</small></div>' +
+                '<div><b>SMC:</b> <span style="color:' + (tfData.smc && tfData.smc.signal === 'Bullish' ? '#00ff88' : tfData.smc && tfData.smc.signal === 'Bearish' ? '#ff4444' : '#ccc') + '">' + (tfData.smc ? tfData.smc.signal : 'N/A') + '</span><br><small>' + (tfData.smc ? tfData.smc.summary : '') + '</small></div>' +
+              '</div>';
+          }
+        }
+
+        var rec = data.recommendation || {};
+        var recColor = rec.action && rec.action.includes('LONG') ? '#00ff88' : rec.action && rec.action.includes('SHORT') ? '#ff4444' : '#ffaa00';
+
+        resultDiv.innerHTML = 
+          '<div class="card" style="border: 2px solid #4a4aff;">' +
+            '<h3>🔬 ' + data.symbol + ' — ' + data.name + '</h3>' +
+            '<div class="signal-row"><span><b>Harga:</b></span> <strong>$' + (data.price || 0).toLocaleString() + '</strong></div>' +
+            '<div class="signal-row"><span><b>24h:</b></span> <span style="color:' + (data.change24h >= 0 ? '#00ff88' : '#ff4444') + '">' + (data.change24h || 0).toFixed(2) + '%</span></div>' +
+            '<div class="signal-row"><span><b>Support:</b></span> $' + (data.support || '—') + '</div>' +
+            '<div class="signal-row"><span><b>Resistance:</b></span> $' + (data.resistance || '—') + '</div>' +
+            '<div style="margin-top:15px; padding:12px; background:' + (rec.action && rec.action.includes('LONG') ? '#1a2a1a' : rec.action && rec.action.includes('SHORT') ? '#2a1a1a' : '#1a1a2a') + '; border-radius:12px;">' +
+              '<b style="font-size:1.2rem; color:' + recColor + ';">🎯 ' + (rec.action || 'HOLD') + ' (' + (rec.confidence || 'Netral') + ')</b>' +
+              '<div style="margin-top:6px;">' + (rec.summary || '') + '</div>' +
+            '</div>' +
+            '<div style="margin-top:15px;">' + tfHtml + '</div>' +
+            '<div style="margin-top:12px;"><b>🌙 Astrologi:</b> ' + (data.astrology ? data.astrology.signal + ' (' + data.astrology.moonPhase + ' ' + data.astrology.illumination + '%)<br><small>' + data.astrology.interpretation + '</small>' : 'N/A') + '</div>' +
+          '</div>';
+      } catch (e) {
+        resultDiv.innerHTML = '<div class="error">Gagal terhubung ke server.</div>';
+      }
+    }
+
     // ==================== MARKET BIAS ====================
     async function fetchBias() {
       try {
@@ -228,7 +304,6 @@
       try {
         var res = await fetch('/api/analytics');
         var data = await res.json();
-        
         var btc = data.btc || {};
         var btcHtml = '<div class="signal-row"><span>Harga:</span> <strong>$' + (parseFloat(btc.currentPrice || 0)).toLocaleString() + '</strong></div>';
         btcHtml += '<div class="signal-row"><span>Probabilitas:</span> ' + (btc.probabilityScore || 50) + '%</div>';
@@ -270,18 +345,12 @@
     async function performInstitutionalScan() {
       var tbody = document.getElementById('scan-tbody');
       var statsEl = document.getElementById('scan-stats');
-
       if (statsEl) statsEl.textContent = '⏳ Memindai...';
       if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;">⏳ Menganalisis 500+ koin...</td></tr>';
-
       try {
         var res = await fetch('/api/scanner-full');
         var data = await res.json();
-
-        // Simpan data global untuk filter
         scanResults = data.results || [];
-
-        // Update statistik
         if (statsEl) {
           statsEl.innerHTML = [
             '<span>📊 ' + data.totalScanned + ' dipindai</span>',
@@ -292,31 +361,24 @@
             '<span>🎯 Bias: ' + data.bias + '</span>'
           ].join(' ');
         }
-
-        // Render tabel dengan filter aktif
         renderTable(currentFilter);
       } catch (e) {
-        if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;">❌ Gagal memindai. Coba lagi.</td></tr>';
-        console.error(e);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="12">❌ Gagal memindai.</td></tr>';
       }
     }
 
     function renderTable(filter) {
       var tbody = document.getElementById('scan-tbody');
       if (!tbody) return;
-
       var filtered = filterResults(scanResults, filter);
-
       if (!filtered || filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;">Tidak ada setup untuk tab ini.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12">Tidak ada setup untuk tab ini.</td></tr>';
         return;
       }
-
       tbody.innerHTML = '';
       filtered.forEach((coin, i) => {
         var row = tbody.insertRow();
         var probColor = coin.probability >= 70 ? '#00ff88' : coin.probability >= 50 ? '#ffaa00' : '#ff4444';
-
         row.innerHTML = `
           <td>${i + 1}</td>
           <td><b>${coin.symbol}</b><br><small style="color:#888;">${coin.name || ''}</small></td>
@@ -336,20 +398,13 @@
 
     function filterResults(results, filter) {
       if (!results || results.length === 0) return [];
-      
       switch (filter) {
-        case 'HIGH_PROB':
-          return results.filter(r => r.probability >= 70);
-        case 'SMC':
-          return results.filter(r => r.smcSignal === 'Bullish' || r.smcSignal === 'Bearish');
-        case 'WAVE3':
-          return results.filter(r => (r.elliottWave || '').includes('Wave 3'));
-        case 'VOL_BREAKOUT':
-          return results.filter(r => (r.volume24h || 0) > 50000000);
-        case 'SHORT':
-          return results.filter(r => r.tradeSignal === 'SELL' || r.smcSignal === 'Bearish');
-        default:
-          return results;
+        case 'HIGH_PROB': return results.filter(r => r.probability >= 70);
+        case 'SMC': return results.filter(r => r.smcSignal === 'Bullish' || r.smcSignal === 'Bearish');
+        case 'WAVE3': return results.filter(r => (r.elliottWave || '').includes('Wave 3'));
+        case 'VOL_BREAKOUT': return results.filter(r => (r.volume24h || 0) > 50000000);
+        case 'SHORT': return results.filter(r => r.tradeSignal === 'SELL' || r.smcSignal === 'Bearish');
+        default: return results;
       }
     }
 
