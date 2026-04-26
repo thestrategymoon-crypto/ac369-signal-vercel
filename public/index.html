@@ -4,6 +4,45 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
   <title>AC369 FUSION v12.4</title>
+  
+  <!-- PERISAI ANTI-ERROR: Matikan semua error cache & Service Worker -->
+  <script>
+    // 1. Tangkap dan abaikan error MercuryShadow dari sumber manapun
+    window.addEventListener('error', function(e) {
+      if (e.message && e.message.includes('MercuryShadow')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    });
+    
+    // 2. Buat objek dummy jika ada kode yang memanggilnya
+    if (typeof MercuryShadow === 'undefined') {
+      window.MercuryShadow = {
+        init: function() { return {}; },
+        version: '0.0.0'
+      };
+    }
+    
+    // 3. Bersihkan Service Worker lama yang mungkin menyimpan cache
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        registrations.forEach(function(registration) {
+          registration.unregister();
+        });
+      });
+    }
+    
+    // 4. Paksa reload jika ada error fatal
+    var reloadAttempted = false;
+    window.addEventListener('error', function(e) {
+      if (!reloadAttempted) {
+        reloadAttempted = true;
+        setTimeout(function() { window.location.reload(true); }, 1000);
+      }
+    });
+  </script>
+  
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -103,13 +142,6 @@
     }
     .hidden { display: none; }
   </style>
-  <!-- PROTEKSI ANTI-ERROR UNTUK CACHE LAMA -->
-  <script>
-    // Mencegah error dari variabel yang mungkin tersisa di cache
-    if (typeof MercuryShadow === 'undefined') {
-      var MercuryShadow = { init: function() {}, version: '0' };
-    }
-  </script>
 </head>
 <body>
   <h1>🧠 AC369 FUSION v12.4</h1>
