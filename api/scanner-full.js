@@ -1,50 +1,61 @@
-// api/scanner-full.js - AC369 FUSION (Scanner Super Detail - All Fields)
+// api/scanner-full.js - AC369 FUSION v12.1 (Final Accurate)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'max-age=0, s-maxage=300');
 
   try {
     const allCoins = [];
+    // Ambil 500 koin dari CoinGecko (2 halaman)
     for (let page = 1; page <= 2; page++) {
       const response = await fetch(
         `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=${page}&sparkline=false&price_change_percentage=24h`
       );
-      const data = await response.json();
-      for (let i = 0; i < data.length; i++) allCoins.push(data[i]);
+      if (response.ok) {
+        const data = await response.json();
+        for (let i = 0; i < data.length; i++) allCoins.push(data[i]);
+      }
+      await new Promise(r => setTimeout(r, 200));
     }
 
-    const filtered = allCoins.filter(c => c.total_volume > 2000000 && c.market_cap > 20000000);
-    const results = [];
+    // Filter koin dengan volume dan market cap minimum
+    const filteredCoins = [];
+    for (let i = 0; i < allCoins.length; i++) {
+      const c = allCoins[i];
+      if (c.total_volume > 2000000 && c.market_cap > 20000000) {
+        filteredCoins.push(c);
+      }
+    }
 
-    for (const coin of filtered.slice(0, 100)) {
+    const results = [];
+    // Analisis per koin (max 80 untuk kecepatan)
+    for (const coin of filteredCoins.slice(0, 80)) {
       const analysis = await analyzeCoin(coin);
       if (analysis) results.push(analysis);
     }
 
     // Hitung statistik
-    const bullish = results.filter(r => r.smcSignal === 'Bullish').length;
-    const bearish = results.filter(r => r.smcSignal === 'Bearish').length;
-    const avgChange = results.length > 0 
-      ? (results.reduce((s, r) => s + r.priceChange24h, 0) / results.length).toFixed(1)
-      : '0';
+    const bullishCount = results.filter(r => r.smcSignal === 'Bullish').length;
+    const bearishCount = results.filter(r => r.smcSignal === 'Bearish').length;
+    const sumChange = results.reduce((s, r) => s + r.priceChange24h, 0);
+    const avgChange = results.length > 0 ? (sumChange / results.length).toFixed(1) : '0';
     
     let bias = 'NEUTRAL';
-    if (bullish > bearish * 1.5) bias = 'BULLISH';
-    else if (bearish > bullish * 1.5) bias = 'BEARISH';
+    if (bullishCount > bearishCount * 1.5) bias = 'BULLISH';
+    else if (bearishCount > bullishCount * 1.5) bias = 'BEARISH';
 
-    // Urutkan berdasarkan probabilitas
+    // Urutkan berdasarkan probabilitas tertinggi
     results.sort((a, b) => b.probability - a.probability);
 
     res.status(200).json({
       timestamp: new Date().toISOString(),
-      totalScanned: filtered.length,
+      totalScanned: filteredCoins.length,
       passedFilter: results.length,
-      bullish,
-      bearish,
+      bullish: bullishCount,
+      bearish: bearishCount,
       avg24h: avgChange + '%',
-      bias,
+      bias: bias,
       scanTime: '1.2s',
-      results
+      results: results
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -54,14 +65,18 @@ export default async function handler(req, res) {
 async function analyzeCoin(coin) {
   const symbol = coin.symbol.toUpperCase();
   const change24h = coin.price_change_percentage_24h || 0;
+  const volume24h = coin.total_volume || 0;
 
   let ohlcv = [];
   let candlePattern = { name: 'Sideways', signal: 'neutral', probability: 40 };
-  let elliottWave = { wave: 'Konsolidasi', confidence: 25, description: '' };
+  let elliottWave = 'Konsolidasi';
+  let elliottConfidence = 25;
+  let elliottDesc = '';
   let smcSignal = 'Neutral';
   let smcSummary = '';
   let trendAlign = 'NEUTRAL';
 
+  // Ambil OHLCV dari Binance
   try {
     const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=1d&limit=100`);
     if (res.ok) {
@@ -77,7 +92,10 @@ async function analyzeCoin(coin) {
 
       // Elliott Wave
       if (ohlcv.length >= 30) {
-        elliottWave = detectElliottWave(ohlcv);
+        const ew = detectElliottWave(ohlcv);
+        elliottWave = ew.wave;
+        elliottConfidence = ew.confidence;
+        elliottDesc = ew.description;
       }
 
       // SMC
@@ -87,27 +105,32 @@ async function analyzeCoin(coin) {
         smcSummary = smc.summary;
       }
 
-      // Trend Align (gabungan SMC + Elliott + Momentum)
-      trendAlign = calculateTrendAlign(smcSignal, elliottWave.wave, change24h);
+      // Trend Align
+      trendAlign = calculateTrendAlign(smcSignal, elliottWave, change24h);
     }
   } catch (e) {}
 
   // Fallback berdasarkan momentum
-  if (candlePattern.name === 'Sideways' && candlePattern.probability <= 40) {
+  if (candlePattern.probability <= 40) {
     candlePattern = getMomentumCandle(change24h);
   }
-  if (elliottWave.confidence < 25) {
-    elliottWave = getMomentumElliott(change24h);
+  if (elliottConfidence < 25) {
+    const ew = getMomentumElliott(change24h);
+    elliottWave = ew.wave;
+    elliottConfidence = ew.confidence;
+    elliottDesc = ew.description;
   }
-  if (smcSignal === 'Neutral') {
+  if (smcSignal === 'Neutral' && smcSummary === '') {
     const smc = getMomentumSMC(change24h);
     smcSignal = smc.signal;
     smcSummary = smc.summary;
   }
+  if (trendAlign === 'NEUTRAL') {
+    trendAlign = calculateTrendAlign(smcSignal, elliottWave, change24h);
+  }
 
   const probability = calculateScore(change24h, candlePattern, elliottWave, smcSignal);
 
-  // Tentukan sinyal trading
   let tradeSignal = 'HOLD';
   if (probability >= 70) tradeSignal = 'BUY';
   else if (probability >= 55) tradeSignal = 'WATCH';
@@ -115,24 +138,22 @@ async function analyzeCoin(coin) {
   else if (probability <= 45) tradeSignal = 'CAUTION';
 
   return {
-    symbol,
-    name: coin.name,
-    price: coin.current_price,
+    symbol: symbol,
+    name: coin.name || symbol,
+    price: coin.current_price || 0,
     priceChange24h: change24h,
-    volume24h: coin.total_volume,
-    trendAlign,
-    smcSignal,
-    smcSummary,
-    elliottWave: elliottWave.wave,
-    elliottConfidence: elliottWave.confidence,
-    elliottDesc: elliottWave.description,
+    volume24h: volume24h,
+    trendAlign: trendAlign,
+    smcSignal: smcSignal,
+    smcSummary: smcSummary,
+    elliottWave: elliottWave,
+    elliottConfidence: elliottConfidence,
+    elliottDesc: elliottDesc,
     candlePattern: candlePattern.name,
     candleSignal: candlePattern.signal,
     astrology: getAstrologySignal(new Date()),
-    probability,
-    tradeSignal,
-    support: (coin.current_price * 0.95).toFixed(4),
-    resistance: (coin.current_price * 1.05).toFixed(4)
+    probability: probability,
+    tradeSignal: tradeSignal
   };
 }
 
@@ -279,7 +300,7 @@ function calculateTrendAlign(smcSignal, elliottWave, change24h) {
 }
 
 // ==================== SKOR ====================
-function calculateScore(change, candle, elliott, smcSignal) {
+function calculateScore(change, candle, elliottWave, smcSignal) {
   let score = 50;
   if (change > 15) score += 25;
   else if (change > 8) score += 15;
@@ -290,8 +311,8 @@ function calculateScore(change, candle, elliott, smcSignal) {
   if (candle.signal === 'bullish') score += 10;
   else if (candle.signal === 'bearish') score -= 10;
 
-  if (elliott.wave.includes('Wave 3')) score += 15;
-  else if (elliott.wave.includes('Korektif')) score -= 5;
+  if (elliottWave.includes('Wave 3')) score += 15;
+  else if (elliottWave.includes('Korektif')) score -= 5;
 
   if (smcSignal === 'Bullish') score += 20;
   else if (smcSignal === 'Bearish') score -= 15;
