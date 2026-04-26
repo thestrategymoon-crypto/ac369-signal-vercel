@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-  <title>AC369 FUSION v12.1</title>
+  <title>AC369 FUSION v12.2</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -26,6 +26,7 @@
       margin: 5px;
       cursor: pointer;
       border: 1px solid #4a4a8a;
+      font-size: 0.9rem;
     }
     .scan-btn { background: #3a3a8a; padding: 12px 24px; font-size: 1.1rem; }
     .search-btn { background: #4a4aff; }
@@ -127,7 +128,7 @@
   </style>
 </head>
 <body>
-  <h1>🧠 AC369 FUSION v12.1</h1>
+  <h1>🧠 AC369 FUSION v12.2</h1>
   <div class="subtitle">Live Institutional Grade · SMC · Elliott Wave · Derivatives · Liquidation Map</div>
   
   <button class="refresh-btn" onclick="refreshAll()">🔄 Refresh All</button>
@@ -212,15 +213,16 @@
     </table>
   </div>
 
-  <div class="footer" id="footer">AC369 FUSION v12.1 • Data Real-time</div>
+  <div class="footer" id="footer">AC369 FUSION v12.2 • Data Real-time</div>
 
   <script>
+    // ==================== GLOBAL VAR ====================
     var scanResults = [];
     var currentFilter = 'ALL';
 
     function updateTimestamp() {
       var now = new Date();
-      document.getElementById('footer').innerHTML = 'AC369 FUSION v12.1 • Update: ' + now.toLocaleTimeString('id-ID');
+      document.getElementById('footer').innerHTML = 'AC369 FUSION v12.2 • Update: ' + now.toLocaleTimeString('id-ID');
     }
 
     async function refreshAll() {
@@ -233,52 +235,85 @@
       var input = document.getElementById('search-input');
       var resultDiv = document.getElementById('search-result');
       var symbol = input.value.trim().toUpperCase();
-      if (!symbol) { resultDiv.innerHTML = '<div class="error">Masukkan simbol koin.</div>'; return; }
+      if (!symbol) {
+        resultDiv.innerHTML = '<div class="error">⚠️ Masukkan simbol koin terlebih dahulu.</div>';
+        return;
+      }
       resultDiv.innerHTML = '<div class="loading">🔬 Menganalisis ' + symbol + ' multi-timeframe...</div>';
+      
       try {
-        var res = await fetch('/api/search?symbol=' + symbol);
+        var res = await fetch('/api/search?symbol=' + encodeURIComponent(symbol));
         var data = await res.json();
-        if (data.error) { resultDiv.innerHTML = '<div class="error">' + data.error + '</div>'; return; }
         
+        if (data.error) {
+          resultDiv.innerHTML = '<div class="error">❌ ' + data.error + '</div>';
+          return;
+        }
+        
+        // Bangun html untuk setiap timeframe
         var tfHtml = '';
         if (data.timeframes) {
-          for (var tf in data.timeframes) {
-            var tfData = data.timeframes[tf];
+          var timeframes = ['1H', '4H', '1D'];
+          for (var t = 0; t < timeframes.length; t++) {
+            var tfKey = timeframes[t];
+            var tfData = data.timeframes[tfKey] || {};
+            
+            // Pola
             var patternsHtml = '';
-            (tfData.patterns || []).forEach(function(p) {
-              var c = p.signal === 'bullish' ? '#00ff88' : p.signal === 'bearish' ? '#ff4444' : '#ccc';
-              patternsHtml += '<span style="color:' + c + '; display:inline-block; margin:2px 3px; padding:2px 6px; background:#1a1a3a; border-radius:8px;">' + p.name + '</span>';
-            });
+            var patterns = tfData.patterns || [];
+            for (var p = 0; p < patterns.length; p++) {
+              var pattern = patterns[p];
+              var sigColor = pattern.signal === 'bullish' ? '#00ff88' : (pattern.signal === 'bearish' ? '#ff4444' : '#ccc');
+              patternsHtml += '<span style="color:' + sigColor + '; display:inline-block; margin:2px 3px; padding:2px 6px; background:#1a1a3a; border-radius:8px; font-size:0.8rem;">' + pattern.name + '</span>';
+            }
+            
+            // SMC detail
+            var smc = tfData.smc || {};
+            var smcColor = smc.signal === 'Bullish' ? '#00ff88' : (smc.signal === 'Bearish' ? '#ff4444' : '#ccc');
+            
+            // Elliott detail
+            var ew = tfData.elliottWave || {};
+            
             tfHtml += 
-              '<div style="background:#0d0d22; border-radius:10px; padding:10px; margin:8px 0;">' +
-                '<b style="color:#a0a0ff;">⏱ Timeframe ' + tf + '</b>' +
-                '<div class="signal-row"><span>RSI:</span> <span>' + (tfData.rsi || 'N/A') + '</span></div>' +
-                '<div><b>Pola:</b> ' + (patternsHtml || '-') + '</div>' +
-                '<div><b>Elliott Wave:</b> ' + (tfData.elliottWave ? tfData.elliottWave.wave + ' (' + tfData.elliottWave.confidence + '%)' : 'N/A') + '<br><small>' + (tfData.elliottWave ? tfData.elliottWave.description : '') + '</small></div>' +
-                '<div><b>SMC:</b> <span style="color:' + (tfData.smc && tfData.smc.signal === 'Bullish' ? '#00ff88' : tfData.smc && tfData.smc.signal === 'Bearish' ? '#ff4444' : '#ccc') + '">' + (tfData.smc ? tfData.smc.signal : 'N/A') + '</span><br><small>' + (tfData.smc ? tfData.smc.summary : '') + '</small></div>' +
+              '<div style="background:#0d0d22; border-radius:10px; padding:12px; margin:8px 0; border-left:3px solid #4a4aff;">' +
+                '<b style="color:#a0a0ff; font-size:1rem;">⏱ Timeframe ' + tfKey + '</b>' +
+                '<div class="signal-row" style="margin-top:6px;"><span>📊 RSI:</span> <span style="font-weight:bold;">' + (tfData.rsi || 'N/A') + '</span></div>' +
+                '<div style="margin-top:6px;"><b>🕯 Pola:</b> ' + (patternsHtml || '<span style="color:#888;">Tidak terdeteksi</span>') + '</div>' +
+                '<div style="margin-top:6px;"><b>🌊 Elliott Wave:</b> <span style="color:#ffaa00;">' + (ew.wave || 'N/A') + '</span> (' + (ew.confidence || 0) + '%)<br><small>' + (ew.description || '') + '</small></div>' +
+                '<div style="margin-top:6px;"><b>🧠 SMC:</b> <span style="color:' + smcColor + '; font-weight:bold;">' + (smc.signal || 'Neutral') + '</span><br><small>' + (smc.summary || '') + '</small></div>' +
               '</div>';
           }
         }
 
+        // Rekomendasi trading
         var rec = data.recommendation || {};
-        var recColor = rec.action && rec.action.includes('LONG') ? '#00ff88' : rec.action && rec.action.includes('SHORT') ? '#ff4444' : '#ffaa00';
+        var recAction = rec.action || 'HOLD';
+        var recConfidence = rec.confidence || 'Netral';
+        var recColor = recAction.includes('LONG') ? '#00ff88' : (recAction.includes('SHORT') ? '#ff4444' : '#ffaa00');
+        var recBg = recAction.includes('LONG') ? '#1a2a1a' : (recAction.includes('SHORT') ? '#2a1a1a' : '#1a1a2a');
+
+        // Astrologi
+        var astro = data.astrology || {};
 
         resultDiv.innerHTML = 
-          '<div class="card" style="border: 2px solid #4a4aff;">' +
-            '<h3>🔬 ' + data.symbol + ' — ' + data.name + '</h3>' +
-            '<div class="signal-row"><span><b>Harga:</b></span> <strong>$' + (data.price || 0).toLocaleString() + '</strong></div>' +
-            '<div class="signal-row"><span><b>24h:</b></span> <span style="color:' + (data.change24h >= 0 ? '#00ff88' : '#ff4444') + '">' + (data.change24h || 0).toFixed(2) + '%</span></div>' +
-            '<div class="signal-row"><span><b>Support:</b></span> $' + (data.support || '—') + '</div>' +
-            '<div class="signal-row"><span><b>Resistance:</b></span> $' + (data.resistance || '—') + '</div>' +
-            '<div style="margin-top:15px; padding:12px; background:' + (rec.action && rec.action.includes('LONG') ? '#1a2a1a' : rec.action && rec.action.includes('SHORT') ? '#2a1a1a' : '#1a1a2a') + '; border-radius:12px;">' +
-              '<b style="font-size:1.2rem; color:' + recColor + ';">🎯 ' + (rec.action || 'HOLD') + ' (' + (rec.confidence || 'Netral') + ')</b>' +
-              '<div style="margin-top:6px;">' + (rec.summary || '') + '</div>' +
+          '<div class="card" style="border: 2px solid #4a4aff; margin-bottom:20px;">' +
+            '<h3>🔬 ' + data.symbol + ' — ' + (data.name || '') + '</h3>' +
+            '<div class="signal-row"><span><b>💵 Harga:</b></span> <strong style="font-size:1.2rem;">$' + (data.price || 0).toLocaleString() + '</strong></div>' +
+            '<div class="signal-row"><span><b>📈 24h:</b></span> <span style="font-size:1.1rem; color:' + ((data.change24h || 0) >= 0 ? '#00ff88' : '#ff4444') + '; font-weight:bold;">' + (data.change24h || 0).toFixed(2) + '%</span></div>' +
+            '<div class="signal-row"><span><b>🛡 Support:</b></span> <span style="color:#00ff88;">$' + (data.support || '—') + '</span></div>' +
+            '<div class="signal-row"><span><b>🎯 Resistance:</b></span> <span style="color:#ff4444;">$' + (data.resistance || '—') + '</span></div>' +
+            '<div style="margin-top:15px; padding:14px; background:' + recBg + '; border-radius:12px; text-align:center;">' +
+              '<b style="font-size:1.3rem; color:' + recColor + ';">🎯 REKOMENDASI: ' + recAction + '</b>' +
+              '<div style="margin-top:4px; color:#ccc;">Keyakinan: ' + recConfidence + ' | Skor: ' + (rec.score || 50) + '/100</div>' +
+              '<div style="margin-top:8px; font-size:0.9rem;">' + (rec.summary || rec.explanation || '') + '</div>' +
             '</div>' +
             '<div style="margin-top:15px;">' + tfHtml + '</div>' +
-            '<div style="margin-top:12px;"><b>🌙 Astrologi:</b> ' + (data.astrology ? data.astrology.signal + ' (' + data.astrology.moonPhase + ' ' + data.astrology.illumination + '%)<br><small>' + data.astrology.interpretation + '</small>' : 'N/A') + '</div>' +
+            '<div style="margin-top:12px; padding:10px; background:#1a1a2a; border-radius:8px;">' +
+              '<b>🌙 Astrologi Finansial:</b> ' + (astro.signal || 'N/A') + ' (' + (astro.moonPhase || '') + ' ' + (astro.illumination || '') + '%)<br><small>' + (astro.interpretation || '') + '</small>' +
+            '</div>' +
           '</div>';
       } catch (e) {
-        resultDiv.innerHTML = '<div class="error">Gagal terhubung ke server.</div>';
+        resultDiv.innerHTML = '<div class="error">❌ Gagal terhubung ke server. Periksa koneksi Anda.</div>';
       }
     }
 
@@ -287,12 +322,11 @@
       try {
         var res = await fetch('/api/bias');
         var data = await res.json();
-        var biasColor = data.bias === 'BULLISH' ? '#00ff88' : data.bias === 'BEARISH' ? '#ff4444' : '#ffaa00';
-        document.getElementById('market-bias').innerHTML = `
-          <div style="font-size:1.5rem; font-weight:bold; color:${biasColor};">${data.bias || 'NEUTRAL'}</div>
-          <div>Fear & Greed: ${data.fearGreed || '—'} | BTC Dom: ${data.btcDominance || '—'}</div>
-          <div>Altcoin Season: ${data.altcoinSeason || '—'} | MVRV: ${data.mvrv || '—'}</div>
-        `;
+        var biasColor = data.bias === 'BULLISH' ? '#00ff88' : (data.bias === 'BEARISH' ? '#ff4444' : '#ffaa00');
+        document.getElementById('market-bias').innerHTML = 
+          '<div style="font-size:1.5rem; font-weight:bold; color:' + biasColor + ';">' + (data.bias || 'NEUTRAL') + '</div>' +
+          '<div>Fear & Greed: ' + (data.fearGreed || '—') + ' | BTC Dom: ' + (data.btcDominance || '—') + '</div>' +
+          '<div>Altcoin Season: ' + (data.altcoinSeason || '—') + ' | MVRV: ' + (data.mvrv || '—') + '</div>';
       } catch (e) {
         document.getElementById('market-bias').innerHTML = '<span class="error">Gagal memuat bias.</span>';
       }
@@ -303,20 +337,21 @@
       try {
         var res = await fetch('/api/analytics');
         var data = await res.json();
+        
         var btc = data.btc || {};
         var btcHtml = '<div class="signal-row"><span>Harga:</span> <strong>$' + (parseFloat(btc.currentPrice || 0)).toLocaleString() + '</strong></div>';
         btcHtml += '<div class="signal-row"><span>Probabilitas:</span> ' + (btc.probabilityScore || 50) + '%</div>';
-        btcHtml += '<div class="signal-row"><span>Sinyal:</span> <span class="badge ' + ((btc.confluenceSignal || '').includes('Buy') ? 'badge-buy' : (btc.confluenceSignal || '').includes('Sell') ? 'badge-sell' : 'badge-neutral') + '">' + (btc.confluenceSignal || 'Neutral') + '</span></div>';
-        btcHtml += '<div class="signal-row"><span>MA:</span> ' + (btc.maStatus ? btc.maStatus.position : 'N/A') + '</div>';
-        btcHtml += '<div>' + (btc.technicalSummary || '') + '</div>';
+        btcHtml += '<div class="signal-row"><span>Sinyal:</span> <span class="badge ' + ((btc.confluenceSignal || '').indexOf('Buy') >= 0 ? 'badge-buy' : (btc.confluenceSignal || '').indexOf('Sell') >= 0 ? 'badge-sell' : 'badge-neutral') + '">' + (btc.confluenceSignal || 'Neutral') + '</span></div>';
+        btcHtml += '<div class="signal-row"><span>MA:</span> ' + ((btc.maStatus && btc.maStatus.position) ? btc.maStatus.position : 'N/A') + '</div>';
+        btcHtml += '<div style="margin-top:8px;">' + (btc.technicalSummary || '') + '</div>';
         document.getElementById('btc-content').innerHTML = btcHtml;
 
         var eth = data.eth || {};
         var ethHtml = '<div class="signal-row"><span>Harga:</span> <strong>$' + (parseFloat(eth.currentPrice || 0)).toLocaleString() + '</strong></div>';
         ethHtml += '<div class="signal-row"><span>Probabilitas:</span> ' + (eth.probabilityScore || 50) + '%</div>';
-        ethHtml += '<div class="signal-row"><span>Sinyal:</span> <span class="badge ' + ((eth.confluenceSignal || '').includes('Buy') ? 'badge-buy' : (eth.confluenceSignal || '').includes('Sell') ? 'badge-sell' : 'badge-neutral') + '">' + (eth.confluenceSignal || 'Neutral') + '</span></div>';
-        ethHtml += '<div class="signal-row"><span>MA:</span> ' + (eth.maStatus ? eth.maStatus.position : 'N/A') + '</div>';
-        ethHtml += '<div>' + (eth.technicalSummary || '') + '</div>';
+        ethHtml += '<div class="signal-row"><span>Sinyal:</span> <span class="badge ' + ((eth.confluenceSignal || '').indexOf('Buy') >= 0 ? 'badge-buy' : (eth.confluenceSignal || '').indexOf('Sell') >= 0 ? 'badge-sell' : 'badge-neutral') + '">' + (eth.confluenceSignal || 'Neutral') + '</span></div>';
+        ethHtml += '<div class="signal-row"><span>MA:</span> ' + ((eth.maStatus && eth.maStatus.position) ? eth.maStatus.position : 'N/A') + '</div>';
+        ethHtml += '<div style="margin-top:8px;">' + (eth.technicalSummary || '') + '</div>';
         document.getElementById('eth-content').innerHTML = ethHtml;
 
         document.getElementById('narrative-content').innerHTML = '<div>💬 ' + (data.smartMoneyNarrative || 'Pasar netral.') + '</div>';
@@ -331,10 +366,10 @@
       try {
         var res = await fetch('/api/macro');
         var data = await res.json();
-        document.getElementById('fg-content').innerHTML = '<div style="font-size:2rem;">' + (data.fearGreed ? data.fearGreed.value : '—') + '</div><div>' + (data.fearGreed ? data.fearGreed.classification : '') + '</div>';
-        document.getElementById('dom-content').innerHTML = '<div style="font-size:1.5rem;">' + (data.btcDominance ? data.btcDominance.dominance : '—') + '</div><div>' + (data.btcDominance ? data.btcDominance.interpretation : '') + '</div>';
-        document.getElementById('mvrv-content').innerHTML = '<div style="font-size:1.5rem;">' + (data.mvrvZScore ? data.mvrvZScore.value : '—') + '</div><div>' + (data.mvrvZScore ? data.mvrvZScore.interpretation : '') + '</div>';
-        document.getElementById('altseason-content').innerHTML = '<div style="font-size:1.5rem;">' + (data.altcoinSeason ? data.altcoinSeason.index : '—') + '/100</div><div>' + (data.altcoinSeason ? data.altcoinSeason.season : '') + '</div>';
+        document.getElementById('fg-content').innerHTML = '<div style="font-size:2rem;">' + ((data.fearGreed && data.fearGreed.value) ? data.fearGreed.value : '—') + '</div><div>' + ((data.fearGreed && data.fearGreed.classification) ? data.fearGreed.classification : '') + '</div>';
+        document.getElementById('dom-content').innerHTML = '<div style="font-size:1.5rem;">' + ((data.btcDominance && data.btcDominance.dominance) ? data.btcDominance.dominance : '—') + '</div><div>' + ((data.btcDominance && data.btcDominance.interpretation) ? data.btcDominance.interpretation : '') + '</div>';
+        document.getElementById('mvrv-content').innerHTML = '<div style="font-size:1.5rem;">' + ((data.mvrvZScore && data.mvrvZScore.value) ? data.mvrvZScore.value : '—') + '</div><div>' + ((data.mvrvZScore && data.mvrvZScore.interpretation) ? data.mvrvZScore.interpretation : '') + '</div>';
+        document.getElementById('altseason-content').innerHTML = '<div style="font-size:1.5rem;">' + ((data.altcoinSeason && data.altcoinSeason.index) ? data.altcoinSeason.index : '—') + '/100</div><div>' + ((data.altcoinSeason && data.altcoinSeason.season) ? data.altcoinSeason.season : '') + '</div>';
       } catch (e) {
         document.getElementById('fg-content').innerHTML = '<span class="error">Gagal</span>';
       }
@@ -371,40 +406,38 @@
       if (!tbody) return;
       var filtered = filterResults(scanResults, filter);
       if (!filtered || filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="12">Tidak ada setup untuk tab ini.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;">Tidak ada setup untuk tab ini.</td></tr>';
         return;
       }
       tbody.innerHTML = '';
-      filtered.forEach((coin, i) => {
+      for (var i = 0; i < filtered.length; i++) {
+        var coin = filtered[i];
         var row = tbody.insertRow();
-        var probColor = coin.probability >= 70 ? '#00ff88' : coin.probability >= 50 ? '#ffaa00' : '#ff4444';
-        row.innerHTML = `
-          <td>${i + 1}</td>
-          <td><b>${coin.symbol}</b><br><small style="color:#888;">${coin.name || ''}</small></td>
-          <td>$${coin.price?.toFixed(4) || 'N/A'}</td>
-          <td style="color:${coin.priceChange24h >= 0 ? '#00ff88' : '#ff4444'}">${coin.priceChange24h?.toFixed(1) || '0'}%</td>
-          <td>$${((coin.volume24h || 0)/1e6).toFixed(1)}M</td>
-          <td><span class="badge" style="background:#222;">${coin.trendAlign || 'NEUTRAL'}</span></td>
-          <td><span style="color:${coin.smcSignal === 'Bullish' ? '#00ff88' : coin.smcSignal === 'Bearish' ? '#ff4444' : '#aaa'}">${coin.smcSignal || '-'}</span><br><small>${coin.smcSummary || ''}</small></td>
-          <td><span style="color:${coin.elliottConfidence >= 50 ? '#00ff88' : '#ffaa00'}">${coin.elliottWave || '-'}</span><br><small>${coin.elliottDesc || ''}</small></td>
-          <td><span style="color:${coin.candleSignal === 'bullish' ? '#00ff88' : coin.candleSignal === 'bearish' ? '#ff4444' : '#aaa'}">${coin.candlePattern || '-'}</span></td>
-          <td><span title="${coin.astrology?.interpretation || ''}">${coin.astrology?.signal || '-'}</span></td>
-          <td style="color:${probColor}; font-weight:bold;">${coin.probability || 0}%</td>
-          <td><span class="badge" style="background:${coin.tradeSignal === 'BUY' ? '#1a4a1a' : coin.tradeSignal === 'SELL' ? '#4a1a1a' : '#222'}">${coin.tradeSignal || 'HOLD'}</span></td>
-        `;
-      });
+        var probColor = coin.probability >= 70 ? '#00ff88' : (coin.probability >= 50 ? '#ffaa00' : '#ff4444');
+        row.innerHTML = 
+          '<td>' + (i + 1) + '</td>' +
+          '<td><b>' + coin.symbol + '</b><br><small style="color:#888;">' + (coin.name || '') + '</small></td>' +
+          '<td>$' + ((coin.price || 0).toFixed(4)) + '</td>' +
+          '<td style="color:' + (coin.priceChange24h >= 0 ? '#00ff88' : '#ff4444') + '">' + ((coin.priceChange24h || 0).toFixed(1)) + '%</td>' +
+          '<td>$' + (((coin.volume24h || 0) / 1e6).toFixed(1)) + 'M</td>' +
+          '<td><span class="badge" style="background:#222;">' + (coin.trendAlign || 'NEUTRAL') + '</span></td>' +
+          '<td><span style="color:' + (coin.smcSignal === 'Bullish' ? '#00ff88' : (coin.smcSignal === 'Bearish' ? '#ff4444' : '#aaa')) + '">' + (coin.smcSignal || '-') + '</span><br><small>' + (coin.smcSummary || '') + '</small></td>' +
+          '<td><span style="color:' + ((coin.elliottConfidence || 0) >= 50 ? '#00ff88' : '#ffaa00') + '">' + (coin.elliottWave || '-') + '</span><br><small>' + (coin.elliottDesc || '') + '</small></td>' +
+          '<td><span style="color:' + (coin.candleSignal === 'bullish' ? '#00ff88' : (coin.candleSignal === 'bearish' ? '#ff4444' : '#aaa')) + '">' + (coin.candlePattern || '-') + '</span></td>' +
+          '<td><span title="' + ((coin.astrology && coin.astrology.interpretation) || '') + '">' + ((coin.astrology && coin.astrology.signal) || '-') + '</span></td>' +
+          '<td style="color:' + probColor + '; font-weight:bold;">' + (coin.probability || 0) + '%</td>' +
+          '<td><span class="badge" style="background:' + (coin.tradeSignal === 'BUY' ? '#1a4a1a' : (coin.tradeSignal === 'SELL' ? '#4a1a1a' : '#222')) + '">' + (coin.tradeSignal || 'HOLD') + '</span></td>';
+      }
     }
 
     function filterResults(results, filter) {
       if (!results || results.length === 0) return [];
-      switch (filter) {
-        case 'HIGH_PROB': return results.filter(r => r.probability >= 70);
-        case 'SMC': return results.filter(r => r.smcSignal === 'Bullish' || r.smcSignal === 'Bearish');
-        case 'WAVE3': return results.filter(r => (r.elliottWave || '').includes('Wave 3'));
-        case 'VOL_BREAKOUT': return results.filter(r => (r.volume24h || 0) > 50000000);
-        case 'SHORT': return results.filter(r => r.tradeSignal === 'SELL' || r.smcSignal === 'Bearish');
-        default: return results;
-      }
+      if (filter === 'HIGH_PROB') return results.filter(function(r) { return r.probability >= 70; });
+      if (filter === 'SMC') return results.filter(function(r) { return r.smcSignal === 'Bullish' || r.smcSignal === 'Bearish'; });
+      if (filter === 'WAVE3') return results.filter(function(r) { return (r.elliottWave || '').indexOf('Wave 3') >= 0; });
+      if (filter === 'VOL_BREAKOUT') return results.filter(function(r) { return (r.volume24h || 0) > 50000000; });
+      if (filter === 'SHORT') return results.filter(function(r) { return r.tradeSignal === 'SELL' || r.smcSignal === 'Bearish'; });
+      return results;
     }
 
     function applyFilter(filter) {
@@ -412,6 +445,7 @@
       renderTable(filter);
     }
 
+    // ==================== INIT ====================
     refreshAll();
     setInterval(refreshAll, 120000);
   </script>
