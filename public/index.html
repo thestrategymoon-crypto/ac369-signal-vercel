@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-  <title>AC369 FUSION v12.3</title>
+  <title>AC369 FUSION v12.4</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -103,9 +103,16 @@
     }
     .hidden { display: none; }
   </style>
+  <!-- PROTEKSI ANTI-ERROR UNTUK CACHE LAMA -->
+  <script>
+    // Mencegah error dari variabel yang mungkin tersisa di cache
+    if (typeof MercuryShadow === 'undefined') {
+      var MercuryShadow = { init: function() {}, version: '0' };
+    }
+  </script>
 </head>
 <body>
-  <h1>🧠 AC369 FUSION v12.3</h1>
+  <h1>🧠 AC369 FUSION v12.4</h1>
   <div class="subtitle">Live Institutional Grade · SMC · Elliott Wave · Derivatives · Liquidation Map</div>
   
   <button class="btn" onclick="refreshAll()">🔄 Refresh All</button>
@@ -167,7 +174,7 @@
     </table>
   </div>
 
-  <div class="footer" id="footer">AC369 FUSION v12.3 • Data Real-time</div>
+  <div class="footer" id="footer">AC369 FUSION v12.4 • Data Real-time</div>
 
   <script>
     // ==================== GLOBAL ====================
@@ -175,7 +182,7 @@
     var currentFilter = 'ALL';
 
     function updateTimestamp() {
-      document.getElementById('footer').innerHTML = 'AC369 FUSION v12.3 • Update: ' + new Date().toLocaleTimeString('id-ID');
+      document.getElementById('footer').innerHTML = 'AC369 FUSION v12.4 • Update: ' + new Date().toLocaleTimeString('id-ID');
     }
 
     async function refreshAll() {
