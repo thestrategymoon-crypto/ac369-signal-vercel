@@ -1,4 +1,4 @@
-// api/analytics.js - AC369 FUSION v12.1 (Real-time Data)
+// api/analytics.js - AC369 FUSION v12.1 (RSI Real-Time Akurat)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'max-age=0, s-maxage=60');
@@ -28,15 +28,17 @@ function fallback(sym) {
     probabilityScore: 50,
     confluenceSignal: 'Neutral',
     confluenceStrength: 'Rendah',
-    keySignals: [{ name: 'Menunggu data', bullish: true, active: true, weight: 0 }],
+    keySignals: [],
     technicalSummary: 'Data sedang dimuat...',
+    rsi: { '1H': '50.0', '4H': '50.0', '1D': '50.0' },
     maStatus: { ma50: 'N/A', ma200: 'N/A', position: 'Tidak tersedia' }
   };
 }
 
 async function analyze(symbol) {
   const display = symbol.replace('USDT', '');
-  let price = 0, change = 0, rsi1h = 50, rsi4h = 50, rsi1d = 50;
+  let price = 0, change = 0;
+  let rsi1h = 50, rsi4h = 50, rsi1d = 50;
   let ma50 = 'N/A', ma200 = 'N/A', pos = 'N/A';
 
   // Harga dari CoinGecko
@@ -59,23 +61,15 @@ async function analyze(symbol) {
       fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=4h&limit=100`),
       fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1d&limit=200`)
     ]);
-    if (k1h.ok) {
-      const data = await k1h.json();
-      const closes = data.map(c => parseFloat(c[4])).filter(v => !isNaN(v) && v > 0);
-      if (closes.length >= 14) rsi1h = calcRSI(closes, 14);
-    }
-    if (k4h.ok) {
-      const data = await k4h.json();
-      const closes = data.map(c => parseFloat(c[4])).filter(v => !isNaN(v) && v > 0);
-      if (closes.length >= 14) rsi4h = calcRSI(closes, 14);
-    }
+    if (k1h.ok) { const d = await k1h.json(); const c = d.map(k => parseFloat(k[4])).filter(v => !isNaN(v) && v > 0); if (c.length >= 14) rsi1h = calcRSI(c); }
+    if (k4h.ok) { const d = await k4h.json(); const c = d.map(k => parseFloat(k[4])).filter(v => !isNaN(v) && v > 0); if (c.length >= 14) rsi4h = calcRSI(c); }
     if (k1d.ok) {
-      const data = await k1d.json();
-      const closes = data.map(c => parseFloat(c[4])).filter(v => !isNaN(v) && v > 0);
-      if (closes.length >= 14) rsi1d = calcRSI(closes, 14);
-      if (closes.length >= 50) ma50 = (closes.slice(-50).reduce((a,b)=>a+b,0)/50).toFixed(2);
-      if (closes.length >= 200) {
-        ma200 = (closes.slice(-200).reduce((a,b)=>a+b,0)/200).toFixed(2);
+      const d = await k1d.json();
+      const c = d.map(k => parseFloat(k[4])).filter(v => !isNaN(v) && v > 0);
+      if (c.length >= 14) rsi1d = calcRSI(c);
+      if (c.length >= 50) ma50 = (c.slice(-50).reduce((a,b)=>a+b,0)/50).toFixed(2);
+      if (c.length >= 200) {
+        ma200 = (c.slice(-200).reduce((a,b)=>a+b,0)/200).toFixed(2);
         pos = price > parseFloat(ma200) ? 'Above 200MA (Bull)' : 'Below 200MA (Bear)';
       }
     }
@@ -83,6 +77,7 @@ async function analyze(symbol) {
 
   if (!price) price = symbol === 'BTCUSDT' ? 78000 : 2400;
 
+  // Hitung skor
   let score = 50;
   const signals = [];
   if (rsi1h < 30) { score += 10; signals.push({ name: 'RSI 1H Oversold', bullish: true, active: true, weight: 10 }); }
@@ -129,8 +124,9 @@ function calcRSI(prices, period = 14) {
 }
 
 function narrative(btc, eth) {
-  if (btc.probabilityScore > 60 && eth.probabilityScore > 60) return '💰 BTC & ETH bullish kuat.';
-  if (btc.probabilityScore > 60) return '📈 Bitcoin unggul.';
-  if (eth.probabilityScore > 60) return '💎 Ethereum unggul.';
-  return '📊 Pasar netral.';
+  if (btc.probabilityScore > 60 && eth.probabilityScore > 60) return '💰 BTC & ETH bullish kuat – pasar risk-on.';
+  if (btc.probabilityScore > 60) return '📈 Bitcoin memimpin bullish, altcoin mungkin mengikuti.';
+  if (eth.probabilityScore > 60) return '💎 Ethereum unggul – rotasi ke altcoin.';
+  if (btc.probabilityScore < 40 && eth.probabilityScore < 40) return '⚠️ BTC & ETH bearish – pertimbangkan defensive.';
+  return '📊 Pasar netral – tunggu konfirmasi sinyal.';
 }
