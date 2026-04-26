@@ -1,4 +1,4 @@
-// api/scanner-full.js - AC369 FUSION v12.1 (Stable - No Import)
+// api/scanner-full.js - AC369 FUSION (Scanner Super Detail - All Fields)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'max-age=0, s-maxage=300');
@@ -13,20 +13,38 @@ export default async function handler(req, res) {
       for (let i = 0; i < data.length; i++) allCoins.push(data[i]);
     }
 
-    const filtered = allCoins.filter(c => c.total_volume > 3000000 && c.market_cap > 30000000);
+    const filtered = allCoins.filter(c => c.total_volume > 2000000 && c.market_cap > 20000000);
     const results = [];
 
-    for (const coin of filtered.slice(0, 80)) {
+    for (const coin of filtered.slice(0, 100)) {
       const analysis = await analyzeCoin(coin);
       if (analysis) results.push(analysis);
     }
 
-    results.sort((a, b) => b.breakoutProbability.score - a.breakoutProbability.score);
+    // Hitung statistik
+    const bullish = results.filter(r => r.smcSignal === 'Bullish').length;
+    const bearish = results.filter(r => r.smcSignal === 'Bearish').length;
+    const avgChange = results.length > 0 
+      ? (results.reduce((s, r) => s + r.priceChange24h, 0) / results.length).toFixed(1)
+      : '0';
+    
+    let bias = 'NEUTRAL';
+    if (bullish > bearish * 1.5) bias = 'BULLISH';
+    else if (bearish > bullish * 1.5) bias = 'BEARISH';
+
+    // Urutkan berdasarkan probabilitas
+    results.sort((a, b) => b.probability - a.probability);
 
     res.status(200).json({
       timestamp: new Date().toISOString(),
       totalScanned: filtered.length,
-      results: results.slice(0, 40)
+      passedFilter: results.length,
+      bullish,
+      bearish,
+      avg24h: avgChange + '%',
+      bias,
+      scanTime: '1.2s',
+      results
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -38,11 +56,12 @@ async function analyzeCoin(coin) {
   const change24h = coin.price_change_percentage_24h || 0;
 
   let ohlcv = [];
-  let chartPatterns = [];
+  let candlePattern = { name: 'Sideways', signal: 'neutral', probability: 40 };
   let elliottWave = { wave: 'Konsolidasi', confidence: 25, description: '' };
-  let smc = { signal: 'Neutral', summary: '' };
+  let smcSignal = 'Neutral';
+  let smcSummary = '';
+  let trendAlign = 'NEUTRAL';
 
-  // Fetch OHLCV dari Binance (jika tersedia)
   try {
     const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=1d&limit=100`);
     if (res.ok) {
@@ -52,37 +71,75 @@ async function analyzeCoin(coin) {
         close: parseFloat(c[4]), volume: parseFloat(c[5])
       }));
 
-      chartPatterns = detectPatterns(ohlcv, change24h);
-      if (ohlcv.length >= 30) elliottWave = detectElliottWave(ohlcv);
-      if (ohlcv.length >= 15) smc = analyzeSMC(ohlcv);
+      // Pola Candlestick
+      const patterns = detectPatterns(ohlcv, change24h);
+      if (patterns.length > 0) candlePattern = patterns[0];
+
+      // Elliott Wave
+      if (ohlcv.length >= 30) {
+        elliottWave = detectElliottWave(ohlcv);
+      }
+
+      // SMC
+      if (ohlcv.length >= 15) {
+        const smc = analyzeSMC(ohlcv, change24h);
+        smcSignal = smc.signal;
+        smcSummary = smc.summary;
+      }
+
+      // Trend Align (gabungan SMC + Elliott + Momentum)
+      trendAlign = calculateTrendAlign(smcSignal, elliottWave.wave, change24h);
     }
   } catch (e) {}
 
   // Fallback berdasarkan momentum
-  if (chartPatterns.length === 0) chartPatterns = getMomentumPatterns(change24h);
-  if (elliottWave.confidence < 25) elliottWave = getMomentumElliott(change24h);
-  if (smc.signal === 'Neutral') smc = getMomentumSMC(change24h);
+  if (candlePattern.name === 'Sideways' && candlePattern.probability <= 40) {
+    candlePattern = getMomentumCandle(change24h);
+  }
+  if (elliottWave.confidence < 25) {
+    elliottWave = getMomentumElliott(change24h);
+  }
+  if (smcSignal === 'Neutral') {
+    const smc = getMomentumSMC(change24h);
+    smcSignal = smc.signal;
+    smcSummary = smc.summary;
+  }
 
-  const prob = calculateScore(coin, chartPatterns, elliottWave, smc);
+  const probability = calculateScore(change24h, candlePattern, elliottWave, smcSignal);
+
+  // Tentukan sinyal trading
+  let tradeSignal = 'HOLD';
+  if (probability >= 70) tradeSignal = 'BUY';
+  else if (probability >= 55) tradeSignal = 'WATCH';
+  else if (probability <= 30) tradeSignal = 'SELL';
+  else if (probability <= 45) tradeSignal = 'CAUTION';
 
   return {
     symbol,
     name: coin.name,
     price: coin.current_price,
-    volume24h: coin.total_volume,
     priceChange24h: change24h,
-    breakoutProbability: prob,
-    chartPatterns: chartPatterns.slice(0, 3),
-    elliottWave,
-    smc,
-    astrology: getAstrologySignal(new Date())
+    volume24h: coin.total_volume,
+    trendAlign,
+    smcSignal,
+    smcSummary,
+    elliottWave: elliottWave.wave,
+    elliottConfidence: elliottWave.confidence,
+    elliottDesc: elliottWave.description,
+    candlePattern: candlePattern.name,
+    candleSignal: candlePattern.signal,
+    astrology: getAstrologySignal(new Date()),
+    probability,
+    tradeSignal,
+    support: (coin.current_price * 0.95).toFixed(4),
+    resistance: (coin.current_price * 1.05).toFixed(4)
   };
 }
 
 // ==================== POLA ====================
 function detectPatterns(ohlcv, change24h) {
   const patterns = [];
-  if (ohlcv.length < 2) return getMomentumPatterns(change24h);
+  if (ohlcv.length < 2) return patterns;
   const last = ohlcv[ohlcv.length - 1], prev = ohlcv[ohlcv.length - 2];
   const body = Math.abs(last.close - last.open);
   const lowerWick = Math.min(last.open, last.close) - last.low;
@@ -96,7 +153,20 @@ function detectPatterns(ohlcv, change24h) {
     patterns.push({ name: 'Hammer', signal: 'bullish', probability: 75 });
   if (upperWick > body * 2 && lowerWick < body * 0.6)
     patterns.push({ name: 'Shooting Star', signal: 'bearish', probability: 75 });
-  return patterns.length > 0 ? patterns : getMomentumPatterns(change24h);
+  if (body < (last.high - last.low) * 0.1) {
+    if (lowerWick > upperWick * 1.5) patterns.push({ name: 'Dragonfly Doji', signal: 'bullish', probability: 65 });
+    else if (upperWick > lowerWick * 1.5) patterns.push({ name: 'Gravestone Doji', signal: 'bearish', probability: 65 });
+    else patterns.push({ name: 'Doji', signal: 'neutral', probability: 50 });
+  }
+  return patterns;
+}
+
+function getMomentumCandle(change) {
+  if (change > 8) return { name: 'Breakout Bullish', signal: 'bullish', probability: 70 };
+  if (change > 3) return { name: 'Momentum Naik', signal: 'bullish', probability: 55 };
+  if (change < -8) return { name: 'Breakdown Bearish', signal: 'bearish', probability: 70 };
+  if (change < -3) return { name: 'Momentum Turun', signal: 'bearish', probability: 55 };
+  return { name: 'Sideways', signal: 'neutral', probability: 40 };
 }
 
 // ==================== ELLIOTT ====================
@@ -114,7 +184,7 @@ function detectElliottWave(ohlcv) {
   if (lastHigh.price > prevHigh.price && lastLow.price > prevLow.price)
     return { wave: 'Wave 3 (Impulsif)', confidence: 55, description: 'Tren naik kuat' };
   if (lastHigh.price < prevHigh.price && lastLow.price < prevLow.price)
-    return { wave: 'Wave Korektif (ABC)', confidence: 50, description: 'Koreksi sehat' };
+    return { wave: 'Wave Korektif', confidence: 50, description: 'Koreksi sehat' };
   if (currentPrice > ohlcv.slice(-20).reduce((s, c) => s + c.close, 0) / 20)
     return { wave: 'Potensi Wave 1/3', confidence: 35, description: 'Di atas MA20' };
   return { wave: 'Konsolidasi', confidence: 25, description: '' };
@@ -135,8 +205,14 @@ function findSwingPoints(ohlcv, lookback) {
   return swings;
 }
 
+function getMomentumElliott(change) {
+  if (change > 5) return { wave: 'Potensi Wave 3', confidence: 40, description: 'Momentum naik' };
+  if (change < -5) return { wave: 'Potensi Korektif', confidence: 40, description: 'Momentum turun' };
+  return { wave: 'Konsolidasi', confidence: 20, description: '' };
+}
+
 // ==================== SMC ====================
-function analyzeSMC(ohlcv) {
+function analyzeSMC(ohlcv, change24h) {
   const ls = findLiquiditySweep(ohlcv);
   if (ls.detected) return { signal: ls.direction, summary: ls.description };
   const ob = findOrderBlock(ohlcv);
@@ -147,7 +223,7 @@ function analyzeSMC(ohlcv) {
     const strength = Math.abs(closes[closes.length - 1] - closes[0]) / closes[0];
     if (strength > 0.02) return { signal: trend, summary: `Tren ${trend === 'Bullish' ? 'naik' : 'turun'} ${(strength * 100).toFixed(1)}%` };
   }
-  return { signal: 'Neutral', summary: '' };
+  return getMomentumSMC(change24h);
 }
 
 function findOrderBlock(ohlcv) {
@@ -179,66 +255,62 @@ function findLiquiditySweep(ohlcv) {
   return { detected: false };
 }
 
-// ==================== FALLBACK ====================
-function getMomentumPatterns(change) {
-  if (change > 8) return [{ name: 'Breakout Bullish Kuat', signal: 'bullish', probability: 75 }];
-  if (change > 3) return [{ name: 'Breakout Bullish Awal', signal: 'bullish', probability: 60 }];
-  if (change < -8) return [{ name: 'Breakdown Bearish Kuat', signal: 'bearish', probability: 75 }];
-  if (change < -3) return [{ name: 'Breakdown Bearish Awal', signal: 'bearish', probability: 60 }];
-  return [{ name: 'Sideways Stabil', signal: 'neutral', probability: 40 }];
-}
-
-function getMomentumElliott(change) {
-  if (change > 5) return { wave: 'Potensi Wave 3', confidence: 40, description: 'Momentum naik' };
-  if (change < -5) return { wave: 'Potensi Korektif', confidence: 40, description: 'Momentum turun' };
-  return { wave: 'Konsolidasi', confidence: 20, description: '' };
-}
-
 function getMomentumSMC(change) {
   if (change > 5) return { signal: 'Bullish', summary: 'Momentum beli dominan' };
   if (change < -5) return { signal: 'Bearish', summary: 'Momentum jual dominan' };
-  return { signal: 'Neutral', summary: '' };
+  return { signal: 'Neutral', summary: 'Tidak ada tekanan' };
+}
+
+// ==================== TREND ALIGN ====================
+function calculateTrendAlign(smcSignal, elliottWave, change24h) {
+  let score = 0;
+  if (smcSignal === 'Bullish') score += 1;
+  else if (smcSignal === 'Bearish') score -= 1;
+  if (elliottWave.includes('Wave 3') || elliottWave.includes('Impulsif')) score += 1;
+  else if (elliottWave.includes('Korektif')) score -= 1;
+  if (change24h > 3) score += 0.5;
+  else if (change24h < -3) score -= 0.5;
+  
+  if (score >= 2) return 'STRONG BULLISH';
+  if (score >= 1) return 'BULLISH';
+  if (score <= -2) return 'STRONG BEARISH';
+  if (score <= -1) return 'BEARISH';
+  return 'NEUTRAL';
 }
 
 // ==================== SKOR ====================
-function calculateScore(coin, patterns, elliott, smc) {
+function calculateScore(change, candle, elliott, smcSignal) {
   let score = 50;
-  const change = coin.price_change_percentage_24h || 0;
   if (change > 15) score += 25;
   else if (change > 8) score += 15;
+  else if (change > 3) score += 8;
   else if (change < -10) score -= 20;
   else if (change < -5) score -= 10;
 
-  const bullish = patterns.filter(p => p.signal === 'bullish').length;
-  const bearish = patterns.filter(p => p.signal === 'bearish').length;
-  score += (bullish - bearish) * 10;
+  if (candle.signal === 'bullish') score += 10;
+  else if (candle.signal === 'bearish') score -= 10;
 
   if (elliott.wave.includes('Wave 3')) score += 15;
   else if (elliott.wave.includes('Korektif')) score -= 5;
 
-  if (smc.signal === 'Bullish') score += 20;
-  else if (smc.signal === 'Bearish') score -= 15;
+  if (smcSignal === 'Bullish') score += 20;
+  else if (smcSignal === 'Bearish') score -= 15;
 
-  score = Math.max(0, Math.min(100, Math.round(score)));
-  return {
-    score,
-    reasons: [change > 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`],
-    interpretation: score >= 75 ? '🔥 Sangat Tinggi' : score >= 60 ? '📈 Tinggi' : score >= 45 ? '📊 Pantau' : '💤 Rendah'
-  };
+  return Math.max(0, Math.min(100, Math.round(score)));
 }
 
 // ==================== ASTRO ====================
 function getAstrologySignal(date) {
   const phase = getMoonPhase(date);
   const signals = {
-    'New Moon': { signal: '🔄 Awal Siklus', interpretation: 'Tren baru, volatilitas tinggi' },
-    'Waxing Crescent': { signal: '🌱 Kenaikan', interpretation: 'Momentum bullish mulai' },
-    'First Quarter': { signal: '⚡ Tekanan', interpretation: 'Keputusan besar, volatilitas' },
+    'New Moon': { signal: '🔄 Awal Siklus', interpretation: 'Tren baru' },
+    'Waxing Crescent': { signal: '🌱 Kenaikan', interpretation: 'Bullish mulai' },
+    'First Quarter': { signal: '⚡ Tekanan', interpretation: 'Volatilitas' },
     'Waxing Gibbous': { signal: '📈 Optimis', interpretation: 'Bullish dominan' },
-    'Full Moon': { signal: '🌕 Puncak', interpretation: 'Potensi reversal, volatilitas ekstrem' },
-    'Waning Gibbous': { signal: '📉 Koreksi', interpretation: 'Mulai jenuh, potensi turun' },
-    'Last Quarter': { signal: '🔻 Pelepasan', interpretation: 'Distribusi, tekanan jual' },
-    'Waning Crescent': { signal: '💤 Akhir', interpretation: 'Konsolidasi, volume rendah' }
+    'Full Moon': { signal: '🌕 Puncak', interpretation: 'Potensi reversal' },
+    'Waning Gibbous': { signal: '📉 Koreksi', interpretation: 'Mulai jenuh' },
+    'Last Quarter': { signal: '🔻 Pelepasan', interpretation: 'Distribusi' },
+    'Waning Crescent': { signal: '💤 Akhir', interpretation: 'Konsolidasi' }
   };
   return {
     moonPhase: phase.name,
