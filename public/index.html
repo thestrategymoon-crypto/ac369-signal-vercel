@@ -215,7 +215,6 @@
   <div class="footer" id="footer">AC369 FUSION v12.1 • Data Real-time</div>
 
   <script>
-    // ==================== GLOBAL DATA ====================
     var scanResults = [];
     var currentFilter = 'ALL';
 
@@ -299,7 +298,7 @@
       }
     }
 
-    // ==================== ANALYTICS ====================
+    // ==================== ANALYTICS BTC/ETH ====================
     async function fetchAnalytics() {
       try {
         var res = await fetch('/api/analytics');
@@ -413,7 +412,6 @@
       renderTable(filter);
     }
 
-    // ==================== INIT ====================
     refreshAll();
     setInterval(refreshAll, 120000);
   </script>
