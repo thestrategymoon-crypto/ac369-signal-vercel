@@ -180,6 +180,28 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 @keyframes fi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 .fadein{animation:fi .3s ease}
 .footer{text-align:center;color:var(--dim);font-size:10px;padding:14px 0 6px;font-family:var(--m)}
+
+/* ACCUMULATION SCANNER */
+.acc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+@media(max-width:900px){.acc-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:500px){.acc-grid{grid-template-columns:1fr}}
+.tier-card{border-radius:11px;padding:10px 12px;border:2px solid}
+.tier-s{border-color:rgba(255,107,53,.5);background:rgba(255,107,53,.05)}
+.tier-a{border-color:rgba(0,255,208,.4);background:rgba(0,255,208,.03)}
+.tier-b{border-color:rgba(255,179,0,.35);background:rgba(255,179,0,.03)}
+.tier-c{border-color:rgba(100,100,255,.25);background:rgba(100,100,255,.02)}
+.acc-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer}
+.acc-row:hover{background:rgba(255,255,255,.02)}
+.acc-row:last-child{border-bottom:none}
+.acc-sym{font-weight:800;font-family:var(--m);font-size:13px;min-width:55px}
+.acc-score{display:inline-block;padding:1px 7px;border-radius:7px;font-size:11px;font-weight:700;font-family:var(--m)}
+.s-score{background:rgba(255,107,53,.15);color:#ff6b35;border:1px solid rgba(255,107,53,.3)}
+.a-score{background:rgba(0,255,208,.1);color:var(--g);border:1px solid rgba(0,255,208,.25)}
+.b-score{background:rgba(255,179,0,.1);color:var(--amber);border:1px solid rgba(255,179,0,.2)}
+.c-score{background:rgba(100,100,255,.1);color:#a0a0ff;border:1px solid rgba(100,100,255,.2)}
+.phase-badge{font-size:9px;color:var(--dim);font-family:var(--m);margin-top:1px}
+.mkt-ctx{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.ctx-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:4px 10px;font-size:11px;font-family:var(--m)}
 </style>
 </head>
 <body>
@@ -269,6 +291,21 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 </div>
 
 <!-- ANALYTICS -->
+
+<!-- SMART MONEY ACCUMULATION SCANNER -->
+<h2>🧠 Smart Money Accumulation Scanner</h2>
+<div style="background:rgba(168,85,247,.04);border:1px solid rgba(168,85,247,.15);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:11px;color:var(--muted);line-height:1.7">
+  <strong style="color:var(--purple)">Sistem 7-Layer deteksi akumulasi Smart Money</strong> — mendeteksi koin <em>sebelum</em> impulse besar terjadi.<br>
+  Layer: SM Pattern · Liquidity Sweep · Structure Shift · Volume · Derivatives · Halving Cycle · Market Context
+</div>
+<div style="display:flex;gap:9px;margin-bottom:8px;flex-wrap:wrap">
+  <button class="btn" style="background:linear-gradient(135deg,#6a35ff,#a855f7);font-size:13px;padding:10px 18px" id="acc-btn" onclick="doAccScan()">🧠 Smart Money Scan</button>
+  <span id="acc-st" style="font-size:11px;color:var(--muted);font-family:var(--m)">7-Layer: SM Accumulation + Liquidity + Structure + Volume</span>
+</div>
+<div class="prog"><div class="pfil" id="acc-prog"></div></div>
+<div id="acc-ctx" style="display:none" class="mkt-ctx"></div>
+<div id="acc-tiers" style="display:none"></div>
+
 <h2>📊 Analisis BTC/ETH</h2>
 <div class="g3">
   <div class="ac btc" id="btc-c"><div class="ld"><span class="spin"></span>Memuat BTC...</div></div>
@@ -825,6 +862,63 @@ async function fetchAltcoins(){
 }
 
 // ── REFRESH ───────────────────────────────────────────────────
+
+// ── SMART MONEY ACCUMULATION SCANNER ─────────────────────────
+async function doAccScan(){
+  const btn=$('acc-btn'),st=$('acc-st'),prog=$('acc-prog');
+  const ctx=$('acc-ctx'),tiers=$('acc-tiers');
+  btn.disabled=true;btn.textContent='⏳ Scanning...';
+  st.textContent='Menganalisis 500+ koin — 7-Layer SM Detection...';
+  prog.style.width='15%';ctx.style.display='none';tiers.style.display='none';
+  try{
+    const data=await apiFetch('/api/accumulation',28000);
+    prog.style.width='92%';
+    const mkt=data.marketContext||{};
+    ctx.style.display='flex';
+    ctx.innerHTML=
+      '<div class="ctx-item"><span style="color:var(--dim)">BTC </span><span style="color:'+(mkt.btcTrend==='BULLISH'?'var(--g)':'var(--red)')+'">'+mkt.btcTrend+'</span></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">F&G </span><span style="color:'+(mkt.fgValue<=35?'var(--g)':mkt.fgValue>=75?'var(--red)':'var(--amber)')+'">'+mkt.fgValue+'</span></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">Siklus </span><span style="color:var(--amber)">'+mkt.cyclePhase+'</span></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">Dipindai </span><strong>'+data.totalAnalyzed+'</strong></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">Qualified </span><strong style="color:var(--g)">'+data.totalQualified+'</strong></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">Waktu </span><strong>'+data.scanTime+'s</strong></div>';
+    const tg=data.tierGroups||{};
+    const td=[
+      {key:'S',label:'🔥 TIER S — IMMINENT',sub:'1-7 hari',cls:'tier-s',sc:'s-score',coins:tg.S||[]},
+      {key:'A',label:'✅ TIER A — READY',sub:'1-2 minggu',cls:'tier-a',sc:'a-score',coins:tg.A||[]},
+      {key:'B',label:'📈 TIER B — BUILDING',sub:'2-4 minggu',cls:'tier-b',sc:'b-score',coins:tg.B||[]},
+      {key:'C',label:'👁 TIER C — WATCH',sub:'1-2 bulan',cls:'tier-c',sc:'c-score',coins:tg.C||[]},
+    ];
+    let h='<div class="acc-grid">';
+    td.forEach(function(t){
+      h+='<div class="tier-card '+t.cls+'"><div style="margin-bottom:7px"><div style="font-weight:700;font-size:12px">'+t.label+'</div>';
+      h+='<div style="font-size:10px;color:var(--muted)">'+t.sub+' · '+t.coins.length+' koin</div></div>';
+      if(!t.coins.length){h+='<div style="font-size:11px;color:var(--muted);padding:8px 0">Tidak ada sinyal</div>';}
+      else{
+        t.coins.forEach(function(c){
+          h+='<div class="acc-row" data-sym="'+c.symbol+'" onclick="clickCoin(this.dataset.sym)">'+
+            '<div><div class="acc-sym">'+c.symbol+'</div>'+
+            '<div class="phase-badge">'+((c.accPhase||'').substring(0,30))+'</div>'+
+            '<div style="font-size:9px;color:var(--muted)">'+(c.targets?c.targets.tp1:'')+'/'+(c.targets?c.targets.tp2:'')+'</div></div>'+
+            '<div style="text-align:right">'+
+            '<div class="acc-score '+t.sc+'">'+c.score+'%</div>'+
+            '<div class="achg2 '+(c.change24h>=0?'up':'dn')+'" style="margin-top:2px">'+(c.change24h>=0?'+':'')+c.change24h.toFixed(1)+'%</div>'+
+            '<div style="font-size:9px;color:var(--muted)">'+c.timeframe+'</div></div></div>';
+        });
+        h+='<div style="margin-top:5px;font-size:9px;color:var(--dim)">'+t.coins.slice(0,6).map(function(c){return c.symbol;}).join(' · ')+'</div>';
+      }
+      h+='</div>';
+    });
+    h+='</div><div style="margin-top:10px;font-size:11px;color:var(--muted);padding:8px 11px;background:rgba(255,255,255,.02);border-radius:8px;border-left:3px solid var(--purple)">⚠️ Sistem probabilistik — DYOR. Sizing 1-3% per trade.</div>';
+    tiers.style.display='block';
+    tiers.innerHTML=h;
+    prog.style.width='100%';
+    st.textContent='✅ '+data.totalQualified+' koin lolos filter · '+data.scanTime+'s';
+    setTimeout(function(){prog.style.width='0';},2000);
+  }catch(e){st.textContent='❌ '+e.message;prog.style.width='0';}
+  finally{btn.disabled=false;btn.textContent='🧠 Smart Money Scan';}
+}
+
 async function refreshAll(){
   const btn=$('r-btn');btn.disabled=true;btn.textContent='⏳';
   try{
