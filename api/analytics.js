@@ -28,7 +28,7 @@ export default async function handler(req, res) {
 }
 
 // ── SAFE FETCH ────────────────────────────────────────────────
-async function sf(url, ms = 9000) {
+async function sf(url, ms = 6000) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
