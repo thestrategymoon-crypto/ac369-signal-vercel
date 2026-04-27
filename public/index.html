@@ -867,149 +867,154 @@ async function fetchAltcoins(){
 async function doAccScan(){
   const btn=$('acc-btn'),st=$('acc-st'),prog=$('acc-prog');
   const ctx=$('acc-ctx'),tiers=$('acc-tiers');
-  btn.disabled=true;btn.textContent='⏳ Scanning...';
-  st.textContent='7-Layer SM Detection: Akumulasi + Entry Zone + Target...';
+  btn.disabled=true;btn.textContent='⏳ Running Engine...';
+  st.textContent='Institutional Validation Engine — Scoring 800+ coins...';
   prog.style.width='15%';ctx.style.display='none';tiers.style.display='none';
   try{
     const data=await apiFetch('/api/accumulation',28000);
     prog.style.width='92%';
     const mkt=data.marketContext||{};
-
-    // Market context chips
+    
     ctx.style.display='flex';
+    const kb=data.killedBreakdown||{};
+    const totalK=data.totalKilled||0;
     ctx.innerHTML=
       '<div class="ctx-item"><span style="color:var(--dim)">BTC </span><span style="color:'+(mkt.btcTrend==='BULLISH'?'var(--g)':mkt.btcTrend==='BEARISH'?'var(--red)':'var(--amber)')+'">'+mkt.btcTrend+'</span></div>'+
-      '<div class="ctx-item"><span style="color:var(--dim)">BTC 7d </span><span style="color:'+(mkt.btcChange7d>=0?'var(--g)':'var(--red)')+'">'+((mkt.btcChange7d||0)>=0?'+':'')+(mkt.btcChange7d||0).toFixed(1)+'%</span></div>'+
-      '<div class="ctx-item"><span style="color:var(--dim)">F&G </span><span style="color:'+(mkt.fgValue<=35?'var(--g)':mkt.fgValue>=75?'var(--red)':'var(--amber)')+'">'+mkt.fgValue+' — '+mkt.fgLabel+'</span></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">F&G </span><span style="color:'+(mkt.fgValue<=35?'var(--g)':mkt.fgValue>=75?'var(--red)':'var(--amber)')+'">'+mkt.fgValue+'</span></div>'+
       '<div class="ctx-item"><span style="color:var(--dim)">Siklus </span><span style="color:var(--amber)">'+mkt.cyclePhase+'</span></div>'+
-      '<div class="ctx-item"><span style="color:var(--dim)">BTC Dom </span><strong>'+mkt.dominance+'%</strong></div>'+
-      '<div class="ctx-item"><span style="color:var(--dim)">Dipindai </span><strong>'+data.totalAnalyzed+'</strong></div>'+
-      '<div class="ctx-item"><span style="color:var(--dim)">Qualified </span><strong style="color:var(--g)">'+data.totalQualified+'</strong></div>'+
-      '<div class="ctx-item" style="color:'+(mkt.bestScanTime.includes('✅')?'var(--g)':mkt.bestScanTime.includes('⚠️')?'var(--red)':'var(--muted)')+'">'+mkt.bestScanTime.split(' — ')[0]+'</div>';
-    // Add rejection stats
-    const rej = data.rejectionSummary || {};
-    const rejTotal = data.totalRejected || 0;
-    if(rejTotal > 0) {
-      ctx.innerHTML += '<div class="ctx-item" style="color:var(--red)">Ditolak <strong>'+rejTotal+'</strong></div>';
-      const topRej = Object.entries(rej).filter(function(e){return e[1]>0;}).sort(function(a,b){return b[1]-a[1];}).slice(0,3);
-      if(topRej.length) ctx.innerHTML += '<div class="ctx-item" style="font-size:10px;color:var(--dim)">'+topRej.map(function(e){return e[0]+':'+e[1];}).join(' ')+'</div>';
+      '<div class="ctx-item"><span style="color:var(--dim)">Dipindai </span><strong>'+data.totalScanned+'</strong></div>'+
+      '<div class="ctx-item"><span style="color:var(--g)">Valid </span><strong style="color:var(--g)">'+data.totalQualified+'</strong></div>'+
+      '<div class="ctx-item"><span style="color:var(--red)">Killed </span><strong style="color:var(--red)">'+totalK+'</strong></div>'+
+      '<div class="ctx-item" style="font-size:10px;color:var(--dim)">'+(kb.LOW_SCORE||0)+' low score · '+(kb.POOR_RR||0)+' poor RR · '+(kb.DEAD_SETUP||0)+' dead</div>';
+
+    const tg=data.tierGroups||{};
+    const allValid = [...(tg.S||[]),...(tg.A||[])];
+
+    let h='';
+    if(!allValid.length){
+      h='<div style="text-align:center;padding:30px;color:var(--muted)">'+
+        '<div style="font-size:40px;margin-bottom:10px">🛡️</div>'+
+        '<div style="font-size:16px;font-weight:700;color:var(--amber)">No Valid Setups</div>'+
+        '<div style="font-size:12px;margin-top:8px;max-width:400px;margin:8px auto">Validation Engine tidak menemukan setup yang memenuhi syarat Tier S/A. Semua koin gagal pada salah satu: Volume, Structure, R:R, atau Kill Engine.</div>'+
+        '<div style="margin-top:12px;font-size:11px;color:var(--dim)">Killed: '+totalK+' | Low Score: '+(kb.LOW_SCORE||0)+' | Poor RR: '+(kb.POOR_RR||0)+'</div>'+
+        '<div style="margin-top:8px;font-size:11px;color:var(--dim)">'+mkt.bestScanTime+'</div>'+
+      '</div>';
+    } else {
+      allValid.forEach(function(c){
+        const bd=c.breakdown||{};
+        const tp=c.targets||{};
+        const sl=c.stopLoss||{};
+        const ez=c.entryZone||{};
+        const isTierS=c.tier==='S';
+        const scoreColor=isTierS?'var(--g)':'#7affd0';
+        const cardBorder=isTierS?'rgba(255,107,53,.5)':'rgba(0,255,208,.35)';
+        const cardBg=isTierS?'rgba(255,107,53,.04)':'rgba(0,255,208,.02)';
+        const chgCls=c.change24h>=0?'up':'dn';
+        const chg7Cls=c.change7d>=0?'up':'dn';
+
+        // Score bar segments
+        const scoreBarHtml=
+          '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:2px;margin:6px 0">'+
+          [
+            {l:'VOL',s:bd.volumeAccumulation,max:25},
+            {l:'LIQ',s:bd.liquiditySweep,max:20},
+            {l:'STR',s:bd.structureStrength,max:20},
+            {l:'RR',s:bd.riskReward,max:15},
+            {l:'ENT',s:bd.entryAccuracy,max:10},
+            {l:'MOM',s:bd.momentum,max:10},
+          ].map(function(f){
+            const sc=f.s?f.s.score:0;
+            const pct=Math.round(sc/f.max*100);
+            const col=pct>=80?'var(--g)':pct>=55?'var(--amber)':'var(--muted)';
+            return '<div style="text-align:center;background:rgba(255,255,255,.03);border-radius:5px;padding:4px 2px">'+
+              '<div style="font-size:8px;color:var(--dim)">'+f.l+'</div>'+
+              '<div style="font-family:var(--m);font-weight:700;font-size:11px;color:'+col+'">'+sc+'</div>'+
+              '<div style="font-size:8px;color:var(--dim)">/'+f.max+'</div>'+
+            '</div>';
+          }).join('')+
+          '</div>';
+
+        h+=
+          '<div style="background:'+cardBg+';border:2px solid '+cardBorder+';border-radius:12px;padding:14px;margin-bottom:12px">'+
+            // Header
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'+
+              '<div>'+
+                '<div style="display:flex;align-items:center;gap:8px">'+
+                  '<div style="font-size:18px;font-weight:900;font-family:var(--m)">'+c.symbol+'</div>'+
+                  '<div style="background:'+(isTierS?'rgba(255,107,53,.2)':'rgba(0,255,208,.15)')+';color:'+scoreColor+';border:1px solid '+cardBorder+';border-radius:8px;padding:3px 10px;font-size:12px;font-weight:800">'+c.tierLabel+'</div>'+
+                  (c.fromATH?'<div style="font-size:10px;color:var(--muted);font-family:var(--m)">ATH '+c.fromATH+'%</div>':'')+
+                '</div>'+
+                '<div style="font-size:10px;color:var(--muted);margin-top:3px">'+c.timeframe+' · '+c.positionSize+'</div>'+
+              '</div>'+
+              '<div style="text-align:right">'+
+                '<div style="font-size:28px;font-weight:900;font-family:var(--m);color:'+scoreColor+'">'+c.totalScore+'</div>'+
+                '<div style="font-size:9px;color:var(--dim)">/100</div>'+
+              '</div>'+
+            '</div>'+
+            // Status
+            '<div style="font-size:12px;font-weight:700;color:var(--g);margin-bottom:6px">'+c.status+'</div>'+
+            // Price info
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'+
+              '<div style="font-family:var(--m);font-size:16px;font-weight:800;color:var(--txt)">'+fP(c.price)+'</div>'+
+              '<div class="achg2 '+chgCls+'" style="font-size:12px">'+(c.change24h>=0?'+':'')+c.change24h.toFixed(1)+'% 24h</div>'+
+              '<div class="achg2 '+chg7Cls+'" style="font-size:11px;color:var(--muted)">'+(c.change7d>=0?'+':'')+c.change7d.toFixed(1)+'% 7d</div>'+
+            '</div>'+
+            // Score breakdown
+            scoreBarHtml+
+            // Entry + SL
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">'+
+              '<div style="background:rgba(0,255,208,.04);border:1px solid rgba(0,255,208,.15);border-radius:7px;padding:7px 9px">'+
+                '<div style="font-size:9px;color:var(--g);font-weight:700;letter-spacing:1px;margin-bottom:3px">📦 ENTRY ZONE</div>'+
+                '<div style="font-family:var(--m);font-weight:700;font-size:12px;color:var(--g)">'+fP(ez.lo)+' – '+fP(ez.hi)+'</div>'+
+                '<div style="font-size:10px;color:var(--muted)">Optimal: '+fP(ez.optimal)+'</div>'+
+              '</div>'+
+              '<div style="background:rgba(255,68,102,.04);border:1px solid rgba(255,68,102,.15);border-radius:7px;padding:7px 9px">'+
+                '<div style="font-size:9px;color:var(--red);font-weight:700;letter-spacing:1px;margin-bottom:3px">🛑 STOP LOSS</div>'+
+                '<div style="font-family:var(--m);font-weight:700;font-size:12px;color:var(--red)">'+fP(sl.price)+'</div>'+
+                '<div style="font-size:10px;color:var(--muted)">'+sl.pct+'% dari entry</div>'+
+              '</div>'+
+            '</div>'+
+            // TP levels
+            '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px">'+
+              [tp.tp1,tp.tp2,tp.tp3].filter(Boolean).map(function(t,i){
+                return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:6px 7px;text-align:center">'+
+                  '<div style="font-size:9px;color:var(--muted)">TP'+(i+1)+'</div>'+
+                  '<div style="font-family:var(--m);font-weight:800;color:'+(i===2?'var(--amber)':'var(--g)')+';font-size:11px">'+fP(t.price)+'</div>'+
+                  '<div style="font-size:9px;color:var(--g)">+'+t.pct+'%</div>'+
+                  '<div style="font-size:9px;color:var(--amber)">R:'+t.rr+'</div>'+
+                  '<div style="font-size:8px;color:var(--dim)">'+t.label+'</div>'+
+                '</div>';
+              }).join('')+
+            '</div>'+
+            // Reasons
+            '<div style="margin-bottom:8px">'+
+              c.reasons.map(function(r){
+                return '<div style="font-size:10px;color:var(--muted);padding:2px 0;display:flex;align-items:center;gap:5px"><span style="color:var(--g)">→</span>'+r+'</div>';
+              }).join('')+
+            '</div>'+
+            // Recommendation
+            '<div style="background:rgba(255,255,255,.04);border-left:3px solid '+scoreColor+';border-radius:0 7px 7px 0;padding:8px 11px">'+
+              '<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:3px">REKOMENDASI</div>'+
+              '<div style="font-size:11px;font-weight:700;color:'+scoreColor+'">'+c.recommendation+'</div>'+
+            '</div>'+
+          '</div>';
+      });
     }
 
-    // Build tier sections
-    const tg=data.tierGroups||{};
-    const tierDefs=[
-      {key:'S',label:'🔥 TIER S — IMMINENT',sub:'1-7 hari — Entry SEKARANG',cls:'tier-s',sc:'s-score',coins:tg.S||[]},
-      {key:'A',label:'✅ TIER A — READY',sub:'1-2 minggu — Setup lengkap',cls:'tier-a',sc:'a-score',coins:tg.A||[]},
-      {key:'B',label:'📈 TIER B — BUILDING',sub:'2-4 minggu — Akumulasi aktif',cls:'tier-b',sc:'b-score',coins:tg.B||[]},
-      {key:'C',label:'👁 TIER C — WATCH',sub:'1-2 bulan — Signal awal',cls:'tier-c',sc:'c-score',coins:tg.C||[]},
-    ];
-
-    let h='<div class="acc-grid">';
-    tierDefs.forEach(function(t){
-      h+='<div class="tier-card '+t.cls+'">'+
-        '<div style="margin-bottom:8px">'+
-          '<div style="font-weight:800;font-size:13px">'+t.label+'</div>'+
-          '<div style="font-size:10px;color:var(--muted)">'+t.sub+' · '+t.coins.length+' koin</div>'+
-        '</div>';
-
-      if(!t.coins.length){
-        h+='<div style="font-size:11px;color:var(--muted);padding:12px 0;text-align:center">Tidak ada sinyal saat ini</div>';
-      } else {
-        t.coins.forEach(function(c){
-          const az=c.accumulationZone||{};
-          const tp=c.targetPrices||{};
-          const sl=c.stopLoss||{};
-          const chgCls=c.change24h>=0?'up':'dn';
-          const chg7Cls=c.change7d>=0?'up':'dn';
-          h+=
-            '<div class="acc-coin-card" style="border-left: 3px solid '+(c.validation&&c.validation.status&&c.validation.status.includes('PRIME')?'var(--g)':c.validation&&c.validation.status&&c.validation.status.includes('VALID')?'rgba(0,255,208,.4)':'var(--amber)')+'" data-sym="'+c.symbol+'" onclick="clickCoin(this.dataset.sym)" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:9px;padding:9px 10px;margin-bottom:7px;cursor:pointer">'+
-              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'+
-                '<div style="display:flex;align-items:center;gap:7px">'+
-                  '<div style="font-weight:800;font-family:var(--m);font-size:14px">'+c.symbol+'</div>'+
-                  '<div class="acc-score '+t.sc+'">'+c.score+'%</div>'+
-                  (c.isOutperformer?'<div style="background:rgba(0,255,208,.1);color:var(--g);border-radius:5px;padding:1px 5px;font-size:9px;font-weight:700">💪 RS+</div>':'')+
-                '</div>'+
-                '<div style="text-align:right">'+
-                  '<div style="font-family:var(--m);font-weight:700;font-size:12px">'+fP(c.price)+'</div>'+
-                  '<div style="display:flex;gap:4px;justify-content:flex-end">'+
-                    '<div class="achg2 '+chgCls+'" style="font-size:10px">'+(c.change24h>=0?'+':'')+c.change24h.toFixed(1)+'%</div>'+
-                    '<div class="achg2 '+chg7Cls+'" style="font-size:9px;color:var(--muted)">'+(c.change7d>=0?'+':'')+c.change7d.toFixed(1)+'% 7d</div>'+
-                  '</div>'+
-                  (c.fromATH?'<div style="font-size:9px;color:var(--muted)">ATH: '+c.fromATH+'%</div>':'')+
-                '</div>'+
-              '</div>'+
-              '<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px">'+
-              '<div style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;background:'+(c.validation&&c.validation.status.includes('PRIME')?'rgba(0,255,208,.15)':c.validation&&c.validation.status.includes('VALID')?'rgba(0,255,208,.1)':'rgba(255,179,0,.1)')+';">'+(c.validation&&c.validation.status||'VALID')+'</div>'+
-              (c.highRisk?'<div style="background:rgba(255,68,102,.1);color:var(--red);border-radius:6px;padding:2px 6px;font-size:10px;font-weight:700">⚠️ HIGH RISK</div>':'')+
-            '</div>'+
-              // Accumulation Zone
-              '<div style="background:rgba(0,255,208,.04);border:1px solid rgba(0,255,208,.12);border-radius:7px;padding:6px 8px;margin-bottom:5px">'+
-                '<div style="font-size:9px;color:var(--g);font-weight:700;letter-spacing:1px;margin-bottom:3px">📦 ZONA AKUMULASI</div>'+
-                '<div style="display:flex;justify-content:space-between">'+
-                  '<div><span style="font-size:9px;color:var(--muted)">Entry Lo: </span><span style="color:var(--g);font-family:var(--m);font-weight:700;font-size:11px">'+fP(az.lo)+'</span></div>'+
-                  '<div><span style="font-size:9px;color:var(--muted)">Optimal: </span><span style="color:var(--amber);font-family:var(--m);font-weight:700;font-size:11px">'+fP(az.optimalBuy)+'</span></div>'+
-                  '<div><span style="font-size:9px;color:var(--muted)">Hi: </span><span style="color:var(--muted);font-family:var(--m);font-size:11px">'+fP(az.hi)+'</span></div>'+
-                '</div>'+
-              '</div>'+
-              // DCA & Targets
-              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px">'+
-                '<div style="background:rgba(255,68,102,.04);border:1px solid rgba(255,68,102,.12);border-radius:6px;padding:5px 7px">'+
-                  '<div style="font-size:9px;color:var(--red);font-weight:700">🛑 STOP LOSS</div>'+
-                  '<div style="font-family:var(--m);font-weight:700;font-size:12px;color:var(--red)">'+fP(sl.price)+'</div>'+
-                  '<div style="font-size:9px;color:var(--muted)">'+sl.pct+'% dari entry</div>'+
-                '</div>'+
-                '<div style="background:rgba(255,179,0,.04);border:1px solid rgba(255,179,0,.12);border-radius:6px;padding:5px 7px">'+
-                  '<div style="font-size:9px;color:var(--amber);font-weight:700">📐 SIZING</div>'+
-                  '<div style="font-family:var(--m);font-weight:700;font-size:13px;color:var(--amber)">'+c.positionSize+'</div>'+
-                  '<div style="font-size:9px;color:var(--muted)">'+c.confidence+' confidence</div>'+
-                '</div>'+
-              '</div>'+
-              // TP Prices
-              '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px">'+
-                '<div style="background:rgba(0,255,208,.05);border:1px solid rgba(0,255,208,.12);border-radius:6px;padding:5px 6px;text-align:center">'+
-                  '<div style="font-size:9px;color:var(--muted)">TP1</div>'+
-                  '<div style="font-family:var(--m);font-weight:700;color:var(--g);font-size:11px">'+fP(tp.tp1?.price)+'</div>'+
-                  '<div style="font-size:9px;color:var(--g)">+'+tp.tp1?.pct+'%</div>'+
-                  '<div style="font-size:9px;color:var(--muted)">R:'+tp.tp1?.rr+'</div>'+
-                '</div>'+
-                '<div style="background:rgba(0,255,208,.05);border:1px solid rgba(0,255,208,.12);border-radius:6px;padding:5px 6px;text-align:center">'+
-                  '<div style="font-size:9px;color:var(--muted)">TP2</div>'+
-                  '<div style="font-family:var(--m);font-weight:700;color:var(--g);font-size:11px">'+fP(tp.tp2?.price)+'</div>'+
-                  '<div style="font-size:9px;color:var(--g)">+'+tp.tp2?.pct+'%</div>'+
-                  '<div style="font-size:9px;color:var(--muted)">R:'+tp.tp2?.rr+'</div>'+
-                '</div>'+
-                '<div style="background:rgba(255,179,0,.05);border:1px solid rgba(255,179,0,.12);border-radius:6px;padding:5px 6px;text-align:center">'+
-                  '<div style="font-size:9px;color:var(--muted)">TP3</div>'+
-                  '<div style="font-family:var(--m);font-weight:700;color:var(--amber);font-size:11px">'+fP(tp.tp3?.price)+'</div>'+
-                  '<div style="font-size:9px;color:var(--amber)">+'+tp.tp3?.pct+'%</div>'+
-                  '<div style="font-size:9px;color:var(--muted)">R:'+tp.tp3?.rr+'</div>'+
-                '</div>'+
-              '</div>'+
-              // Signal tags
-              (c.signals&&c.signals.length?
-              '<div style="margin-top:5px;display:flex;gap:3px;flex-wrap:wrap">'+
-              c.signals.slice(0,3).map(function(s){return '<div style="background:rgba(255,255,255,.04);border-radius:4px;padding:2px 6px;font-size:9px;color:var(--muted)">'+s+'</div>';}).join('')+
-              '</div>':'')+
-              // Phase
-              '<div style="margin-top:4px;font-size:10px;color:var(--purple)">'+c.accPhase+'</div>'+
-            '</div>';
-        });
-        h+='<div style="margin-top:6px;font-size:9px;color:var(--dim)">'+t.coins.slice(0,6).map(function(c){return c.symbol;}).join(' · ')+'</div>';
-      }
-      h+='</div>';
-    });
-    h+='</div>';
     h+='<div style="margin-top:10px;font-size:11px;color:var(--muted);padding:8px 11px;background:rgba(255,255,255,.02);border-radius:8px;border-left:3px solid var(--purple)">'+
-      '⚠️ <strong>Disclaimer:</strong> Sistem probabilistik berbasis 7-layer SM analysis. Harga akumulasi dihitung dari struktur teknikal. Bukan saran investasi — DYOR. Position sizing 0.5-3% per trade sesuai tier.</div>';
+      '⚠️ <strong>Institutional Disclaimer:</strong> Only TIER S (80+) and TIER A (70+) shown. Validation Engine kills all weak setups. DYOR. Position sizing '+
+      (data.totalQualified>0?'sesuai tier':'N/A — tidak ada setup valid saat ini')+'.</div>';
 
     tiers.style.display='block';
     tiers.innerHTML=h;
     prog.style.width='100%';
-    st.textContent='✅ '+data.totalQualified+' koin lolos filter · '+data.scanTime+'s · '+data.totalAnalyzed+' dipindai';
+    st.textContent='Engine complete: '+data.totalQualified+' valid ('+data.totalKilled+' killed) · '+data.scanTime+'s';
     setTimeout(function(){prog.style.width='0';},2000);
   }catch(e){
     st.textContent='❌ '+e.message;
     prog.style.width='0';
+    tiers.style.display='block';
+    tiers.innerHTML='<div style="color:var(--red);padding:20px;text-align:center">Engine Error: '+e.message+'</div>';
   }finally{
     btn.disabled=false;btn.textContent='🧠 Smart Money Scan';
   }
