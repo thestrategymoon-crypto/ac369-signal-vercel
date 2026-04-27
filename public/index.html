@@ -309,6 +309,22 @@ const sB=s=>(s||'').includes('Buy')?'buy':(s||'').includes('Sell')?'sell':'ne';
 const frColor=v=>Math.abs(v)>0.1?'var(--red)':Math.abs(v)>0.05?'var(--amber)':'var(--g)';
 // SAFE string extract — prevents [object Object]
 const safeStr=v=>{if(v===null||v===undefined)return'—';if(typeof v==='string')return v||'—';if(typeof v==='object'){return v.wave||v.signal||v.name||v.phase||'—';}return String(v)||'—';};
+// ── API FETCH WITH TIMEOUT ────────────────────────────────────
+// Prevents infinite loading if Vercel cold start takes too long
+async function apiFetch(url, ms=12000){
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(),ms);
+  try{
+    const r=await fetch(url,{signal:ctrl.signal});
+    clearTimeout(t);
+    if(!r.ok)throw new Error('API '+r.status);
+    return await r.json();
+  }catch(e){
+    clearTimeout(t);
+    if(e.name==='AbortError')throw new Error('⏱ Timeout — coba Refresh');
+    throw e;
+  }
+}
 
 let scanData=null,curTab='institutional';
 
@@ -340,8 +356,7 @@ function updateBiasBar(bias){
 
 async function fetchBias(){
   try{
-    const r=await fetch('/api/bias');
-    const d=await r.json();
+    const d=await apiFetch('/api/bias',12000);
     updateBiasBar(d);
   }catch(e){
     const bar=$('bias-bar');
@@ -359,9 +374,7 @@ async function doScan(){
   tabs.style.display='none';chips.style.display='none';
   try{
     const t0=Date.now();
-    const res=await fetch('/api/scanner-full');
-    if(!res.ok)throw new Error('❌ API '+res.status);
-    const data=await res.json();
+    const data=await apiFetch('/api/scanner-full',28000);
     prog.style.width='92%';
     if(!data.results||!data.results.length){st.textContent=`✅ ${data.totalScanned||0} dipindai — Tidak ada yang lolos filter.`;prog.style.width='0';return;}
     scanData=data;
@@ -473,8 +486,7 @@ async function doSearch(){
   btn.disabled=true;btn.textContent='⏳';
   res.innerHTML=`<div class="ld"><span class="spin"></span>Menganalisis ${sym} — BOS/CHoCH + OB/FVG + EW + OI + Funding...</div>`;
   try{
-    const r=await fetch('/api/search?symbol='+sym);
-    const d=await r.json();
+    const d=await apiFetch('/api/search?symbol='+sym,30000);
     if(d.error){res.innerHTML=`<div class="err">❌ ${d.error}</div>`;return;}
     const rec=d.recommendation||{};
     const rc=rec.score>=60?'var(--g)':rec.score<=40?'var(--red)':'var(--amber)';
@@ -656,8 +668,7 @@ $('s-in').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch();});
 // ── ANALYTICS ─────────────────────────────────────────────────
 async function fetchAnalytics(){
   try{
-    const r=await fetch('/api/analytics');
-    const d=await r.json();
+    const d=await apiFetch('/api/analytics',25000);
     const btc=d.btc||{},eth=d.eth||{};
     if(btc.currentPrice>0){H('s-btc',fP(btc.currentPrice));H('s-eth',fP(eth.currentPrice));}
     renderAsset('btc-c','btc',btc);
@@ -700,7 +711,7 @@ function renderAsset(id,ticker,d){
 // ── MACRO ─────────────────────────────────────────────────────
 async function fetchMacro(){
   try{
-    const r=await fetch('/api/macro');const d=await r.json();
+    const d=await apiFetch('/api/macro',22000);
     const fg=d.fearGreed||{value:50,classification:'Neutral'};
     const fgc=fg.value<=25?'var(--red)':fg.value<=45?'var(--amber)':fg.value<=55?'var(--txt)':fg.value<=75?'#a0e040':'var(--g)';
     H('s-fg',fg.value.toString());
@@ -731,7 +742,7 @@ async function fetchMacro(){
 // ── ALTCOINS ──────────────────────────────────────────────────
 async function fetchAltcoins(){
   try{
-    const r=await fetch('/api/altcoins');const d=await r.json();
+    const d=await apiFetch('/api/altcoins',22000);
     const gRow=c=>{const chg=parseFloat(c.change24h)||0;return `<div class="ar" onclick="clickCoin('${c.symbol}')"><div><span class="asym">${c.symbol}</span> <span class="apx">${fP(c.price)}</span></div><span class="achg2 ${chg>=0?'up':'dn'}">${chg>=0?'+':''}${chg.toFixed(2)}%</span></div>`;};
     H('gain-c',`<div class="ct">🏆 Top Gainers</div>${(d.topGainers||[]).slice(0,12).map(gRow).join('')||'<div style="color:var(--muted);font-size:11px">—</div>'}`);
     H('vol-c',`<div class="ct">📊 Volume Breakout</div>${(d.volumeBreakouts||[]).slice(0,10).map(c=>{const chg=parseFloat(c.change24h)||0;return `<div class="ar" onclick="clickCoin('${c.symbol}')"><div><span class="asym">${c.symbol}</span> <span class="apx">${fV(c.volumeUSD||0)}</span></div><div style="text-align:right"><span class="achg2 ${chg>=0?'up':'dn'}">${chg>=0?'+':''}${chg.toFixed(2)}%</span><div style="font-size:9px;color:${chg>=0?'var(--g)':'var(--red)'}">${c.signal||''}</div></div></div>`;}).join('')||'<div style="color:var(--muted);font-size:11px">—</div>'}`);
