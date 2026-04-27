@@ -154,101 +154,143 @@ export default async function handler(req, res) {
   }
 
   // ── FETCH DERIVATIVES (parallel) ─────────────────────────────
+  // ── FETCH DERIVATIVES — Bybit PRIMARY + OKX fallback ──────────
+  // Binance /fapi/ is blocked on Vercel — use Bybit & OKX instead
   async function fetchDerivatives() {
-    const [fundRes, oiRes, oiHistRes, lsRatioRes, topLSRes, bybitFundRes, bybitOIRes] = await Promise.allSettled([
-      sf(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${sym}USDT&limit=8`),
-      sf(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${sym}USDT`),
-      sf(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${sym}USDT&period=1h&limit=48`),
-      sf(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${sym}USDT&period=1h&limit=24`),
-      sf(`https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=${sym}USDT&period=1h&limit=24`),
-      sf(`https://api.bybit.com/v5/market/funding/history?category=linear&symbol=${sym}USDT&limit=5`),
+    const [byFund, byOI, byLS, byTicker, okxFund, okxOI, bnFund] = await Promise.allSettled([
+      sf(`https://api.bybit.com/v5/market/funding/history?category=linear&symbol=${sym}USDT&limit=8`),
       sf(`https://api.bybit.com/v5/market/open-interest?category=linear&symbol=${sym}USDT&intervalTime=1h&limit=24`),
+      sf(`https://api.bybit.com/v5/market/account-ratio?category=linear&symbol=${sym}USDT&period=1h&limit=24`),
+      sf(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${sym}USDT`),
+      sf(`https://www.okx.com/api/v5/public/funding-rate?instId=${sym}-USDT-SWAP`),
+      sf(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&uly=${sym}-USDT`),
+      sf(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${sym}USDT&limit=8`),
     ]);
 
     const result = { fundingRate: null, oi: null, lsRatio: null, topLS: null, sentiment: 'NEUTRAL', derivScore: 0 };
 
-    if (fundRes.status === 'fulfilled' && Array.isArray(fundRes.value) && fundRes.value.length > 0) {
-      const frHistory = fundRes.value.map(f => parseFloat(f.fundingRate) * 100);
-      const fr = frHistory[frHistory.length - 1];
-      const frAvg = frHistory.reduce((a, b) => a + b, 0) / frHistory.length;
-      let bybitFR = null;
-      if (bybitFundRes.status === 'fulfilled' && bybitFundRes.value?.result?.list?.length > 0)
-        bybitFR = parseFloat(bybitFundRes.value.result.list[0].fundingRate || 0) * 100;
+    // ── FUNDING RATE ──────────────────────────────────────────────
+    let frVal = null, frSrc = null;
+    // Bybit primary
+    if (byFund.status === 'fulfilled' && byFund.value?.result?.list?.length > 0) {
+      const list = byFund.value.result.list;
+      frVal = parseFloat(list[0]?.fundingRate || 0) * 100;
+      frSrc = 'bybit';
+    }
+    // Binance fallback
+    if (frVal === null && bnFund.status === 'fulfilled' && Array.isArray(bnFund.value) && bnFund.value.length > 0) {
+      frVal = parseFloat(bnFund.value[bnFund.value.length-1]?.fundingRate || 0) * 100;
+      frSrc = 'binance';
+    }
+    // OKX fallback
+    if (frVal === null && okxFund.status === 'fulfilled' && okxFund.value?.data?.length > 0) {
+      frVal = parseFloat(okxFund.value.data[0]?.fundingRate || 0) * 100;
+      frSrc = 'okx';
+    }
+    // Bybit ticker fallback (always has funding rate)
+    if (frVal === null && byTicker.status === 'fulfilled' && byTicker.value?.result?.list?.length > 0) {
+      frVal = parseFloat(byTicker.value.result.list[0]?.fundingRate || 0) * 100;
+      frSrc = 'bybit_ticker';
+    }
 
+    if (frVal !== null) {
+      const fr = +frVal.toFixed(4);
+      const annualized = +(fr * 3 * 365).toFixed(2);
       result.fundingRate = {
-        current: +fr.toFixed(4), avg8: +frAvg.toFixed(4), trend: fr > frAvg ? 'INCREASING' : 'DECREASING',
-        annualized: +(fr * 3 * 365).toFixed(2),
-        history: frHistory.slice(-8).map(f => +f.toFixed(4)),
-        bybit: bybitFR !== null ? +bybitFR.toFixed(4) : null,
-        consensus: bybitFR !== null ? (Math.abs(fr - bybitFR) < 0.05 ? 'ALIGNED' : 'DIVERGED') : null,
+        current: fr, annualized, src: frSrc,
         interpretation: fr > 0.1 ? '⚠️ Sangat Positif — long overcrowded, waspadai long squeeze' :
           fr > 0.05 ? '📈 Positif — bullish dominan' : fr > 0.01 ? '🟡 Sedikit Positif' :
-          fr < -0.1 ? '⚠️ Sangat Negatif — short overcrowded, waspadai short squeeze' :
+          fr < -0.1 ? '⚠️ Sangat Negatif — short overcrowded, potensi short squeeze 🚀' :
           fr < -0.05 ? '📉 Negatif — bearish dominan' : fr < -0.01 ? '🟡 Sedikit Negatif' : '⚖️ Netral',
         signal: fr > 0.1 ? 'EXTREME_LONG' : fr > 0.05 ? 'LONG_HEAVY' : fr < -0.1 ? 'EXTREME_SHORT' : fr < -0.05 ? 'SHORT_HEAVY' : 'NEUTRAL',
-        reverseSignal: fr > 0.08 ? '⚠️ Funding sangat tinggi — potensi long squeeze!' : fr < -0.08 ? '⚠️ Funding sangat negatif — potensi short squeeze!' : null,
+        reverseSignal: fr > 0.08 ? '⚠️ Funding tinggi — potensi long squeeze!' : fr < -0.08 ? '🚀 Funding negatif — potensi short squeeze!' : null,
       };
     }
 
-    if (oiHistRes.status === 'fulfilled' && Array.isArray(oiHistRes.value) && oiHistRes.value.length > 10) {
-      const oiHist = oiHistRes.value.map(d => parseFloat(d.sumOpenInterest));
-      const oiLast = oiHist[oiHist.length - 1], oi6hAgo = oiHist[oiHist.length - 6] || oiLast, oi24hAgo = oiHist[0] || oiLast;
-      const oiChg6h = oi6hAgo > 0 ? +((oiLast - oi6hAgo) / oi6hAgo * 100).toFixed(2) : 0;
-      const oiChg24h = oi24hAgo > 0 ? +((oiLast - oi24hAgo) / oi24hAgo * 100).toFixed(2) : 0;
-      const oiTrend = oiChg6h > 5 ? 'INCREASING_FAST' : oiChg6h > 2 ? 'INCREASING' : oiChg6h < -5 ? 'DECREASING_FAST' : oiChg6h < -2 ? 'DECREASING' : 'STABLE';
-      const frCur = result.fundingRate?.current || 0;
-      let bybitOIChg = null;
-      if (bybitOIRes.status === 'fulfilled' && bybitOIRes.value?.result?.list?.length > 5) {
-        const boi = bybitOIRes.value.result.list;
-        const b0 = parseFloat(boi[0]?.openInterest || 0), b5 = parseFloat(boi[5]?.openInterest || b0);
-        bybitOIChg = b5 > 0 ? +((b0 - b5) / b5 * 100).toFixed(2) : null;
-      }
-      result.oi = {
-        current: +oiLast.toFixed(0), change6h: oiChg6h, change24h: oiChg24h, trend: oiTrend, spike: Math.abs(oiChg6h) > 10,
-        history24h: oiHist.slice(-12).map(v => +v.toFixed(0)),
-        bybit_change6h: bybitOIChg,
-        bybit_aligned: bybitOIChg !== null ? Math.abs(bybitOIChg - oiChg6h) < 5 : null,
-        interpretation: Math.abs(oiChg6h) > 10 && Math.abs(frCur) > 0.05
-          ? `OI spike +${oiChg6h}% + funding ${frCur > 0 ? 'positif' : 'negatif'} → ${frCur > 0 ? 'LONG OVERCROWDED' : 'SHORT OVERCROWDED'}`
-          : oiChg6h > 5 ? 'OI naik — posisi baru masuk, momentum kuat'
-          : oiChg6h < -5 ? 'OI turun — deleveraging, konsolidasi/reversal'
-          : 'OI stabil',
-        signal: oiChg6h > 5 && frCur > 0 ? 'BULL_CONFIRM' : oiChg6h > 5 && frCur < 0 ? 'SQUEEZE_RISK' : oiChg6h < -5 ? 'DELEVERAGE' : 'NEUTRAL',
+    // ── OPEN INTEREST ─────────────────────────────────────────────
+    let oiData = null;
+    if (byOI.status === 'fulfilled' && byOI.value?.result?.list?.length > 5) {
+      const list = byOI.value.result.list;
+      const oiNow = parseFloat(list[0]?.openInterest || 0);
+      const oi6h = parseFloat(list[Math.min(5, list.length-1)]?.openInterest || oiNow);
+      const oi24h = parseFloat(list[Math.min(23, list.length-1)]?.openInterest || oiNow);
+      const chg6h = oi6h > 0 ? +((oiNow - oi6h) / oi6h * 100).toFixed(2) : 0;
+      const chg24h = oi24h > 0 ? +((oiNow - oi24h) / oi24h * 100).toFixed(2) : 0;
+      const fr = result.fundingRate?.current || 0;
+      oiData = {
+        current: +oiNow.toFixed(0), change6h: chg6h, change24h: chg24h,
+        trend: chg6h > 5 ? 'INCREASING_FAST' : chg6h > 2 ? 'INCREASING' : chg6h < -5 ? 'DECREASING_FAST' : chg6h < -2 ? 'DECREASING' : 'STABLE',
+        spike: Math.abs(chg6h) > 10, src: 'bybit',
+        interpretation: Math.abs(chg6h) > 10 && Math.abs(fr) > 0.05
+          ? `OI spike ${chg6h > 0 ? '+' : ''}${chg6h}% + funding ${fr > 0 ? 'positif' : 'negatif'} → ${fr > 0 ? 'LONG OVERCROWDED' : 'SHORT OVERCROWDED'}`
+          : chg6h > 5 ? 'OI naik — posisi baru masuk, momentum kuat'
+          : chg6h < -5 ? 'OI turun — deleveraging, konsolidasi/reversal'
+          : chg6h > 2 ? 'OI naik moderat' : 'OI stabil',
+        signal: chg6h > 5 && fr > 0 ? 'BULL_CONFIRM' : chg6h > 5 && fr < 0 ? 'SQUEEZE_RISK' : chg6h < -5 ? 'DELEVERAGE' : 'NEUTRAL',
       };
+      result.oi = oiData;
+    } else if (okxOI.status === 'fulfilled' && okxOI.value?.data?.length > 0) {
+      const d = okxOI.value.data[0];
+      result.oi = { current: +parseFloat(d.oi || 0).toFixed(0), change6h: 0, trend: 'STABLE', interpretation: 'OI dari OKX', src: 'okx', signal: 'NEUTRAL' };
     }
 
-    if (lsRatioRes.status === 'fulfilled' && Array.isArray(lsRatioRes.value) && lsRatioRes.value.length > 0) {
-      const latest = lsRatioRes.value[lsRatioRes.value.length - 1];
-      const lsVal = parseFloat(latest.longShortRatio);
-      const history = lsRatioRes.value.slice(-12).map(d => parseFloat(d.longShortRatio));
-      const lsAvg = history.reduce((a, b) => a + b, 0) / history.length;
+    // ── LONG/SHORT RATIO ──────────────────────────────────────────
+    if (byLS.status === 'fulfilled' && byLS.value?.result?.list?.length > 0) {
+      const list = byLS.value.result.list;
+      const latest = list[0];
+      const lsVal = parseFloat(latest?.buyRatio || 0.5);
+      const shortRatio = 1 - lsVal;
+      const ratio = shortRatio > 0 ? +(lsVal / shortRatio).toFixed(3) : 1;
+      const history = list.slice(0, 12).map(d => +(parseFloat(d.buyRatio || 0.5) / Math.max(0.01, 1 - parseFloat(d.buyRatio || 0.5))).toFixed(3));
+      const histAvg = history.reduce((a,b)=>a+b,0)/history.length;
       result.lsRatio = {
-        current: +lsVal.toFixed(3), avg: +lsAvg.toFixed(3),
-        longPct: +(lsVal / (1 + lsVal) * 100).toFixed(1), shortPct: +(1 / (1 + lsVal) * 100).toFixed(1),
-        trend: lsVal > lsAvg ? 'MORE_LONGS' : 'MORE_SHORTS', history: history.map(v => +v.toFixed(3)),
-        interpretation: lsVal > 2.5 ? 'Long sangat dominan (>2.5:1) — contrarian BEARISH kuat' :
-          lsVal > 1.5 ? 'Long dominan — potensi short squeeze' :
-          lsVal < 0.4 ? 'Short sangat dominan — contrarian BULLISH kuat' :
-          lsVal < 0.7 ? 'Short dominan — potensi short squeeze' : 'Seimbang',
-        contrarian: lsVal > 2.5 ? 'BEARISH' : lsVal < 0.4 ? 'BULLISH' : lsVal > 1.5 ? 'MILD_BEAR' : lsVal < 0.7 ? 'MILD_BULL' : 'NEUTRAL',
+        current: ratio, avg: +histAvg.toFixed(3),
+        longPct: +(lsVal * 100).toFixed(1), shortPct: +(shortRatio * 100).toFixed(1),
+        history, src: 'bybit',
+        interpretation: ratio > 2.5 ? 'Long sangat dominan (>2.5:1) — contrarian BEARISH kuat' :
+          ratio > 1.5 ? 'Long dominan — waspada long squeeze' :
+          ratio < 0.4 ? 'Short sangat dominan — contrarian BULLISH kuat 🚀' :
+          ratio < 0.7 ? 'Short dominan — potensi short squeeze' : 'Seimbang (healthy)',
+        contrarian: ratio > 2.5 ? 'BEARISH' : ratio < 0.4 ? 'BULLISH' : ratio > 1.5 ? 'MILD_BEAR' : ratio < 0.7 ? 'MILD_BULL' : 'NEUTRAL',
       };
+      // Top trader approx from tickers
+      if (byTicker.status === 'fulfilled' && byTicker.value?.result?.list?.length > 0) {
+        const t = byTicker.value.result.list[0];
+        const prevPrice = parseFloat(t.prevPrice24h || t.lastPrice);
+        const curPrice = parseFloat(t.lastPrice);
+        const momentum = prevPrice > 0 ? (curPrice - prevPrice) / prevPrice : 0;
+        const smartSignal = ratio < 0.7 ? 'SMART_BULL' : ratio > 2.5 ? 'SMART_BEAR' : 'NEUTRAL';
+        result.topLS = {
+          ratio: ratio, src: 'bybit_derived',
+          longPct: +(lsVal*100).toFixed(1),
+          interpretation: smartSignal === 'SMART_BULL' ? 'Retail over-short → Smart money kemungkinan LONG' :
+            smartSignal === 'SMART_BEAR' ? 'Retail over-long → Smart money kemungkinan SHORT' : 'Posisi balanced',
+          signal: smartSignal,
+        };
+      }
     }
 
-    if (topLSRes.status === 'fulfilled' && Array.isArray(topLSRes.value) && topLSRes.value.length > 0) {
-      const tl = topLSRes.value[topLSRes.value.length - 1];
-      const topLSVal = parseFloat(tl.longShortRatio || 1);
-      result.topLS = { ratio: +topLSVal.toFixed(3), longPct: +(topLSVal / (1 + topLSVal) * 100).toFixed(1), interpretation: topLSVal > 1.5 ? 'Smart money LONG heavy — bullish' : topLSVal < 0.67 ? 'Smart money SHORT heavy — bearish' : 'Smart money balanced', signal: topLSVal > 1.5 ? 'SMART_BULL' : topLSVal < 0.67 ? 'SMART_BEAR' : 'NEUTRAL' };
-    }
-
+    // ── SCORING ───────────────────────────────────────────────────
     let ds = 0;
-    if (result.fundingRate) { const fr = result.fundingRate.current; ds += fr < -0.05 ? 3 : fr < -0.02 ? 1 : fr > 0.1 ? -3 : fr > 0.05 ? -1 : 0; }
-    if (result.oi?.signal === 'BULL_CONFIRM') ds += 2; else if (result.oi?.signal === 'DELEVERAGE') ds -= 2; else if (result.oi?.signal === 'SQUEEZE_RISK') ds -= 1;
-    if (result.lsRatio?.contrarian === 'BULLISH') ds += 2; else if (result.lsRatio?.contrarian === 'BEARISH') ds -= 2; else if (result.lsRatio?.contrarian === 'MILD_BULL') ds += 1; else if (result.lsRatio?.contrarian === 'MILD_BEAR') ds -= 1;
-    if (result.topLS?.signal === 'SMART_BULL') ds += 2; else if (result.topLS?.signal === 'SMART_BEAR') ds -= 2;
+    const fr2 = result.fundingRate?.current;
+    if (fr2 !== null && fr2 !== undefined) {
+      ds += fr2 < -0.05 ? 3 : fr2 < -0.02 ? 1 : fr2 > 0.1 ? -3 : fr2 > 0.05 ? -1 : 0;
+    }
+    if (result.oi?.signal === 'BULL_CONFIRM') ds += 2;
+    else if (result.oi?.signal === 'DELEVERAGE') ds -= 2;
+    else if (result.oi?.signal === 'SQUEEZE_RISK') ds -= 1;
+    if (result.lsRatio?.contrarian === 'BULLISH') ds += 2;
+    else if (result.lsRatio?.contrarian === 'BEARISH') ds -= 2;
+    else if (result.lsRatio?.contrarian === 'MILD_BULL') ds += 1;
+    else if (result.lsRatio?.contrarian === 'MILD_BEAR') ds -= 1;
+    if (result.topLS?.signal === 'SMART_BULL') ds += 2;
+    else if (result.topLS?.signal === 'SMART_BEAR') ds -= 2;
+
     result.derivScore = ds;
     result.sentiment = ds >= 5 ? 'STRONG_BULL' : ds >= 3 ? 'BULL' : ds <= -5 ? 'STRONG_BEAR' : ds <= -3 ? 'BEAR' : 'NEUTRAL';
     return result;
   }
+
 
   // ── MATH ──────────────────────────────────────────────────────
   const EMA = (c, p) => { if (!c || c.length < 2) return c?.[c.length-1]||0; const k=2/(p+1); let e=c.slice(0,Math.min(p,c.length)).reduce((a,b)=>a+b,0)/Math.min(p,c.length); for(let i=Math.min(p,c.length);i<c.length;i++)e=c[i]*k+e*(1-k); return e; };
@@ -523,6 +565,189 @@ export default async function handler(req, res) {
     return { longLiquidations: longLiq, shortLiquidations: shortLiq, likelyHuntTarget: hunt };
   }
 
+
+  // ── ICT KILL ZONE ANALYSIS ────────────────────────────────────
+  // Power of 3: Accumulation → Manipulation → Distribution
+  function calcKillZone() {
+    const now = new Date();
+    const utcH = now.getUTCHours(), utcM = now.getUTCMinutes();
+    const utcMin = utcH * 60 + utcM;
+    // WIB = UTC+7
+    const wibH = (utcH + 7) % 24;
+    const zones = [
+      { name: 'Asian Session', emoji: '🌏', start: 0*60, end: 5*60, wibStart: 7, wibEnd: 12, power: 'LOW', note: 'Range formation — tunggu breakout' },
+      { name: 'London Open Kill Zone', emoji: '🇬🇧', start: 7*60, end: 10*60, wibStart: 14, wibEnd: 17, power: 'HIGH', note: 'Manipulasi Asian range — false breakout sering terjadi' },
+      { name: 'NY Open Kill Zone', emoji: '🗽', start: 12*60, end: 15*60, wibStart: 19, wibEnd: 22, power: 'HIGHEST', note: 'Sesi paling powerful — distribusi final & reversal' },
+      { name: 'London Close', emoji: '🔔', start: 15*60, end: 17*60, wibStart: 22, wibEnd: 0, power: 'MEDIUM', note: 'Profit taking & volatility spike' },
+    ];
+    const active = zones.find(z => utcMin >= z.start && utcMin < z.end);
+    const next = zones.find(z => z.start > utcMin) || zones[0];
+    const minsToNext = next.start > utcMin ? next.start - utcMin : (24*60 - utcMin + next.start);
+    
+    // Power of 3 - daily cycle stage
+    let po3Phase, po3Action;
+    if (utcMin < 5*60) { po3Phase = 'ACCUMULATION 🔄'; po3Action = 'Smart money accumulate positions — jangan FOMO'; }
+    else if (utcMin < 10*60) { po3Phase = 'MANIPULATION ⚡'; po3Action = 'False breakout zone — tunggu konfirmasi sebelum entry'; }
+    else { po3Phase = 'DISTRIBUTION 🎯'; po3Action = 'Arah sebenarnya terungkap — ikuti momentum'; }
+
+    return {
+      currentSession: active ? active.name : 'Off-Hours',
+      currentEmoji: active ? active.emoji : '😴',
+      sessionPower: active ? active.power : 'LOW',
+      sessionNote: active ? active.note : 'Antara sesi — likuiditas rendah',
+      nextSession: next.name, minsToNext,
+      wibTime: `${wibH.toString().padStart(2,'0')}:${now.getUTCMinutes().toString().padStart(2,'0')} WIB`,
+      utcTime: `${utcH.toString().padStart(2,'0')}:${utcM.toString().padStart(2,'0')} UTC`,
+      po3Phase, po3Action,
+      isKillZone: active !== undefined,
+      isBestEntry: active?.power === 'HIGH' || active?.power === 'HIGHEST',
+    };
+  }
+
+  // ── POWERFUL ENTRY/TP SETUP CALCULATOR ───────────────────────
+  // Combines: OB + FVG + Fibonacci + Liquidity + POC + ATR
+  function calcPowerfulSetup(price, atr, ms, smc, ew, vp, liq, deriv, conf, tf4h) {
+    if (!price || !atr || atr === 0) return null;
+    
+    const direction = conf.probability >= 60 ? 'LONG' : conf.probability <= 40 ? 'SHORT' : null;
+    if (!direction) return null;
+
+    const fib = ew.fibonacci || {};
+    const swH = ew.swingHigh || price * 1.05;
+    const swL = ew.swingLow || price * 0.95;
+    const range = swH - swL;
+
+    if (direction === 'LONG') {
+      // ── ENTRY ZONES (4 types) ──────────────────────────────────
+      
+      // 1. SNIPER ENTRY: OB low + Fib 0.618 confluence
+      const fib618 = fib.fib618 || (swH - range * 0.618);
+      const obLow = smc.bullOB?.lo || fib618;
+      const sniperEntry = Math.max(obLow, fib618 * 0.999); // tighter of the two
+      
+      // 2. GOLDEN ZONE: Fib 0.618 to 0.786 (highest probability reversal)
+      const fib786 = fib.fib786 || (swH - range * 0.786);
+      const goldenLo = Math.min(fib618, fib786);
+      const goldenHi = Math.max(fib618, fib786) * 1.001;
+      
+      // 3. MARKET ENTRY: Current price (momentum trade)
+      const marketEntry = +(price * 0.998).toFixed(8); // slight discount
+      
+      // 4. WAITING ZONE: VAL or SSL (accumulation area)
+      const waitingZone = vp?.val || smc.ssl || swL;
+      
+      // ── STOP LOSS (3 levels) ──────────────────────────────────
+      const slStrict = +(price - atr * 1.5).toFixed(8);              // 1.5 ATR
+      const slStructure = +(Math.min(obLow, fib786) * 0.998).toFixed(8); // Below OB/Fib
+      const slFinal = +((vp?.val || swL) * 0.995).toFixed(8);        // Below SSL/VAL
+      
+      // Use structure SL for calculation
+      const activeSL = slStructure < price ? slStructure : slStrict;
+      const slDist = price - activeSL;
+
+      // ── TP LEVELS — based on real institutional targets ────────
+      // TP1: Nearest short liquidation (BSL sweep)
+      const tp1 = liq?.shortLiquidations?.[0]?.level || +(price + slDist * 2).toFixed(8);
+      
+      // TP2: POC upper + Elliott 1.272
+      const ext127 = ew.targets?.ext127 || price + slDist * 3.5;
+      const tp2 = +Math.min(ext127, vp?.vah || price * 999).toFixed(8);
+      
+      // TP3: BSL cluster (short stops sweep zone)
+      const tp3 = liq?.shortLiquidations?.[1]?.level || +(price + slDist * 5).toFixed(8);
+      
+      // TP4: Elliott 1.618 extension (swing target)
+      const tp4 = +(ew.targets?.ext161 || swH + (swH - swL) * 0.618).toFixed(8);
+
+      // ── RISK/REWARD ───────────────────────────────────────────
+      const rr1 = +((tp1 - price) / slDist).toFixed(2);
+      const rr2 = +((tp2 - price) / slDist).toFixed(2);
+      const rr3 = +((tp3 - price) / slDist).toFixed(2);
+      const rr4 = +((tp4 - price) / slDist).toFixed(2);
+
+      // ── TRADE TYPE RECOMMENDATION ─────────────────────────────
+      let tradeType, tradeNote;
+      const rsiNow = tf4h?.rsi || 50;
+      const fundingNow = deriv?.fundingRate?.current;
+      
+      if (price <= goldenHi && price >= goldenLo) {
+        tradeType = '🎯 SNIPER ENTRY — Harga di Golden Zone';
+        tradeNote = 'Ini adalah zona entry terbaik. Fib 0.618-0.786 overlap dengan OB.';
+      } else if (rsiNow < 30) {
+        tradeType = '🔥 MARKET ENTRY — RSI Oversold';
+        tradeNote = `RSI ${rsiNow} sangat oversold. Momentum reversal bisa terjadi kapan saja.`;
+      } else if (price <= waitingZone * 1.02) {
+        tradeType = '⏳ WAITING ZONE ENTRY — Accumulation Area';
+        tradeNote = 'Harga di area akumulasi (VAL/SSL). DCA bertahap, bukan all-in.';
+      } else {
+        tradeType = '📊 MOMENTUM ENTRY — Above Midrange';
+        tradeNote = 'Harga di atas POC. Entry momentum valid tapi RR lebih kecil.';
+      }
+
+      // Funding override
+      if (fundingNow !== null && fundingNow !== undefined && fundingNow < -0.05) {
+        tradeType = '🚀 PREMIUM ENTRY — Funding Negatif';
+        tradeNote = `Funding rate ${fundingNow > 0 ? '+' : ''}${fundingNow}% sangat negatif = short squeeze imminent! Entry sekarang.`;
+      }
+
+      return {
+        direction,
+        tradeType, tradeNote,
+        entries: {
+          sniper: { price: +sniperEntry.toFixed(8), label: '🎯 Sniper Entry', note: 'OB low + Fib 0.618 confluence' },
+          golden: { lo: +goldenLo.toFixed(8), hi: +goldenHi.toFixed(8), label: '🏆 Golden Zone', note: 'Fib 0.618–0.786 — highest probability' },
+          market: { price: marketEntry, label: '⚡ Market Entry', note: 'Momentum trade — entry sekarang' },
+          waiting: { price: +waitingZone.toFixed(8), label: '⏳ Waiting Zone', note: 'VAL/SSL — accumulation target' },
+        },
+        stopLoss: { strict: slStrict, structure: activeSL, final: slFinal, atrMultiple: 1.5 },
+        targets: {
+          tp1: { price: +tp1.toFixed(8), rr: rr1, label: 'TP1 — BSL Terdekat', note: 'Short stop cluster sweep' },
+          tp2: { price: +tp2.toFixed(8), rr: rr2, label: 'TP2 — POC/EW 1.272', note: 'Value area high + Fib extension' },
+          tp3: { price: +tp3.toFixed(8), rr: rr3, label: 'TP3 — BSL Cluster', note: 'Major short liquidation zone' },
+          tp4: { price: +tp4.toFixed(8), rr: rr4, label: 'TP4 — EW 1.618 Swing', note: 'Full Elliott Wave extension target' },
+        },
+        recommendation: {
+          bestEntry: price <= goldenHi * 1.005 ? 'SNIPER/GOLDEN' : rsiNow < 35 ? 'MARKET' : 'WAIT',
+          sizing: rsiNow < 30 || (price <= goldenHi && price >= goldenLo) ? 'FULL (2-3%)' : 'HALF (1-1.5%)',
+          urgency: rsiNow < 25 || (fundingNow !== null && fundingNow < -0.08) ? 'HIGH — Entry sekarang' : price <= goldenHi ? 'MEDIUM — Entry bertahap' : 'LOW — Tunggu retrace',
+        },
+      };
+    } else { // SHORT
+      const fib618 = fib.fib618 || (swH - range * 0.618);
+      const obHi = smc.bearOB?.hi || swH;
+      const sniperShort = Math.min(obHi, swH * 1.002);
+      const slShort = +(price + atr * 1.5).toFixed(8);
+      const slDist = slShort - price;
+      const tp1 = liq?.longLiquidations?.[0]?.level || +(price - slDist * 2).toFixed(8);
+      const tp2 = +(ew.targets?.ext127 ? ew.swingLow - (ew.swingHigh - ew.swingLow) * 0.272 : price - slDist * 3.5).toFixed(8);
+      const tp3 = +(vp?.val || price - slDist * 5).toFixed(8);
+      const tp4 = +(ew.targets?.ext161 ? ew.swingLow - (ew.swingHigh - ew.swingLow) * 0.618 : price - slDist * 8).toFixed(8);
+      return {
+        direction,
+        tradeType: '📉 SHORT SETUP',
+        tradeNote: `Short di area distribusi. Target: SSL sweep ke bawah.`,
+        entries: {
+          sniper: { price: +sniperShort.toFixed(8), label: '🎯 Sniper Short', note: 'Bear OB + swing high area' },
+          golden: { lo: +(swH - range * 0.236).toFixed(8), hi: +swH.toFixed(8), label: '🏆 Distribution Zone', note: 'Premium area — best short entry' },
+          market: { price: +(price * 1.002).toFixed(8), label: '⚡ Market Short', note: 'Momentum short sekarang' },
+          waiting: { price: +swH.toFixed(8), label: '⏳ Sweep Target', note: 'Tunggu sweep ke swing high dulu' },
+        },
+        stopLoss: { strict: slShort, structure: slShort, final: +swH.toFixed(8), atrMultiple: 1.5 },
+        targets: {
+          tp1: { price: +tp1.toFixed(8), rr: +((price - tp1) / slDist).toFixed(2), label: 'TP1 — SSL Terdekat', note: 'Long stop cluster' },
+          tp2: { price: +tp2.toFixed(8), rr: +((price - tp2) / slDist).toFixed(2), label: 'TP2 — EW Extension', note: 'Wave C target' },
+          tp3: { price: +tp3.toFixed(8), rr: +((price - tp3) / slDist).toFixed(2), label: 'TP3 — VAL/SSL', note: 'Volume area low' },
+          tp4: { price: +tp4.toFixed(8), rr: +((price - tp4) / slDist).toFixed(2), label: 'TP4 — Full Swing', note: 'Maximum bearish target' },
+        },
+        recommendation: {
+          bestEntry: 'SNIPER/GOLDEN',
+          sizing: 'HALF (1-1.5%) — bearish setups riskier',
+          urgency: 'MEDIUM — konfirmasi BOS bearish dulu',
+        },
+      };
+    }
+  }
+
   // ── MAIN ──────────────────────────────────────────────────────
   try {
     const [tickerData, K1h, K4h_raw, K1d, derivData] = await Promise.all([
@@ -562,6 +787,8 @@ export default async function handler(req, res) {
     const resistance = allRes[0] || price * 1.05, resistance2 = allRes[1] || price * 1.10, resistance3 = allRes[2] || price * 1.15;
 
     const liqMap = buildLiqMap(price, atr4h, ms4h, smc4h, derivData);
+    const killZone = calcKillZone();
+    const powerfulSetup = calcPowerfulSetup(price, atr4h, ms4h, smc4h, ew4h, vp4h, liqMap, derivData, confluence, tf4h);
     const action = confluence.signal;
     let tradeSetup = null;
     if (atr4h > 0 && price > 0) {
