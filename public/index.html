@@ -868,55 +868,139 @@ async function doAccScan(){
   const btn=$('acc-btn'),st=$('acc-st'),prog=$('acc-prog');
   const ctx=$('acc-ctx'),tiers=$('acc-tiers');
   btn.disabled=true;btn.textContent='⏳ Scanning...';
-  st.textContent='Menganalisis 500+ koin — 7-Layer SM Detection...';
+  st.textContent='7-Layer SM Detection: Akumulasi + Entry Zone + Target...';
   prog.style.width='15%';ctx.style.display='none';tiers.style.display='none';
   try{
     const data=await apiFetch('/api/accumulation',28000);
     prog.style.width='92%';
     const mkt=data.marketContext||{};
+
+    // Market context chips
     ctx.style.display='flex';
     ctx.innerHTML=
-      '<div class="ctx-item"><span style="color:var(--dim)">BTC </span><span style="color:'+(mkt.btcTrend==='BULLISH'?'var(--g)':'var(--red)')+'">'+mkt.btcTrend+'</span></div>'+
-      '<div class="ctx-item"><span style="color:var(--dim)">F&G </span><span style="color:'+(mkt.fgValue<=35?'var(--g)':mkt.fgValue>=75?'var(--red)':'var(--amber)')+'">'+mkt.fgValue+'</span></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">BTC </span><span style="color:'+(mkt.btcTrend==='BULLISH'?'var(--g)':mkt.btcTrend==='BEARISH'?'var(--red)':'var(--amber)')+'">'+mkt.btcTrend+'</span></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">BTC 7d </span><span style="color:'+(mkt.btcChange7d>=0?'var(--g)':'var(--red)')+'">'+((mkt.btcChange7d||0)>=0?'+':'')+(mkt.btcChange7d||0).toFixed(1)+'%</span></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">F&G </span><span style="color:'+(mkt.fgValue<=35?'var(--g)':mkt.fgValue>=75?'var(--red)':'var(--amber)')+'">'+mkt.fgValue+' — '+mkt.fgLabel+'</span></div>'+
       '<div class="ctx-item"><span style="color:var(--dim)">Siklus </span><span style="color:var(--amber)">'+mkt.cyclePhase+'</span></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">BTC Dom </span><strong>'+mkt.dominance+'%</strong></div>'+
       '<div class="ctx-item"><span style="color:var(--dim)">Dipindai </span><strong>'+data.totalAnalyzed+'</strong></div>'+
       '<div class="ctx-item"><span style="color:var(--dim)">Qualified </span><strong style="color:var(--g)">'+data.totalQualified+'</strong></div>'+
-      '<div class="ctx-item"><span style="color:var(--dim)">Waktu </span><strong>'+data.scanTime+'s</strong></div>';
+      '<div class="ctx-item" style="color:'+(mkt.bestScanTime.includes('✅')?'var(--g)':mkt.bestScanTime.includes('⚠️')?'var(--red)':'var(--muted)')+'">'+mkt.bestScanTime.split(' — ')[0]+'</div>';
+
+    // Build tier sections
     const tg=data.tierGroups||{};
-    const td=[
-      {key:'S',label:'🔥 TIER S — IMMINENT',sub:'1-7 hari',cls:'tier-s',sc:'s-score',coins:tg.S||[]},
-      {key:'A',label:'✅ TIER A — READY',sub:'1-2 minggu',cls:'tier-a',sc:'a-score',coins:tg.A||[]},
-      {key:'B',label:'📈 TIER B — BUILDING',sub:'2-4 minggu',cls:'tier-b',sc:'b-score',coins:tg.B||[]},
-      {key:'C',label:'👁 TIER C — WATCH',sub:'1-2 bulan',cls:'tier-c',sc:'c-score',coins:tg.C||[]},
+    const tierDefs=[
+      {key:'S',label:'🔥 TIER S — IMMINENT',sub:'1-7 hari — Entry SEKARANG',cls:'tier-s',sc:'s-score',coins:tg.S||[]},
+      {key:'A',label:'✅ TIER A — READY',sub:'1-2 minggu — Setup lengkap',cls:'tier-a',sc:'a-score',coins:tg.A||[]},
+      {key:'B',label:'📈 TIER B — BUILDING',sub:'2-4 minggu — Akumulasi aktif',cls:'tier-b',sc:'b-score',coins:tg.B||[]},
+      {key:'C',label:'👁 TIER C — WATCH',sub:'1-2 bulan — Signal awal',cls:'tier-c',sc:'c-score',coins:tg.C||[]},
     ];
+
     let h='<div class="acc-grid">';
-    td.forEach(function(t){
-      h+='<div class="tier-card '+t.cls+'"><div style="margin-bottom:7px"><div style="font-weight:700;font-size:12px">'+t.label+'</div>';
-      h+='<div style="font-size:10px;color:var(--muted)">'+t.sub+' · '+t.coins.length+' koin</div></div>';
-      if(!t.coins.length){h+='<div style="font-size:11px;color:var(--muted);padding:8px 0">Tidak ada sinyal</div>';}
-      else{
+    tierDefs.forEach(function(t){
+      h+='<div class="tier-card '+t.cls+'">'+
+        '<div style="margin-bottom:8px">'+
+          '<div style="font-weight:800;font-size:13px">'+t.label+'</div>'+
+          '<div style="font-size:10px;color:var(--muted)">'+t.sub+' · '+t.coins.length+' koin</div>'+
+        '</div>';
+
+      if(!t.coins.length){
+        h+='<div style="font-size:11px;color:var(--muted);padding:12px 0;text-align:center">Tidak ada sinyal saat ini</div>';
+      } else {
         t.coins.forEach(function(c){
-          h+='<div class="acc-row" data-sym="'+c.symbol+'" onclick="clickCoin(this.dataset.sym)">'+
-            '<div><div class="acc-sym">'+c.symbol+'</div>'+
-            '<div class="phase-badge">'+((c.accPhase||'').substring(0,30))+'</div>'+
-            '<div style="font-size:9px;color:var(--muted)">'+(c.targets?c.targets.tp1:'')+'/'+(c.targets?c.targets.tp2:'')+'</div></div>'+
-            '<div style="text-align:right">'+
-            '<div class="acc-score '+t.sc+'">'+c.score+'%</div>'+
-            '<div class="achg2 '+(c.change24h>=0?'up':'dn')+'" style="margin-top:2px">'+(c.change24h>=0?'+':'')+c.change24h.toFixed(1)+'%</div>'+
-            '<div style="font-size:9px;color:var(--muted)">'+c.timeframe+'</div></div></div>';
+          const az=c.accumulationZone||{};
+          const tp=c.targetPrices||{};
+          const sl=c.stopLoss||{};
+          const chgCls=c.change24h>=0?'up':'dn';
+          const chg7Cls=c.change7d>=0?'up':'dn';
+          h+=
+            '<div class="acc-coin-card" data-sym="'+c.symbol+'" onclick="clickCoin(this.dataset.sym)" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:9px;padding:9px 10px;margin-bottom:7px;cursor:pointer">'+
+              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'+
+                '<div style="display:flex;align-items:center;gap:7px">'+
+                  '<div style="font-weight:800;font-family:var(--m);font-size:14px">'+c.symbol+'</div>'+
+                  '<div class="acc-score '+t.sc+'">'+c.score+'%</div>'+
+                  (c.isOutperformer?'<div style="background:rgba(0,255,208,.1);color:var(--g);border-radius:5px;padding:1px 5px;font-size:9px;font-weight:700">💪 RS+</div>':'')+
+                '</div>'+
+                '<div style="text-align:right">'+
+                  '<div style="font-family:var(--m);font-weight:700;font-size:12px">'+fP(c.price)+'</div>'+
+                  '<div style="display:flex;gap:4px;justify-content:flex-end">'+
+                    '<div class="achg2 '+chgCls+'" style="font-size:10px">'+(c.change24h>=0?'+':'')+c.change24h.toFixed(1)+'%</div>'+
+                    '<div class="achg2 '+chg7Cls+'" style="font-size:9px;color:var(--muted)">'+(c.change7d>=0?'+':'')+c.change7d.toFixed(1)+'% 7d</div>'+
+                  '</div>'+
+                  (c.fromATH?'<div style="font-size:9px;color:var(--muted)">ATH: '+c.fromATH+'%</div>':'')+
+                '</div>'+
+              '</div>'+
+              // Accumulation Zone
+              '<div style="background:rgba(0,255,208,.04);border:1px solid rgba(0,255,208,.12);border-radius:7px;padding:6px 8px;margin-bottom:5px">'+
+                '<div style="font-size:9px;color:var(--g);font-weight:700;letter-spacing:1px;margin-bottom:3px">📦 ZONA AKUMULASI</div>'+
+                '<div style="display:flex;justify-content:space-between">'+
+                  '<div><span style="font-size:9px;color:var(--muted)">Entry Lo: </span><span style="color:var(--g);font-family:var(--m);font-weight:700;font-size:11px">'+fP(az.lo)+'</span></div>'+
+                  '<div><span style="font-size:9px;color:var(--muted)">Optimal: </span><span style="color:var(--amber);font-family:var(--m);font-weight:700;font-size:11px">'+fP(az.optimalBuy)+'</span></div>'+
+                  '<div><span style="font-size:9px;color:var(--muted)">Hi: </span><span style="color:var(--muted);font-family:var(--m);font-size:11px">'+fP(az.hi)+'</span></div>'+
+                '</div>'+
+              '</div>'+
+              // DCA & Targets
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px">'+
+                '<div style="background:rgba(255,68,102,.04);border:1px solid rgba(255,68,102,.12);border-radius:6px;padding:5px 7px">'+
+                  '<div style="font-size:9px;color:var(--red);font-weight:700">🛑 STOP LOSS</div>'+
+                  '<div style="font-family:var(--m);font-weight:700;font-size:12px;color:var(--red)">'+fP(sl.price)+'</div>'+
+                  '<div style="font-size:9px;color:var(--muted)">'+sl.pct+'% dari entry</div>'+
+                '</div>'+
+                '<div style="background:rgba(255,179,0,.04);border:1px solid rgba(255,179,0,.12);border-radius:6px;padding:5px 7px">'+
+                  '<div style="font-size:9px;color:var(--amber);font-weight:700">📐 SIZING</div>'+
+                  '<div style="font-family:var(--m);font-weight:700;font-size:13px;color:var(--amber)">'+c.positionSize+'</div>'+
+                  '<div style="font-size:9px;color:var(--muted)">'+c.confidence+' confidence</div>'+
+                '</div>'+
+              '</div>'+
+              // TP Prices
+              '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px">'+
+                '<div style="background:rgba(0,255,208,.05);border:1px solid rgba(0,255,208,.12);border-radius:6px;padding:5px 6px;text-align:center">'+
+                  '<div style="font-size:9px;color:var(--muted)">TP1</div>'+
+                  '<div style="font-family:var(--m);font-weight:700;color:var(--g);font-size:11px">'+fP(tp.tp1?.price)+'</div>'+
+                  '<div style="font-size:9px;color:var(--g)">+'+tp.tp1?.pct+'%</div>'+
+                  '<div style="font-size:9px;color:var(--muted)">R:'+tp.tp1?.rr+'</div>'+
+                '</div>'+
+                '<div style="background:rgba(0,255,208,.05);border:1px solid rgba(0,255,208,.12);border-radius:6px;padding:5px 6px;text-align:center">'+
+                  '<div style="font-size:9px;color:var(--muted)">TP2</div>'+
+                  '<div style="font-family:var(--m);font-weight:700;color:var(--g);font-size:11px">'+fP(tp.tp2?.price)+'</div>'+
+                  '<div style="font-size:9px;color:var(--g)">+'+tp.tp2?.pct+'%</div>'+
+                  '<div style="font-size:9px;color:var(--muted)">R:'+tp.tp2?.rr+'</div>'+
+                '</div>'+
+                '<div style="background:rgba(255,179,0,.05);border:1px solid rgba(255,179,0,.12);border-radius:6px;padding:5px 6px;text-align:center">'+
+                  '<div style="font-size:9px;color:var(--muted)">TP3</div>'+
+                  '<div style="font-family:var(--m);font-weight:700;color:var(--amber);font-size:11px">'+fP(tp.tp3?.price)+'</div>'+
+                  '<div style="font-size:9px;color:var(--amber)">+'+tp.tp3?.pct+'%</div>'+
+                  '<div style="font-size:9px;color:var(--muted)">R:'+tp.tp3?.rr+'</div>'+
+                '</div>'+
+              '</div>'+
+              // Signal tags
+              (c.signals&&c.signals.length?
+              '<div style="margin-top:5px;display:flex;gap:3px;flex-wrap:wrap">'+
+              c.signals.slice(0,3).map(function(s){return '<div style="background:rgba(255,255,255,.04);border-radius:4px;padding:2px 6px;font-size:9px;color:var(--muted)">'+s+'</div>';}).join('')+
+              '</div>':'')+
+              // Phase
+              '<div style="margin-top:4px;font-size:10px;color:var(--purple)">'+c.accPhase+'</div>'+
+            '</div>';
         });
-        h+='<div style="margin-top:5px;font-size:9px;color:var(--dim)">'+t.coins.slice(0,6).map(function(c){return c.symbol;}).join(' · ')+'</div>';
+        h+='<div style="margin-top:6px;font-size:9px;color:var(--dim)">'+t.coins.slice(0,6).map(function(c){return c.symbol;}).join(' · ')+'</div>';
       }
       h+='</div>';
     });
-    h+='</div><div style="margin-top:10px;font-size:11px;color:var(--muted);padding:8px 11px;background:rgba(255,255,255,.02);border-radius:8px;border-left:3px solid var(--purple)">⚠️ Sistem probabilistik — DYOR. Sizing 1-3% per trade.</div>';
+    h+='</div>';
+    h+='<div style="margin-top:10px;font-size:11px;color:var(--muted);padding:8px 11px;background:rgba(255,255,255,.02);border-radius:8px;border-left:3px solid var(--purple)">'+
+      '⚠️ <strong>Disclaimer:</strong> Sistem probabilistik berbasis 7-layer SM analysis. Harga akumulasi dihitung dari struktur teknikal. Bukan saran investasi — DYOR. Position sizing 0.5-3% per trade sesuai tier.</div>';
+
     tiers.style.display='block';
     tiers.innerHTML=h;
     prog.style.width='100%';
-    st.textContent='✅ '+data.totalQualified+' koin lolos filter · '+data.scanTime+'s';
+    st.textContent='✅ '+data.totalQualified+' koin lolos filter · '+data.scanTime+'s · '+data.totalAnalyzed+' dipindai';
     setTimeout(function(){prog.style.width='0';},2000);
-  }catch(e){st.textContent='❌ '+e.message;prog.style.width='0';}
-  finally{btn.disabled=false;btn.textContent='🧠 Smart Money Scan';}
+  }catch(e){
+    st.textContent='❌ '+e.message;
+    prog.style.width='0';
+  }finally{
+    btn.disabled=false;btn.textContent='🧠 Smart Money Scan';
+  }
 }
 
 async function refreshAll(){
