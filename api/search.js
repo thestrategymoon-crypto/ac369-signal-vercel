@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   if (!rawSym) return res.status(400).json({ error: 'Parameter symbol diperlukan. Contoh: ?symbol=BTC' });
   const sym = rawSym.replace(/USDT$/, '');
 
-  const sf = async (url, ms = 8000) => {
+  const sf = async (url, ms = 6000) => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), ms);
     try {
