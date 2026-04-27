@@ -537,7 +537,7 @@ async function doSearch(){
     const msHtml=`<div class="sec-block">
       <div class="sec-title">🏗️ Market Structure (4H)</div>
       <div class="row"><span class="rl">Struktur</span><span class="rv" style="color:${tC(ms4h.trend)}">${ms4h.structure||'—'}</span></div>
-      ${ms4h.bos?`<div style="font-size:11px;font-weight:700;color:${ms4h.bos.type==='BULLISH'?'var(--g)':'var(--red)';};padding:4px 0">${ms4h.bos.description}</div>`:''}
+      ${ms4h.bos?`<div style="font-size:11px;font-weight:700;color:${ms4h.bos.type==='BULLISH'?'var(--g)':'var(--red)'};padding:4px 0">${ms4h.bos.description}</div>`:''}
       ${ms4h.choch?`<div style="font-size:11px;font-weight:700;color:${ms4h.choch.type==='BULLISH'?'var(--g)':'var(--red)'};padding:4px 0">${ms4h.choch.description}</div>`:''}
       ${!ms4h.bos&&!ms4h.choch?'<div style="font-size:11px;color:var(--muted);padding:4px 0">Tidak ada BOS/CHoCH — pasar ranging</div>':''}
     </div>`;
