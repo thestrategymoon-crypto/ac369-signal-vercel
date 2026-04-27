@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 's-maxage=60');
 
-  const sf = async (url, ms = 10000) => {
+  const sf = async (url, ms = 6000) => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), ms);
     try {
