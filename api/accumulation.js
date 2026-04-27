@@ -33,10 +33,10 @@ export default async function handler(req, res) {
     if (price < slPrice * 0.999) return { valid: false, status: 'INVALID ❌', reason: 'Harga $' + fmtP(price) + ' sudah MENEMBUS stop loss $' + fmtP(slPrice) + '. Struktur rusak. DEAD SETUP.', recommendation: 'SKIP' };
     const distToSL = (price - slPrice) / price;
     if (distToSL < 0.015) return { valid: false, status: 'TOO_LOW ⚠️', reason: 'Hanya ' + (distToSL * 100).toFixed(1) + '% di atas SL. Risiko terlalu tinggi.', recommendation: 'WATCH — jangan entry' };
-    if (rr1 < 3) return { valid: false, status: 'POOR_RR ❌', reason: 'R:R ' + rr1 + ':1 di bawah minimum institusional 3:1.', recommendation: 'SKIP' };
-    const distAboveOptimal = (price - optimalBuy) / price;
-    if (distAboveOptimal > 0.05) return { valid: false, status: 'TOO_LATE 🕐', reason: 'Harga ' + (distAboveOptimal * 100).toFixed(1) + '% di atas optimal. Move sudah berjalan.', recommendation: 'WAIT — retrace dulu' };
-    if (price > accHi * 1.03) return { valid: false, status: 'TOO_LATE 🕐', reason: 'Harga sudah keluar zona akumulasi. Tidak ada alasan entry.', recommendation: 'WAIT' };
+    if (rr1 < 2) return { valid: false, status: 'POOR_RR ❌', reason: 'R:R ' + rr1 + ':1 di bawah minimum 2:1. Setup tidak worthwhile.', recommendation: 'SKIP' };
+    // Note: price vs optimal comparison removed - optimalBuy is a target price BELOW current
+    // Entry is valid as long as price is within accHi zone
+    if (price > accHi * 1.10) return { valid: false, status: 'TOO_LATE 🕐', reason: 'Harga ' + fmtP(price) + ' sudah 10%+ di atas zona akumulasi. Move sudah jalan.', recommendation: 'WAIT — retrace ke ' + fmtP(accHi) };
     if (vol24h < 1000000) return { valid: false, status: 'LOW_LIQ ⚠️', reason: 'Volume $' + (vol24h / 1e6).toFixed(2) + 'M terlalu rendah untuk setup institusional.', recommendation: 'SKIP' };
     const inZone = price <= accHi && price >= accLo;
     const belowOptimal = price <= optimalBuy;
@@ -132,7 +132,7 @@ export default async function handler(req, res) {
       // Hard stablecoin check by price behavior
       if (price >= 0.97 && price <= 1.03 && Math.abs(change7d || 0) < 4) { rejected.STABLE++; continue; }
       const fromATH = ath > 0 ? ((price - ath) / ath * 100) : 0;
-      if (fromATH < -93) { rejected.SUSPECT++; continue; } // Likely dead project
+      if (fromATH < -99) { rejected.SUSPECT++; continue; } // Only remove if truly dead (>99% from ATH)
 
       const range = Math.max(high - low, price * 0.01);
       const rangePos = (price - low) / range;
@@ -185,10 +185,10 @@ export default async function handler(req, res) {
       const mrPen = inMR ? -3 : 0;
 
       // STRUCTURE GATE
-      if (l2 < 8 && l3 < 9 && l1 < 20) { rejected.NO_STRUCTURE++; continue; }
+      if (l1 < 12 && l2 < 5 && l3 < 6) { rejected.NO_STRUCTURE++; continue; } // Need at least ONE signal
 
       const score = Math.max(0, Math.min(95, Math.round(l1 + l2 + l3 + l4 + l5 + l6 + l7 + mrPen)));
-      if (score < 30) { rejected.LOW_SCORE++; continue; }
+      if (score < 25) { rejected.LOW_SCORE++; continue; }
 
       // ZONES
       const zW = score >= 78 ? 0.06 : score >= 62 ? 0.10 : score >= 48 ? 0.14 : 0.18;
