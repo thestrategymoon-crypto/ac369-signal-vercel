@@ -867,152 +867,185 @@ async function fetchAltcoins(){
 async function doAccScan(){
   const btn=$('acc-btn'),st=$('acc-st'),prog=$('acc-prog');
   const ctx=$('acc-ctx'),tiers=$('acc-tiers');
-  btn.disabled=true;btn.textContent='⏳ Running Engine...';
-  st.textContent='Institutional Validation Engine — Scoring 800+ coins...';
+  btn.disabled=true;btn.textContent='⏳ Engine Running...';
+  st.textContent='Institutional Engine — Detect · Validate · Score · Track...';
   prog.style.width='15%';ctx.style.display='none';tiers.style.display='none';
   try{
     const data=await apiFetch('/api/accumulation',28000);
     prog.style.width='92%';
     const mkt=data.marketContext||{};
-    
-    ctx.style.display='flex';
     const kb=data.killedBreakdown||{};
-    const totalK=data.totalKilled||0;
+
+    ctx.style.display='flex';
     ctx.innerHTML=
-      '<div class="ctx-item"><span style="color:var(--dim)">BTC </span><span style="color:'+(mkt.btcTrend==='BULLISH'?'var(--g)':mkt.btcTrend==='BEARISH'?'var(--red)':'var(--amber)')+'">'+mkt.btcTrend+'</span></div>'+
-      '<div class="ctx-item"><span style="color:var(--dim)">F&G </span><span style="color:'+(mkt.fgValue<=35?'var(--g)':mkt.fgValue>=75?'var(--red)':'var(--amber)')+'">'+mkt.fgValue+'</span></div>'+
-      '<div class="ctx-item"><span style="color:var(--dim)">Siklus </span><span style="color:var(--amber)">'+mkt.cyclePhase+'</span></div>'+
-      '<div class="ctx-item"><span style="color:var(--dim)">Dipindai </span><strong>'+data.totalScanned+'</strong></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">BTC </span><span style="color:'+(mkt.btcTrend==='BULLISH'?'var(--g)':mkt.btcTrend==='BEARISH'?'var(--red)':'var(--amber)')+'">'+mkt.btcTrend+' (7d '+(mkt.btcChange7d>=0?'+':'')+mkt.btcChange7d+'%)</span></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">F&G </span><span style="color:'+(mkt.fgValue<=35?'var(--g)':mkt.fgValue>=75?'var(--red)':'var(--amber)')+'">'+mkt.fgValue+' — '+mkt.fgLabel+'</span></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">Cycle </span><span style="color:var(--amber)">'+mkt.cyclePhase+'</span></div>'+
+      '<div class="ctx-item"><span style="color:var(--dim)">BTC Dom </span><strong>'+mkt.dominance+'%</strong></div>'+
       '<div class="ctx-item"><span style="color:var(--g)">Valid </span><strong style="color:var(--g)">'+data.totalQualified+'</strong></div>'+
-      '<div class="ctx-item"><span style="color:var(--red)">Killed </span><strong style="color:var(--red)">'+totalK+'</strong></div>'+
-      '<div class="ctx-item" style="font-size:10px;color:var(--dim)">'+(kb.LOW_SCORE||0)+' low score · '+(kb.POOR_RR||0)+' poor RR · '+(kb.DEAD_SETUP||0)+' dead</div>';
+      '<div class="ctx-item"><span style="color:var(--red)">Killed </span><strong style="color:var(--red)">'+data.totalKilled+'</strong></div>'+
+      (data.totalActive?'<div class="ctx-item"><span style="color:var(--amber)">Active </span><strong style="color:var(--amber)">'+data.totalActive+'</strong></div>':'')+
+      '<div class="ctx-item" style="font-size:9px;color:var(--dim)">Score<'+(kb.LOW_SCORE||0)+' · RR<3:'+(kb.POOR_RR||0)+' · Dead:'+(kb.DEAD||0)+'</div>';
 
     const tg=data.tierGroups||{};
-    const allValid = [...(tg.S||[]),...(tg.A||[])];
-
+    const valid=[...(tg.S||[]),...(tg.A||[])];
+    const active=data.activeTrades||[];
     let h='';
-    if(!allValid.length){
-      h='<div style="text-align:center;padding:30px;color:var(--muted)">'+
-        '<div style="font-size:40px;margin-bottom:10px">🛡️</div>'+
-        '<div style="font-size:16px;font-weight:700;color:var(--amber)">No Valid Setups</div>'+
-        '<div style="font-size:12px;margin-top:8px;max-width:400px;margin:8px auto">Validation Engine tidak menemukan setup yang memenuhi syarat Tier S/A. Semua koin gagal pada salah satu: Volume, Structure, R:R, atau Kill Engine.</div>'+
-        '<div style="margin-top:12px;font-size:11px;color:var(--dim)">Killed: '+totalK+' | Low Score: '+(kb.LOW_SCORE||0)+' | Poor RR: '+(kb.POOR_RR||0)+'</div>'+
-        '<div style="margin-top:8px;font-size:11px;color:var(--dim)">'+mkt.bestScanTime+'</div>'+
+
+    // Active trades section (always shown first)
+    if(active.length){
+      h+='<div style="background:rgba(0,255,208,.03);border:2px solid rgba(0,255,208,.3);border-radius:12px;padding:14px;margin-bottom:12px">'+
+        '<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--g);margin-bottom:10px">🟢 ACTIVE TRADES — PROTECTED (Never Removed Until SL)</div>'+
+        active.map(function(c){
+          const pnlColor=c.pnl>=0?'var(--g)':'var(--red)';
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">'+
+            '<div>'+
+              '<div style="font-weight:800;font-family:var(--m);font-size:14px">'+c.symbol+'</div>'+
+              '<div style="font-size:10px;color:var(--muted)">'+c.tag+'</div>'+
+              (c.pattern&&c.pattern.name!=='No Pattern'?'<div style="font-size:9px;color:var(--purple)">'+c.pattern.name+' ('+c.pattern.status+')</div>':'')+'</div>'+
+            '<div style="text-align:right">'+
+              '<div style="font-family:var(--m);font-weight:700;font-size:13px">'+fP(c.price)+'</div>'+
+              '<div style="font-family:var(--m);font-weight:700;color:'+pnlColor+'">'+(c.pnl>=0?'+':'')+c.pnl.toFixed(2)+'% PnL</div>'+
+              '<div style="font-size:9px;color:var(--muted)">Entry: '+fP(c.entryPrice)+' · SL: '+fP(c.stopLoss&&c.stopLoss.price)+'</div>'+
+            '</div>'+
+          '</div>';
+        }).join('')+
       '</div>';
-    } else {
-      allValid.forEach(function(c){
-        const bd=c.breakdown||{};
-        const tp=c.targets||{};
-        const sl=c.stopLoss||{};
-        const ez=c.entryZone||{};
-        const isTierS=c.tier==='S';
-        const scoreColor=isTierS?'var(--g)':'#7affd0';
-        const cardBorder=isTierS?'rgba(255,107,53,.5)':'rgba(0,255,208,.35)';
-        const cardBg=isTierS?'rgba(255,107,53,.04)':'rgba(0,255,208,.02)';
-        const chgCls=c.change24h>=0?'up':'dn';
-        const chg7Cls=c.change7d>=0?'up':'dn';
-
-        // Score bar segments
-        const scoreBarHtml=
-          '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:2px;margin:6px 0">'+
-          [
-            {l:'VOL',s:bd.volumeAccumulation,max:25},
-            {l:'LIQ',s:bd.liquiditySweep,max:20},
-            {l:'STR',s:bd.structureStrength,max:20},
-            {l:'RR',s:bd.riskReward,max:15},
-            {l:'ENT',s:bd.entryAccuracy,max:10},
-            {l:'MOM',s:bd.momentum,max:10},
-          ].map(function(f){
-            const sc=f.s?f.s.score:0;
-            const pct=Math.round(sc/f.max*100);
-            const col=pct>=80?'var(--g)':pct>=55?'var(--amber)':'var(--muted)';
-            return '<div style="text-align:center;background:rgba(255,255,255,.03);border-radius:5px;padding:4px 2px">'+
-              '<div style="font-size:8px;color:var(--dim)">'+f.l+'</div>'+
-              '<div style="font-family:var(--m);font-weight:700;font-size:11px;color:'+col+'">'+sc+'</div>'+
-              '<div style="font-size:8px;color:var(--dim)">/'+f.max+'</div>'+
-            '</div>';
-          }).join('')+
-          '</div>';
-
-        h+=
-          '<div style="background:'+cardBg+';border:2px solid '+cardBorder+';border-radius:12px;padding:14px;margin-bottom:12px">'+
-            // Header
-            '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'+
-              '<div>'+
-                '<div style="display:flex;align-items:center;gap:8px">'+
-                  '<div style="font-size:18px;font-weight:900;font-family:var(--m)">'+c.symbol+'</div>'+
-                  '<div style="background:'+(isTierS?'rgba(255,107,53,.2)':'rgba(0,255,208,.15)')+';color:'+scoreColor+';border:1px solid '+cardBorder+';border-radius:8px;padding:3px 10px;font-size:12px;font-weight:800">'+c.tierLabel+'</div>'+
-                  (c.fromATH?'<div style="font-size:10px;color:var(--muted);font-family:var(--m)">ATH '+c.fromATH+'%</div>':'')+
-                '</div>'+
-                '<div style="font-size:10px;color:var(--muted);margin-top:3px">'+c.timeframe+' · '+c.positionSize+'</div>'+
-              '</div>'+
-              '<div style="text-align:right">'+
-                '<div style="font-size:28px;font-weight:900;font-family:var(--m);color:'+scoreColor+'">'+c.totalScore+'</div>'+
-                '<div style="font-size:9px;color:var(--dim)">/100</div>'+
-              '</div>'+
-            '</div>'+
-            // Status
-            '<div style="font-size:12px;font-weight:700;color:var(--g);margin-bottom:6px">'+c.status+'</div>'+
-            // Price info
-            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'+
-              '<div style="font-family:var(--m);font-size:16px;font-weight:800;color:var(--txt)">'+fP(c.price)+'</div>'+
-              '<div class="achg2 '+chgCls+'" style="font-size:12px">'+(c.change24h>=0?'+':'')+c.change24h.toFixed(1)+'% 24h</div>'+
-              '<div class="achg2 '+chg7Cls+'" style="font-size:11px;color:var(--muted)">'+(c.change7d>=0?'+':'')+c.change7d.toFixed(1)+'% 7d</div>'+
-            '</div>'+
-            // Score breakdown
-            scoreBarHtml+
-            // Entry + SL
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">'+
-              '<div style="background:rgba(0,255,208,.04);border:1px solid rgba(0,255,208,.15);border-radius:7px;padding:7px 9px">'+
-                '<div style="font-size:9px;color:var(--g);font-weight:700;letter-spacing:1px;margin-bottom:3px">📦 ENTRY ZONE</div>'+
-                '<div style="font-family:var(--m);font-weight:700;font-size:12px;color:var(--g)">'+fP(ez.lo)+' – '+fP(ez.hi)+'</div>'+
-                '<div style="font-size:10px;color:var(--muted)">Optimal: '+fP(ez.optimal)+'</div>'+
-              '</div>'+
-              '<div style="background:rgba(255,68,102,.04);border:1px solid rgba(255,68,102,.15);border-radius:7px;padding:7px 9px">'+
-                '<div style="font-size:9px;color:var(--red);font-weight:700;letter-spacing:1px;margin-bottom:3px">🛑 STOP LOSS</div>'+
-                '<div style="font-family:var(--m);font-weight:700;font-size:12px;color:var(--red)">'+fP(sl.price)+'</div>'+
-                '<div style="font-size:10px;color:var(--muted)">'+sl.pct+'% dari entry</div>'+
-              '</div>'+
-            '</div>'+
-            // TP levels
-            '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px">'+
-              [tp.tp1,tp.tp2,tp.tp3].filter(Boolean).map(function(t,i){
-                return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:6px 7px;text-align:center">'+
-                  '<div style="font-size:9px;color:var(--muted)">TP'+(i+1)+'</div>'+
-                  '<div style="font-family:var(--m);font-weight:800;color:'+(i===2?'var(--amber)':'var(--g)')+';font-size:11px">'+fP(t.price)+'</div>'+
-                  '<div style="font-size:9px;color:var(--g)">+'+t.pct+'%</div>'+
-                  '<div style="font-size:9px;color:var(--amber)">R:'+t.rr+'</div>'+
-                  '<div style="font-size:8px;color:var(--dim)">'+t.label+'</div>'+
-                '</div>';
-              }).join('')+
-            '</div>'+
-            // Reasons
-            '<div style="margin-bottom:8px">'+
-              c.reasons.map(function(r){
-                return '<div style="font-size:10px;color:var(--muted);padding:2px 0;display:flex;align-items:center;gap:5px"><span style="color:var(--g)">→</span>'+r+'</div>';
-              }).join('')+
-            '</div>'+
-            // Recommendation
-            '<div style="background:rgba(255,255,255,.04);border-left:3px solid '+scoreColor+';border-radius:0 7px 7px 0;padding:8px 11px">'+
-              '<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:3px">REKOMENDASI</div>'+
-              '<div style="font-size:11px;font-weight:700;color:'+scoreColor+'">'+c.recommendation+'</div>'+
-            '</div>'+
-          '</div>';
-      });
     }
 
+    if(!valid.length && !active.length){
+      h+='<div style="text-align:center;padding:40px 20px;color:var(--muted)">'+
+        '<div style="font-size:36px;margin-bottom:12px">🛡️</div>'+
+        '<div style="font-size:16px;font-weight:800;color:var(--amber)">No Valid Setups — System Disciplined</div>'+
+        '<div style="font-size:12px;margin-top:8px;max-width:450px;margin:8px auto;line-height:1.6">Engine killed all '+data.totalKilled+' setups. Not a single coin meets institutional standard today.</div>'+
+        '<div style="margin-top:10px;font-family:var(--m);font-size:11px;padding:8px;background:rgba(255,255,255,.03);border-radius:8px;color:var(--muted)">'+
+          'Low Score: '+(kb.LOW_SCORE||0)+' | Poor RR: '+(kb.POOR_RR||0)+' | Too Late: '+(kb.TOO_LATE||0)+' | Dead: '+(kb.DEAD||0)+'<br>'+
+          '<span style="color:var(--purple)">Principle: No trade > Bad trade.</span>'+
+        '</div>'+
+      '</div>';
+    }
+
+    // Valid setups
+    valid.forEach(function(c){
+      const isTierS=c.tier==='S';
+      const tColor=isTierS?'#ff6b35':'var(--g)';
+      const tBg=isTierS?'rgba(255,107,53,.04)':'rgba(0,255,208,.02)';
+      const tBorder=isTierS?'rgba(255,107,53,.5)':'rgba(0,255,208,.35)';
+      const bd=c.breakdown||{};
+      const tp=c.targets||{};
+      const sl=c.stopLoss||{};
+      const ez=c.entryZone||{};
+      const ts=c.tradeState||{};
+      const stateColor=ts.state==='TRIGGERED'?'#ff6b35':ts.state==='READY'?'var(--g)':'var(--amber)';
+      const pat=c.pattern||{};
+      const patColor=pat.status==='CONFIRMED'?'var(--g)':pat.status==='FAILED'?'var(--red)':'var(--amber)';
+
+      // Score bars
+      const factors=[
+        {k:'volumeAccumulation',l:'VOL'},
+        {k:'liquiditySweep',l:'LIQ'},
+        {k:'structureStrength',l:'STR'},
+        {k:'riskReward',l:'R:R'},
+        {k:'entryPrecision',l:'ENT'},
+        {k:'momentum',l:'MOM'},
+        {k:'pattern',l:'PAT'},
+      ];
+      const scoreBar='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin:8px 0">'+
+        factors.map(function(f){
+          const sc=(bd[f.k]&&bd[f.k].score)||0;
+          const mx=(bd[f.k]&&bd[f.k].max)||10;
+          const pct=Math.round(sc/mx*100);
+          const col=pct>=80?'var(--g)':pct>=55?'var(--amber)':sc<0?'var(--red)':'var(--muted)';
+          return '<div style="text-align:center;background:rgba(255,255,255,.03);border-radius:5px;padding:4px 2px">'+
+            '<div style="font-size:8px;color:var(--dim)">'+f.l+'</div>'+
+            '<div style="font-family:var(--m);font-weight:700;font-size:10px;color:'+col+'">'+sc+'</div>'+
+            '<div style="font-size:7px;color:var(--dim)">/'+mx+'</div>'+
+          '</div>';
+        }).join('')+'</div>';
+
+      h+='<div style="background:'+tBg+';border:2px solid '+tBorder+';border-radius:12px;padding:14px;margin-bottom:12px">'+
+        // Header row
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'+
+          '<div>'+
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+              '<div style="font-size:20px;font-weight:900;font-family:var(--m)">'+c.symbol+'</div>'+
+              '<div style="background:'+tBg+';color:'+tColor+';border:1px solid '+tBorder+';border-radius:8px;padding:3px 10px;font-size:11px;font-weight:800">'+c.tierLabel+'</div>'+
+              '<div style="background:rgba(255,255,255,.06);border-radius:7px;padding:2px 8px;font-size:11px;font-weight:700;color:'+stateColor+'">'+ts.tag+'</div>'+
+            '</div>'+
+            '<div style="font-size:10px;color:var(--muted);margin-top:3px">'+c.timeframe+' · '+c.positionSize+(c.fromATH?' · ATH '+c.fromATH+'%':'')+'</div>'+
+          '</div>'+
+          '<div style="text-align:right">'+
+            '<div style="font-size:32px;font-weight:900;font-family:var(--m);color:'+tColor+'">'+c.totalScore+'</div>'+
+            '<div style="font-size:9px;color:var(--dim)">/100</div>'+
+          '</div>'+
+        '</div>'+
+        // Price row
+        '<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap">'+
+          '<div style="font-family:var(--m);font-size:16px;font-weight:800">'+fP(c.price)+'</div>'+
+          '<div class="achg2 '+(c.change24h>=0?'up':'dn')+'">'+(c.change24h>=0?'+':'')+c.change24h.toFixed(1)+'% 24h</div>'+
+          '<div class="achg2 '+(c.change7d>=0?'up':'dn')+'" style="font-size:10px;color:var(--muted)">'+(c.change7d>=0?'+':'')+c.change7d.toFixed(1)+'% 7d</div>'+
+        '</div>'+
+        // Score bar
+        scoreBar+
+        // Validity indicators
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+
+          '<div style="background:rgba(255,255,255,.04);border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700">Entry: <span style="color:'+(c.entryValidity.includes('✅')?'var(--g)':'var(--amber)')+'">'+c.entryValidity+'</span></div>'+
+          '<div style="background:rgba(255,255,255,.04);border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700">SL: <span style="color:'+(c.slStatus.includes('SAFE')?'var(--g)':c.slStatus.includes('NEAR')?'var(--amber)':'var(--red)')+'">'+c.slStatus+'</span></div>'+
+          (pat.name!=='No Pattern'?'<div style="background:rgba(168,85,247,.08);border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700;color:'+patColor+'">'+pat.name+': '+pat.status+'</div>':'')+
+        '</div>'+
+        // Entry zone + SL
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">'+
+          '<div style="background:rgba(0,255,208,.04);border:1px solid rgba(0,255,208,.15);border-radius:7px;padding:7px 9px">'+
+            '<div style="font-size:9px;color:var(--g);font-weight:700;letter-spacing:1px;margin-bottom:3px">📦 ENTRY ZONE</div>'+
+            '<div style="font-family:var(--m);font-weight:700;font-size:11px;color:var(--g)">'+fP(ez.lo)+' – '+fP(ez.hi)+'</div>'+
+            '<div style="font-size:9px;color:var(--muted)">Optimal: '+fP(ez.optimal)+'</div>'+
+          '</div>'+
+          '<div style="background:rgba(255,68,102,.04);border:1px solid rgba(255,68,102,.15);border-radius:7px;padding:7px 9px">'+
+            '<div style="font-size:9px;color:var(--red);font-weight:700;letter-spacing:1px;margin-bottom:3px">🛑 STOP LOSS</div>'+
+            '<div style="font-family:var(--m);font-weight:700;font-size:12px;color:var(--red)">'+fP(sl.price)+'</div>'+
+            '<div style="font-size:9px;color:var(--muted)">'+sl.pct+'% from entry</div>'+
+          '</div>'+
+        '</div>'+
+        // TPs
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px">'+
+          [tp.tp1,tp.tp2,tp.tp3].filter(Boolean).map(function(t,i){
+            return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:6px;text-align:center">'+
+              '<div style="font-size:9px;color:var(--muted)">TP'+(i+1)+'</div>'+
+              '<div style="font-family:var(--m);font-weight:800;color:'+(i===2?'var(--amber)':'var(--g)')+';font-size:11px">'+fP(t.price)+'</div>'+
+              '<div style="font-size:9px;color:var(--g)">+'+t.pct+'%</div>'+
+              '<div style="font-size:10px;color:var(--amber);font-family:var(--m)">R:'+t.rr+'</div>'+
+              '<div style="font-size:8px;color:var(--dim)">'+t.label+'</div>'+
+            '</div>';
+          }).join('')+
+        '</div>'+
+        // Pattern details
+        (pat.name!=='No Pattern'?'<div style="background:rgba(168,85,247,.05);border:1px solid rgba(168,85,247,.15);border-radius:7px;padding:7px 9px;margin-bottom:8px">'+
+          '<div style="font-size:9px;color:var(--purple);font-weight:700;letter-spacing:1px;margin-bottom:3px">🔬 CHART PATTERN</div>'+
+          '<div style="font-size:11px;font-weight:700;color:'+patColor+'">'+pat.name+' — '+pat.status+'</div>'+
+          '<div style="font-size:10px;color:var(--muted);margin-top:2px">'+pat.description+'</div>'+
+        '</div>':'')+
+        // Reasons
+        (c.reasons&&c.reasons.length?'<div style="margin-bottom:8px">'+
+          c.reasons.map(function(r){return '<div style="font-size:10px;color:var(--muted);padding:2px 0;display:flex;gap:5px"><span style="color:var(--g);flex-shrink:0">→</span><span>'+r+'</span></div>';}).join('')+
+        '</div>':'')+
+        // Recommendation
+        '<div style="background:rgba(255,255,255,.04);border-left:3px solid '+tColor+';border-radius:0 7px 7px 0;padding:8px 11px">'+
+          '<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:3px">RECOMMENDATION</div>'+
+          '<div style="font-size:11px;font-weight:700;color:'+tColor+'">'+c.recommendation+'</div>'+
+        '</div>'+
+      '</div>';
+    });
+
     h+='<div style="margin-top:10px;font-size:11px;color:var(--muted);padding:8px 11px;background:rgba(255,255,255,.02);border-radius:8px;border-left:3px solid var(--purple)">'+
-      '⚠️ <strong>Institutional Disclaimer:</strong> Only TIER S (80+) and TIER A (70+) shown. Validation Engine kills all weak setups. DYOR. Position sizing '+
-      (data.totalQualified>0?'sesuai tier':'N/A — tidak ada setup valid saat ini')+'.</div>';
+      '⚖️ <strong>'+mkt.principle+'</strong></div>';
 
     tiers.style.display='block';
     tiers.innerHTML=h;
     prog.style.width='100%';
-    st.textContent='Engine complete: '+data.totalQualified+' valid ('+data.totalKilled+' killed) · '+data.scanTime+'s';
+    st.textContent='Engine: '+data.totalQualified+' valid · '+data.totalActive+' active · '+data.totalKilled+' killed · '+data.scanTime+'s';
     setTimeout(function(){prog.style.width='0';},2000);
   }catch(e){
-    st.textContent='❌ '+e.message;
-    prog.style.width='0';
+    st.textContent='❌ '+e.message;prog.style.width='0';
     tiers.style.display='block';
     tiers.innerHTML='<div style="color:var(--red);padding:20px;text-align:center">Engine Error: '+e.message+'</div>';
   }finally{
