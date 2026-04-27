@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const sf = async (url, ms = 9000) => {
+  const sf = async (url, ms = 5000) => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), ms);
     try {
@@ -20,19 +20,16 @@ export default async function handler(req, res) {
 
   // ── BTC DAILY KLINES (for MVRV) ──────────────────────────────
   async function fetchBTCDaily() {
-    // 1. CryptoCompare (always works)
-    const cc = await sf('https://min-api.cryptocompare.com/data/v2/histoday?fsym=BTC&tsym=USD&limit=200');
-    if (cc?.Response === 'Success' && cc.Data?.Data?.length >= 60) {
-      return { data: cc.Data.Data.map(d => d.close).filter(v => v > 0), src: 'cryptocompare' };
-    }
-    // 2. Binance Futures
-    const f = await sf('https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1d&limit=200');
-    if (Array.isArray(f) && f.length >= 60) return { data: f.map(k => +k[4]).filter(v => v > 0), src: 'futures' };
-    // 3. Binance Spot
-    const s = await sf('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=200');
-    if (Array.isArray(s) && s.length >= 60) return { data: s.map(k => +k[4]).filter(v => v > 0), src: 'spot' };
-    // 4. CoinGecko market_chart
-    const cg = await sf('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=90&interval=daily');
+    const [ccR, fapiR, spotR, cgR] = await Promise.allSettled([
+      sf('https://min-api.cryptocompare.com/data/v2/histoday?fsym=BTC&tsym=USD&limit=200', 5000),
+      sf('https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1d&limit=200', 5000),
+      sf('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=200', 5000),
+      sf('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=90&interval=daily', 5000),
+    ]);
+    const cc=ccR.value, fapi=fapiR.value, spot=spotR.value, cg=cgR.value;
+    if (cc?.Response === 'Success' && cc.Data?.Data?.length >= 60) return { data: cc.Data.Data.map(d => d.close).filter(v => v > 0), src: 'cryptocompare' };
+    if (Array.isArray(fapi) && fapi.length >= 60) return { data: fapi.map(k => +k[4]).filter(v => v > 0), src: 'futures' };
+    if (Array.isArray(spot) && spot.length >= 60) return { data: spot.map(k => +k[4]).filter(v => v > 0), src: 'spot' };
     if (cg?.prices?.length >= 30) return { data: cg.prices.map(p => p[1]).filter(v => v > 0), src: 'coingecko' };
     return null;
   }
