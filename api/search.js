@@ -446,7 +446,7 @@ export default async function handler(req, res) {
     const hp = dsh < 90 ? 'Post-Halving Early' : dsh < 365 ? 'Bull Cycle Early ✅ (Best Buy)' : dsh < 547 ? 'Bull Cycle Peak ⚠️' : dsh < 730 ? 'Distribution ⚠️' : 'Bear Market / DCA Zone';
     const month = now.getMonth() + 1;
     const mb = { 1: 'Jan(+)', 2: 'Feb(+)', 3: 'Mar(±)', 4: 'Apr(+)', 5: 'May(-)', 6: 'Jun(-)', 7: 'Jul(±)', 8: 'Aug(±)', 9: 'Sep(-/worst)', 10: 'Oct(+/best)', 11: 'Nov(+)', 12: 'Dec(+)' }[month] || '—';
-    return { moonPhase: mp, illumination: mi, halvingPhase: hp, daysSinceHalving: dsh, signal: sig, interpretation: interp, monthBias: mb, inMercuryRetrograde: inMR, inMercuryShadow, mercuryWarning: inMR ? '⚠️ Mercury Retrograde — sinyal palsu tinggi!' : inMRShadow ? '⚠️ Mercury Shadow — extra konfirmasi!' : null, daysSinceNM: +dnm.toFixed(1) };
+    return { moonPhase: mp, illumination: mi, halvingPhase: hp, daysSinceHalving: dsh, signal: sig, interpretation: interp, monthBias: mb, inMercuryRetrograde: inMR, inMercuryShadow: inMRShadow, mercuryWarning: inMR ? '⚠️ Mercury Retrograde — sinyal palsu tinggi!' : inMRShadow ? '⚠️ Mercury Shadow — extra konfirmasi!' : null, daysSinceNM: +dnm.toFixed(1) };
   }
 
   // ── TIMEFRAME ANALYSIS ────────────────────────────────────────
