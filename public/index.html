@@ -886,6 +886,14 @@ async function doAccScan(){
       '<div class="ctx-item"><span style="color:var(--dim)">Dipindai </span><strong>'+data.totalAnalyzed+'</strong></div>'+
       '<div class="ctx-item"><span style="color:var(--dim)">Qualified </span><strong style="color:var(--g)">'+data.totalQualified+'</strong></div>'+
       '<div class="ctx-item" style="color:'+(mkt.bestScanTime.includes('✅')?'var(--g)':mkt.bestScanTime.includes('⚠️')?'var(--red)':'var(--muted)')+'">'+mkt.bestScanTime.split(' — ')[0]+'</div>';
+    // Add rejection stats
+    const rej = data.rejectionSummary || {};
+    const rejTotal = data.totalRejected || 0;
+    if(rejTotal > 0) {
+      ctx.innerHTML += '<div class="ctx-item" style="color:var(--red)">Ditolak <strong>'+rejTotal+'</strong></div>';
+      const topRej = Object.entries(rej).filter(function(e){return e[1]>0;}).sort(function(a,b){return b[1]-a[1];}).slice(0,3);
+      if(topRej.length) ctx.innerHTML += '<div class="ctx-item" style="font-size:10px;color:var(--dim)">'+topRej.map(function(e){return e[0]+':'+e[1];}).join(' ')+'</div>';
+    }
 
     // Build tier sections
     const tg=data.tierGroups||{};
@@ -914,7 +922,7 @@ async function doAccScan(){
           const chgCls=c.change24h>=0?'up':'dn';
           const chg7Cls=c.change7d>=0?'up':'dn';
           h+=
-            '<div class="acc-coin-card" data-sym="'+c.symbol+'" onclick="clickCoin(this.dataset.sym)" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:9px;padding:9px 10px;margin-bottom:7px;cursor:pointer">'+
+            '<div class="acc-coin-card" style="border-left: 3px solid '+(c.validation&&c.validation.status&&c.validation.status.includes('PRIME')?'var(--g)':c.validation&&c.validation.status&&c.validation.status.includes('VALID')?'rgba(0,255,208,.4)':'var(--amber)')+'" data-sym="'+c.symbol+'" onclick="clickCoin(this.dataset.sym)" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:9px;padding:9px 10px;margin-bottom:7px;cursor:pointer">'+
               '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'+
                 '<div style="display:flex;align-items:center;gap:7px">'+
                   '<div style="font-weight:800;font-family:var(--m);font-size:14px">'+c.symbol+'</div>'+
@@ -930,6 +938,10 @@ async function doAccScan(){
                   (c.fromATH?'<div style="font-size:9px;color:var(--muted)">ATH: '+c.fromATH+'%</div>':'')+
                 '</div>'+
               '</div>'+
+              '<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px">'+
+              '<div style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;background:'+(c.validation&&c.validation.status.includes('PRIME')?'rgba(0,255,208,.15)':c.validation&&c.validation.status.includes('VALID')?'rgba(0,255,208,.1)':'rgba(255,179,0,.1)')+';">'+(c.validation&&c.validation.status||'VALID')+'</div>'+
+              (c.highRisk?'<div style="background:rgba(255,68,102,.1);color:var(--red);border-radius:6px;padding:2px 6px;font-size:10px;font-weight:700">⚠️ HIGH RISK</div>':'')+
+            '</div>'+
               // Accumulation Zone
               '<div style="background:rgba(0,255,208,.04);border:1px solid rgba(0,255,208,.12);border-radius:7px;padding:6px 8px;margin-bottom:5px">'+
                 '<div style="font-size:9px;color:var(--g);font-weight:700;letter-spacing:1px;margin-bottom:3px">📦 ZONA AKUMULASI</div>'+
