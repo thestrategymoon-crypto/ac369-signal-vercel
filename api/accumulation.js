@@ -1,27 +1,50 @@
-// api/accumulation.js — AC369 FUSION v8.0
-// ══════════════════════════════════════════════════════════════
-// ADAPTIVE WEIGHT HEDGE FUND ENGINE
+// api/accumulation.js — AC369 FUSION v9.0
+// ══════════════════════════════════════════════════════════════════
+// FULL TRADE MANAGEMENT SYSTEM
 //
-// Core: Regime-aware scoring, Pre-Impulse detection,
-//       Conflict Engine, Dynamic weights, Kill Switch
+// STORAGE: Module-level Map (Vercel instance) + client localStorage sync
+// RR ENGINE: SL-based (1:3 TP1, 1:4.5 TP2), MAX +100%, NO ATH targets
+// SCORING: PI=25, SM=25, Mom=20, Struct=15, Market=15 → min 75
+// CONFIDENCE: min 80%
 //
-// WEIGHTS:
-//   BULL:  Momentum=30, SmartMoney=25, Structure=20, Market=15, PreImpulse=10
-//   BEAR:  Market=30,   SmartMoney=25, Structure=20, Momentum=15, PreImpulse=10
-//   RANGE: PreImpulse=30, SmartMoney=25, Structure=20, Momentum=15, Market=10
-//
-// FILTERS: Score≥80, Confidence≥85%, Conflict=LOW, RR≥3, PreImpulse≥3/5
-// PRINCIPLE: Tolak sebanyak mungkin. Eksekusi sesedikit mungkin.
-// ══════════════════════════════════════════════════════════════
+// PRINCIPLE: No random signals. Strict filter. Trade memory never lost.
+// ══════════════════════════════════════════════════════════════════
 
+// ── PERSISTENT TRADE STORE ───────────────────────────────────────
+// Persists across requests within same Vercel instance
+// Synced with client localStorage for cross-session persistence
 const TRADE_STORE = new Map();
-const SETUP_TS = new Map();
+const SETUP_TIMESTAMPS = new Map();
 const MAX_ACTIVE = 3;
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // POST: sync trades from client localStorage into TRADE_STORE
+  if (req.method === 'POST') {
+    try {
+      const body = req.body || {};
+      const clientTrades = body.trades || [];
+      let synced = 0;
+      for (const t of clientTrades) {
+        if (t.symbol && t.state && !TRADE_STORE.has(t.symbol)) {
+          TRADE_STORE.set(t.symbol, {
+            state: t.state, ep: t.entryPrice, st: t.setupTime || Date.now(),
+            et: t.entryTime || Date.now(), sl: t.sl, tp1: t.tp1, tp2: t.tp2,
+            score: t.score || 75, tier: t.tier || 'A',
+            rr: t.rr || '1:3', pnl: t.pnl || 0,
+          });
+          synced++;
+        }
+      }
+      return res.status(200).json({ ok: true, synced, total: TRADE_STORE.size });
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+  }
 
   const sf = async (url, ms = 6000) => {
     const ctrl = new AbortController();
@@ -32,180 +55,133 @@ export default async function handler(req, res) {
     } catch { clearTimeout(t); return null; }
   };
 
-  // ═══════════════════════════════════════════════════════════
-  // 0. KILL SWITCH + MARKET REGIME
-  // ═══════════════════════════════════════════════════════════
-  function detectRegimeAndWeights(btcCh7d, btcCh24h, btcDom, fgValue, btcTrend) {
-    // Kill switch: chaotic market
-    const crash = btcCh24h < -10;
-    const extremeVol = Math.abs(btcCh24h) > 12;
-    const panicFG = fgValue <= 8 || fgValue >= 93;
-    if (crash || extremeVol || (panicFG && Math.abs(btcCh7d) > 18)) {
-      return {
-        regime: 'CHAOTIC', killSwitch: true, weights: null,
-        color: 'var(--red)', focus: 'NO TRADE — Kill Switch Active',
-        description: 'Market chaotic. Nol visibility. Semua setup ditolak otomatis.',
-      };
+  // ══════════════════════════════════════════════════════════════
+  // MARKET REGIME
+  // ══════════════════════════════════════════════════════════════
+  function detectRegime(btcCh7, btcCh24, btcDom, fgV, btcTrend) {
+    if (Math.abs(btcCh24) > 12 || fgV <= 8 || fgV >= 93) {
+      return { regime: 'CHAOTIC 🚫', kill: true, color: 'var(--red)', bonus: -999, focus: 'NO TRADE — Market too volatile' };
     }
-
-    let regime, weights, color, focus;
-
-    if (btcCh7d < -8 || (btcCh7d < -5 && btcTrend === 'BEARISH' && fgValue < 40)) {
-      regime = 'BEAR';
-      weights = { momentum: 15, smartMoney: 25, structure: 20, market: 30, preImpulse: 10 };
-      color = 'var(--red)';
-      focus = 'BEAR regime — Long hanya jika skor sangat tinggi + accumulation murni terkonfirmasi.';
-    } else if (btcCh7d > 8 || (btcCh7d > 5 && btcTrend === 'BULLISH' && fgValue > 50)) {
-      regime = 'BULL';
-      weights = { momentum: 30, smartMoney: 25, structure: 20, market: 15, preImpulse: 10 };
-      color = 'var(--g)';
-      focus = 'BULL regime — Fokus breakout & continuation. Momentum setups valid.';
-    } else {
-      regime = 'RANGE';
-      weights = { momentum: 15, smartMoney: 25, structure: 20, market: 10, preImpulse: 30 };
-      color = 'var(--amber)';
-      focus = 'RANGE regime — Pre-Impulse detection prioritas. Akumulasi & reversal.';
+    if (btcCh7 < -8 || (btcCh7 < -5 && btcTrend === 'BEARISH')) {
+      return { regime: 'BEAR 📉', kill: false, color: 'var(--red)', bonus: -10, focus: 'Bear: long only if extremely strong pre-impulse' };
     }
-
-    const fgBonus = fgValue <= 25 ? +6 : fgValue <= 40 ? +3 : fgValue >= 75 ? -6 : 0;
-    const regimeBonus = regime === 'BEAR' ? -8 : regime === 'BULL' ? +8 : +3;
-
-    return { regime, killSwitch: false, weights, color, focus, description: focus, regimeBonus: regimeBonus + fgBonus, fgValue, btcDom };
+    if (btcCh7 > 8 || (btcCh7 > 5 && btcTrend === 'BULLISH' && fgV > 50)) {
+      return { regime: 'BULL 📈', kill: false, color: 'var(--g)', bonus: +8, focus: 'Bull: momentum & breakout setups preferred' };
+    }
+    return { regime: 'RANGE ↔️', kill: false, color: 'var(--amber)', bonus: +3, focus: 'Range: accumulation & pre-impulse optimal' };
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // 1. HARD FILTER (all must pass first)
-  // ═══════════════════════════════════════════════════════════
-  function hardFilter(price, entryOpt, slPrice, rr1, change24h, volTier, regime, alreadyPumped) {
-    if (price <= slPrice * 0.999) return { pass: false, reason: `SL breached. Dead setup.`, tag: 'SL_HIT' };
-    if (rr1 < 3) return { pass: false, reason: `R:R ${rr1}:1 < 3. Rejected.`, tag: 'POOR_RR' };
-    const dist = (price - entryOpt) / price;
-    if (dist > 0.03) return { pass: false, reason: `Entry ${(dist * 100).toFixed(1)}% above optimal. Chasing.`, tag: 'TOO_LATE' };
-    if (change24h < -8) return { pass: false, reason: `Breakdown ${change24h.toFixed(1)}%. Structure invalid.`, tag: 'BREAKDOWN' };
-    if (volTier < 2) return { pass: false, reason: `Vol tier ${volTier} insufficient for institutional setup.`, tag: 'LOW_VOLUME' };
-    if (alreadyPumped) return { pass: false, reason: `Already pumped +${change24h.toFixed(1)}% — Pre-Impulse opportunity missed.`, tag: 'ALREADY_PUMPED' };
-    if (regime === 'BEAR' && change24h < -5) return { pass: false, reason: `Bear regime + negative 24h = against trend.`, tag: 'TREND_CONFLICT' };
-    return { pass: true };
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // 2. PRE-IMPULSE DETECTION (≥3 of 5 required)
-  // ═══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════
+  // PRE-IMPULSE DETECTION ENGINE (25pts max)
+  // ══════════════════════════════════════════════════════════════
   function detectPreImpulse(price, high, low, open, change24h, change7d, vol24h, rangePos, lwRatio, bodyRatio) {
+    // Immediate reject: already pumped
+    if (change24h > 8) return { valid: false, count: 0, score: 0, stage: 'LATE — Already pumped >8%', signals: [], alreadyPumped: true };
+
+    const vt = vol24h >= 500e6 ? 5 : vol24h >= 100e6 ? 4 : vol24h >= 30e6 ? 3 : vol24h >= 10e6 ? 2 : vol24h >= 2e6 ? 1 : 0;
+    const range24h = high > low ? (high - low) / low : 0;
     const signals = [];
-    const volTier = vol24h >= 500e6 ? 5 : vol24h >= 100e6 ? 4 : vol24h >= 30e6 ? 3 : vol24h >= 10e6 ? 2 : vol24h >= 2e6 ? 1 : 0;
-    const range24h = (high - low) / Math.max(low, 0.001);
 
-    // Already pumped = pre-impulse over
-    const alreadyPumped = change24h > 10;
+    // 1. Volume accumulation (price flat, vol up)
+    if (vt >= 3 && Math.abs(change24h) <= 3) signals.push({ s: 'VOLUME_ACCUM', pts: 20, note: `$${(vol24h/1e6).toFixed(0)}M vol + ${change24h.toFixed(1)}% = SM absorbing` });
+    else if (vt >= 2 && Math.abs(change24h) <= 2) signals.push({ s: 'VOLUME_ACCUM', pts: 12, note: `Vol $${(vol24h/1e6).toFixed(0)}M + flat price` });
 
-    // Signal 1: Volume up + price flat (absorption)
-    const volAbsorption = volTier >= 3 && Math.abs(change24h) <= 3;
-    if (volAbsorption) signals.push({ signal: 'VOLUME_ABSORPTION', note: `$${(vol24h / 1e6).toFixed(0)}M vol + ${change24h.toFixed(1)}% price = classic pre-impulse absorption`, score: 20 });
+    // 2. Liquidity sweep (stop hunt below)
+    if (lwRatio > 0.42 && rangePos < 0.50 && price > low * 1.003) signals.push({ s: 'LIQUIDITY_SWEEP', pts: 22, note: `Wick ${(lwRatio*100).toFixed(0)}% — stops cleared` });
 
-    // Signal 2: Liquidity sweep (stop hunt at lows)
-    const sslSweep = lwRatio > 0.40 && rangePos < 0.50 && price > low * 1.003;
-    if (sslSweep) signals.push({ signal: 'LIQUIDITY_SWEEP', note: `Lower wick ${(lwRatio * 100).toFixed(0)}% — stops cleared below`, score: 22 });
+    // 3. Price compression (tight range = coiling spring)
+    if (range24h < 0.055 && Math.abs(change24h) < 3.5 && vol24h > 5e6) signals.push({ s: 'COMPRESSION', pts: 18, note: `Range ${(range24h*100).toFixed(1)}% tight — energy coiling` });
 
-    // Signal 3: Compression (tight range = coiling)
-    const compression = range24h < 0.06 && Math.abs(change24h) < 4 && vol24h > 5e6;
-    if (compression) signals.push({ signal: 'COMPRESSION', note: `Range ${(range24h * 100).toFixed(1)}% — spring coiling before expansion`, score: 18 });
+    // 4. Absorption (high vol, small candle)
+    if (vt >= 2 && bodyRatio < 0.22 && lwRatio > 0.28 && rangePos < 0.55) signals.push({ s: 'ABSORPTION', pts: 18, note: `Body ${(bodyRatio*100).toFixed(0)}% / wick ${(lwRatio*100).toFixed(0)}% — SM taking supply` });
 
-    // Signal 4: Absorption candle (high vol, small body)
-    const absorptionCandle = volTier >= 2 && bodyRatio < 0.20 && lwRatio > 0.30 && rangePos < 0.55;
-    if (absorptionCandle) signals.push({ signal: 'ABSORPTION_CANDLE', note: `Body ${(bodyRatio * 100).toFixed(0)}% wick ${(lwRatio * 100).toFixed(0)}% — SM absorbing at lows`, score: 18 });
-
-    // Signal 5: Higher low (reversal building)
-    const higherLow = change24h > 0.5 && change24h < 8 && (change7d || 0) > -10 && rangePos > 0.40;
-    if (higherLow) signals.push({ signal: 'HIGHER_LOW', note: `+${change24h.toFixed(1)}% forming HL — structure turning`, score: 16 });
+    // 5. Higher low
+    if (change24h > 0.5 && change24h < 7 && (change7d || 0) > -8 && rangePos > 0.42) signals.push({ s: 'HIGHER_LOW', pts: 15, note: `+${change24h.toFixed(1)}% HL — structure improving` });
 
     const count = signals.length;
-    const piScore = signals.reduce((a, s) => a + s.score, 0);
+    const piScore = Math.min(25, Math.round(signals.reduce((a, s) => a + s.pts, 0) * 25 / 75));
+    const stage = count >= 4 ? 'READY 🔥' : count === 3 ? 'EARLY 📈' : count === 2 ? 'FORMING 🔄' : 'WEAK';
 
-    // Stage classification
-    let stage;
-    if (alreadyPumped) stage = 'LATE — Already pumped';
-    else if (count >= 4) stage = 'READY 🔥 — Pre-impulse imminent';
-    else if (count === 3) stage = 'EARLY 📈 — Accumulation building';
-    else if (count === 2) stage = 'FORMING 🔄 — Early signs';
-    else stage = 'WEAK — Insufficient signals';
-
-    return { signals, count, piScore, stage, alreadyPumped, valid: count >= 3 && !alreadyPumped };
+    return { valid: count >= 3, count, score: piScore, stage, signals, alreadyPumped: false };
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // 3. SMART MONEY VALIDATION (≥2 required)
-  // ═══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════
+  // SMART MONEY VALIDATION ENGINE (25pts max)
+  // ══════════════════════════════════════════════════════════════
   function validateSM(price, high, low, open, change24h, change7d, vol24h, rangePos, lwRatio, bodyRatio) {
-    const signals = [];
     const vt = vol24h >= 500e6 ? 5 : vol24h >= 100e6 ? 4 : vol24h >= 30e6 ? 3 : vol24h >= 10e6 ? 2 : vol24h >= 2e6 ? 1 : 0;
+    const signals = [];
 
-    if (lwRatio > 0.45 && rangePos < 0.55 && price > low * 1.003) {
+    if (lwRatio > 0.45 && rangePos < 0.52 && price > low * 1.003) {
       const str = lwRatio > 0.60 ? 'STRONG' : 'MODERATE';
-      signals.push({ type: 'LIQUIDITY_SWEEP', strength: str, pts: str === 'STRONG' ? 22 : 14, note: `SSL swept — wick ${(lwRatio * 100).toFixed(0)}%` });
+      signals.push({ type: 'LIQUIDITY_SWEEP', strength: str, pts: str === 'STRONG' ? 22 : 14 });
     }
-    if (vt >= 3 && Math.abs(change24h) <= 3) {
-      signals.push({ type: 'ACCUMULATION', strength: vt >= 4 ? 'STRONG' : 'MODERATE', pts: vt >= 4 ? 22 : 14, note: `$${(vol24h / 1e6).toFixed(0)}M + flat = SM building position` });
-    } else if (vt >= 2 && Math.abs(change24h) <= 2) {
-      signals.push({ type: 'VOLUME_ABSORPTION', strength: 'MODERATE', pts: 12, note: `Moderate accumulation vol` });
-    }
-    if (vt >= 3 && bodyRatio < 0.20 && lwRatio > 0.30) {
-      signals.push({ type: 'ABSORPTION', strength: 'STRONG', pts: 20, note: `Absorption candle — SM taking supply` });
-    }
+    if (vt >= 3 && Math.abs(change24h) <= 3) signals.push({ type: 'ACCUMULATION', strength: vt >= 4 ? 'STRONG' : 'MODERATE', pts: vt >= 4 ? 22 : 14 });
+    else if (vt >= 2 && Math.abs(change24h) <= 2) signals.push({ type: 'ACCUMULATION', strength: 'MODERATE', pts: 11 });
+    if (vt >= 2 && bodyRatio < 0.22 && lwRatio > 0.28) signals.push({ type: 'ABSORPTION', strength: 'STRONG', pts: 20 });
     if (change24h > 2.5 && change24h < 12 && rangePos > 0.55 && lwRatio > 0.20) {
-      signals.push({ type: 'STRUCTURE_RECLAIM', strength: change24h > 5 ? 'STRONG' : 'MODERATE', pts: change24h > 5 ? 18 : 11, note: `+${change24h.toFixed(1)}% reclaim — SM pushed back above structure` });
+      signals.push({ type: 'STRUCTURE_RECLAIM', strength: change24h > 5 ? 'STRONG' : 'MODERATE', pts: change24h > 5 ? 18 : 11 });
     }
 
     const strong = signals.filter(s => s.strength === 'STRONG').length;
-    const smScore = signals.reduce((a, s) => a + s.pts, 0);
+    const raw = signals.reduce((a, s) => a + s.pts, 0);
+    const smScore = Math.min(25, Math.round(raw * 25 / 66));
     return { signals, count: signals.length, strong, smScore, valid: signals.length >= 2 };
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // 4. CONFLICT ENGINE
-  // ═══════════════════════════════════════════════════════════
-  function detectConflicts(change24h, change7d, change30d, rangePos, lwRatio, regime, btcCh7d, fgValue) {
-    const conflicts = [];
+  // ══════════════════════════════════════════════════════════════
+  // REALISTIC RR ENGINE (CRITICAL)
+  // TP based on SL distance, NOT ATH
+  // TP1: 1:3, TP2: 1:4.5, MAX: +100%
+  // ══════════════════════════════════════════════════════════════
+  function calcRealisticRR(price, low, high, ath, change24h, change7d) {
+    // SL: 1.5× daily range below entry, min 5%, max 12%
+    const dailyRange = high > low ? (high - low) / price : 0.05;
+    const slPct = Math.max(0.05, Math.min(0.12, dailyRange * 1.5 + 0.02));
+    const slPrice = +(price * (1 - slPct)).toFixed(8);
+    const slDist = price - slPrice;
 
-    // Conflict 1: HTF vs LTF direction
-    const htfBull = (change7d || 0) > 0 && (change30d || 0) > -40;
-    const htfBear = (change7d || 0) < -8 || (change30d || 0) < -50;
-    const ltfBull = change24h > 0 && rangePos > 0.45;
-    const ltfBear = change24h < -5 && rangePos < 0.40;
-    if (htfBear && ltfBull) conflicts.push({ type: 'HTF_LTF_CONFLICT', severity: 'HIGH', note: 'HTF bearish, LTF bullish = dead cat risk' });
-    if (htfBull && ltfBear) conflicts.push({ type: 'LTF_BREAKDOWN', severity: 'MEDIUM', note: 'LTF breaking down despite HTF ok' });
+    // TP1: entry + 3× SL distance (1:3 RR)
+    const tp1Raw = price + slDist * 3;
+    // TP2: entry + 4.5× SL distance (1:4.5 RR)
+    const tp2Raw = price + slDist * 4.5;
 
-    // Conflict 2: Coin vs BTC regime
-    if (regime === 'BEAR' && change24h > 5) conflicts.push({ type: 'COIN_VS_BEAR_REGIME', severity: 'HIGH', note: `Coin +${change24h.toFixed(1)}% while market BEAR = suspect dead cat` });
-    if (regime === 'BULL' && change24h < -5) conflicts.push({ type: 'COIN_VS_BULL_REGIME', severity: 'MEDIUM', note: 'Underperforming in bull market' });
+    // VALIDATION: TP must be realistic
+    // Max TP = +100% from entry (never use ATH as primary target)
+    const maxTP = price * 2.0; // +100% max
 
-    // Conflict 3: Volume vs Price
-    const vt = 0; // Will be assessed separately
-    if (change24h > 8 && lwRatio < 0.20) conflicts.push({ type: 'PUMP_NO_WICK', severity: 'HIGH', note: 'Sharp pump without wick = potential fake / manipulation' });
-
-    // Conflict 4: F&G vs price direction
-    if (fgValue >= 75 && change24h < -3) conflicts.push({ type: 'FG_PRICE_CONFLICT', severity: 'MEDIUM', note: 'Greed market but price falling' });
-    if (fgValue <= 20 && change24h > 8) conflicts.push({ type: 'FEAR_PUMP', severity: 'HIGH', note: 'Extreme fear + pump = suspicious / low conviction' });
-
-    const highConflicts = conflicts.filter(c => c.severity === 'HIGH').length;
-    const medConflicts = conflicts.filter(c => c.severity === 'MEDIUM').length;
-
-    let level, action;
-    if (highConflicts >= 2 || highConflicts + medConflicts >= 3) {
-      level = 'HIGH'; action = 'REJECT';
-    } else if (highConflicts >= 1 || medConflicts >= 2) {
-      level = 'MEDIUM'; action = 'WAIT';
+    // Check if ATH provides better but realistic reference
+    let tp1, tp2;
+    if (ath > 0 && ath < price * 3) {
+      // ATH is within 3x range — use Fib retrace but cap at SL-based
+      const toATH = ath - price;
+      const athFib38 = price + toATH * 0.382;
+      const athFib50 = price + toATH * 0.500;
+      // Use whichever is closer to realistic SL-based TP
+      tp1 = Math.min(Math.max(tp1Raw, athFib38), maxTP);
+      tp2 = Math.min(Math.max(tp2Raw, athFib50), maxTP);
     } else {
-      level = 'LOW'; action = 'PROCEED';
+      // No ATH or too far — pure SL-based
+      tp1 = Math.min(tp1Raw, maxTP);
+      tp2 = Math.min(tp2Raw, maxTP);
     }
 
-    return { conflicts, highConflicts, medConflicts, level, action };
+    const tp1Pct = +((tp1 - price) / price * 100).toFixed(1);
+    const tp2Pct = +((tp2 - price) / price * 100).toFixed(1);
+    const rr1 = +((tp1 - price) / slDist).toFixed(2);
+    const rr2 = +((tp2 - price) / slDist).toFixed(2);
+
+    // REJECT if TP unrealistic (> 100% for TP1)
+    const unrealistic = tp1Pct > 100;
+
+    return { slPrice, slPct: +(slPct * 100).toFixed(1), slDist, tp1: +tp1.toFixed(8), tp2: +tp2.toFixed(8), tp1Pct, tp2Pct, rr1, rr2, rrLabel: `1:${rr1.toFixed(1)} / 1:${rr2.toFixed(1)}`, unrealistic };
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // 5. ADAPTIVE SCORING ENGINE
-  // ═══════════════════════════════════════════════════════════
-  function adaptiveScore(coin, btcCh24h, btcCh7d, fgValue, weights, preImpulse, sm, mtfScore, patScore, rr1, freshBonus) {
+  // ══════════════════════════════════════════════════════════════
+  // SCORING ENGINE (100pts, pre-impulse weighted)
+  // PI=25, SM=25, Mom=20, Struct=15, Market=15
+  // ══════════════════════════════════════════════════════════════
+  function calcScore(coin, btcCh24, btcCh7, fgV, piResult, smResult, rr1, regimeBonus) {
     const { price, vol24h, change24h, high, low, open, change7d, change30d, ath } = coin;
     const range = Math.max(high - low, price * 0.01);
     const rangePos = (price - low) / range;
@@ -213,176 +189,152 @@ export default async function handler(req, res) {
     const lwRatio = lw / range;
     const bodyRatio = Math.abs(price - open) / range;
     const fromATH = ath > 0 ? ((price - ath) / ath * 100) : 0;
-    const rs7d = (change7d || 0) - btcCh7d;
+    const rs7d = (change7d || 0) - btcCh7;
     const vt = vol24h >= 500e6 ? 5 : vol24h >= 100e6 ? 4 : vol24h >= 30e6 ? 3 : vol24h >= 10e6 ? 2 : vol24h >= 2e6 ? 1 : 0;
     const flat = Math.abs(change24h) <= 3;
-    const down = change24h < -3 && change24h > -10;
+
+    // MOMENTUM (20pts)
+    let mom = 0;
+    if (rs7d > 12 && flat) mom = 20;
+    else if (rs7d > 6 && change24h >= 0) mom = 17;
+    else if (rs7d > 2 && change24h >= 0) mom = 14;
+    else if (rs7d > 0 && btcCh7 < 0) mom = 16; // holding while BTC drops = strong
+    else if (rs7d >= -3 && change24h >= 0) mom = 11;
+    else if (change24h > 2) mom = 9;
+    else if (rs7d < -10) mom = 4;
+    else mom = 7;
+    if (fgV <= 25) mom = Math.min(20, mom + 3);
+
+    // STRUCTURE (15pts)
     const sslSweep = lwRatio > 0.40 && rangePos < 0.50;
     const choch = change24h > 3 && change24h < 12 && rangePos > 0.55;
-
-    // RAW COMPONENT SCORES (0-100 each)
-    // Momentum component
-    let mom = 0;
-    if (rs7d > 15 && flat) mom = 90;
-    else if (rs7d > 8 && change24h >= 0) mom = 80;
-    else if (rs7d > 3 && change24h >= 0) mom = 65;
-    else if (rs7d > 0 && btcCh7d < 0) mom = 70;
-    else if (rs7d >= -3 && change24h >= 0) mom = 55;
-    else if (change24h > 3) mom = 50;
-    else if (rs7d < -10) mom = 20;
-    else mom = 35;
-    if (fgValue <= 25) mom = Math.min(100, mom + 10);
-
-    // Smart Money component
-    const smComp = sm.valid ? Math.min(100, 50 + sm.smScore * 1.2) : Math.min(40, sm.smScore);
-
-    // Structure component
     let struct = 0;
-    if (sslSweep && choch) struct = 90;
-    else if (sslSweep && change24h > 1) struct = 80;
-    else if (choch) struct = 75;
-    else if (change24h > 5 && rangePos > 0.65) struct = 65;
-    else if (sslSweep) struct = 60;
-    else if ((change7d || 0) > 3 && (change30d || 0) < -15) struct = 55;
-    else if (flat && vt >= 2) struct = 50;
-    else if (rangePos < 0.35) struct = 40;
-    else struct = 25;
-    if (rs7d > 8) struct = Math.min(100, struct + 15);
-    else if (rs7d > 3) struct = Math.min(100, struct + 8);
+    if (sslSweep && choch) struct = 15;
+    else if (sslSweep && change24h > 1) struct = 13;
+    else if (choch) struct = 12;
+    else if (sslSweep) struct = 9;
+    else if ((change7d || 0) > 3 && (change30d || 0) < -15) struct = 8;
+    else if (flat && vt >= 2) struct = 7;
+    else if (rangePos < 0.35) struct = 5;
+    else struct = 3;
+    if (rs7d > 8) struct = Math.min(15, struct + 3);
 
-    // Market component
-    let market = 0;
+    // MARKET CONTEXT (15pts)
+    let mkt = 0;
     const inGolden = fromATH <= -55 && fromATH >= -80;
-    const deep = fromATH <= -80 && fromATH >= -97;
-    const norm = fromATH <= -30 && fromATH >= -55;
-    if (inGolden && rangePos < 0.50) market = 90;
-    else if (deep && rangePos < 0.45) market = 85;
-    else if (inGolden) market = 75;
-    else if (deep) market = 70;
-    else if (norm && rangePos < 0.40) market = 65;
-    else if (norm) market = 55;
-    else if (rangePos < 0.30) market = 45;
-    else market = 30;
-    if (fgValue <= 25) market = Math.min(100, market + 10);
-    // RR bonus for market score
-    if (rr1 >= 8) market = Math.min(100, market + 10);
-    else if (rr1 >= 5) market = Math.min(100, market + 5);
+    const normDisc = fromATH <= -30 && fromATH >= -55;
+    if (inGolden && rangePos < 0.50) mkt = 15;
+    else if (inGolden) mkt = 12;
+    else if (fromATH <= -80 && fromATH >= -97 && rangePos < 0.45) mkt = 13;
+    else if (normDisc && rangePos < 0.40) mkt = 10;
+    else if (normDisc) mkt = 8;
+    else if (rangePos < 0.35) mkt = 7;
+    else mkt = 4;
+    if (fgV <= 25) mkt = Math.min(15, mkt + 3);
+    if (rr1 >= 4) mkt = Math.min(15, mkt + 2);
 
-    // Pre-Impulse component
-    const piComp = preImpulse.valid ? Math.min(100, 40 + preImpulse.piScore * 1.5) : Math.min(35, preImpulse.piScore);
+    // Combine all components
+    const rawScore = piResult.score + smResult.smScore + mom + struct + mkt + regimeBonus;
+    const totalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
 
-    // Apply adaptive weights
-    const totalW = weights.momentum + weights.smartMoney + weights.structure + weights.market + weights.preImpulse;
-    const weighted =
-      (mom * weights.momentum +
-       smComp * weights.smartMoney +
-       struct * weights.structure +
-       market * weights.market +
-       piComp * weights.preImpulse) / totalW;
+    // CONFIDENCE
+    const smAdj = smResult.strong >= 2 ? 15 : smResult.valid ? 8 : -15;
+    const piAdj = piResult.count >= 4 ? 15 : piResult.count >= 3 ? 8 : -10;
+    const rrAdj = rr1 >= 4 ? 8 : rr1 >= 3 ? 4 : -15;
+    const rsAdj = rs7d > 5 ? 8 : rs7d > 0 ? 4 : rs7d < -8 ? -8 : 0;
+    const baseConf = (rawScore / 100) * 100;
+    const confidence = Math.max(0, Math.min(100, Math.round(baseConf + smAdj + piAdj + rrAdj + rsAdj)));
 
-    // Bonuses/Penalties
-    const patAdj = patScore === 10 ? 5 : patScore > 0 ? 2 : patScore < 0 ? -8 : 0;
-    const mtfAdj = mtfScore >= 8 ? 5 : mtfScore >= 3 ? 2 : mtfScore < -5 ? -10 : -2;
-    const fresh = freshBonus || 0;
-
-    const finalScore = Math.max(0, Math.min(100, Math.round(weighted + patAdj + mtfAdj + fresh)));
-
-    // Confidence
-    const smConf = sm.strong >= 2 ? 15 : sm.valid ? 8 : -15;
-    const piConf = preImpulse.count >= 4 ? 15 : preImpulse.count >= 3 ? 8 : -10;
-    const mtfConf = mtfScore >= 8 ? 10 : mtfScore >= 3 ? 5 : mtfScore < -5 ? -15 : -3;
-    const rrConf = rr1 >= 8 ? 10 : rr1 >= 5 ? 5 : rr1 >= 3 ? 0 : -15;
-    const patConf = patScore === 10 ? 8 : patScore < 0 ? -10 : 0;
-    const confidence = Math.max(0, Math.min(100, Math.round((weighted * 0.8) + smConf + piConf + mtfConf + rrConf + patConf + fresh)));
-
-    return { finalScore, confidence, components: { mom, smComp, struct, market, piComp }, fromATH };
+    return { totalScore, confidence, components: { pi: piResult.score, sm: smResult.smScore, mom, struct, mkt }, fromATH };
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // 6. ENTRY CONFIRMATION
-  // ═══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════
+  // ENTRY CONFIRMATION ENGINE
+  // ══════════════════════════════════════════════════════════════
   function checkConfirmation(change24h, lwRatio, bodyRatio, rangePos, vol24h) {
     const cs = [];
     const vt = vol24h >= 100e6 ? 3 : vol24h >= 30e6 ? 2 : vol24h >= 5e6 ? 1 : 0;
-    if (lwRatio > 0.40 && bodyRatio < 0.25) cs.push('REJECTION (wick ' + (lwRatio * 100).toFixed(0) + '%)');
-    if (vt >= 2 && (change24h > 0.3 || Math.abs(change24h) < 2)) cs.push('VOLUME_SPIKE ($' + (vol24h / 1e6).toFixed(0) + 'M)');
-    if (change24h > 2.5 && change24h < 12 && rangePos > 0.55) cs.push('MICRO_BOS (+' + change24h.toFixed(1) + '%)');
-    if (lwRatio > 0.30 && change24h > 0.3 && rangePos > 0.45) cs.push('SWEEP_RECOVERY');
+    if (lwRatio > 0.40 && bodyRatio < 0.25) cs.push({ t: 'REJECTION', n: `Wick ${(lwRatio*100).toFixed(0)}%` });
+    if (vt >= 2 && (change24h > 0.3 || Math.abs(change24h) < 2)) cs.push({ t: 'VOLUME_SPIKE', n: `$${(vol24h/1e6).toFixed(0)}M` });
+    if (change24h > 2.5 && change24h < 10 && rangePos > 0.55) cs.push({ t: 'MICRO_BOS', n: `+${change24h.toFixed(1)}%` });
+    if (lwRatio > 0.30 && change24h > 0.3 && rangePos > 0.45) cs.push({ t: 'SWEEP_RECOVERY', n: 'Bounce from lows' });
     return { confirmations: cs, count: cs.length, valid: cs.length >= 2, needs: Math.max(0, 2 - cs.length) };
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // 7. PATTERN DETECTOR
-  // ═══════════════════════════════════════════════════════════
-  function detectPattern(price, high, low, open, change24h, change7d, change30d, vol24h, rangePos, lwRatio, bodyRatio) {
-    if (change24h < -8) return { name: 'Breakdown', status: 'CONFIRMED', patScore: -10, bullish: false, desc: `Breakdown ${change24h.toFixed(1)}%` };
-    const pats = [];
-    if (lwRatio > 0.45 && rangePos < 0.45 && (change7d || 0) >= -6 && (change7d || 0) <= 10)
-      pats.push({ name: 'Double Bottom', status: lwRatio > 0.55 ? 'CONFIRMED' : 'FORMING', patScore: lwRatio > 0.55 ? 10 : 4, bullish: true, desc: `DB ${lwRatio > 0.55 ? 'confirmed' : 'forming'}` });
-    if (lwRatio > 0.50 && change24h > 1 && (change7d || 0) > 2 && (change7d || 0) < 15)
-      pats.push({ name: 'Inv H&S', status: lwRatio > 0.60 && change24h > 3 ? 'CONFIRMED' : 'FORMING', patScore: lwRatio > 0.60 && change24h > 3 ? 10 : 4, bullish: true, desc: `IH&S ${lwRatio > 0.60 ? 'confirmed' : 'forming'}` });
-    if ((change7d || 0) > 5 && rangePos > 0.55 && vol24h > 10e6)
-      pats.push({ name: 'Ascending Base', status: change24h > 2 && rangePos > 0.70 ? 'CONFIRMED' : 'FORMING', patScore: change24h > 2 ? 10 : 4, bullish: true, desc: `Base ${change24h > 2 ? 'breakout' : 'forming'}` });
-    if ((change7d || 0) > 8 && change24h >= -3 && change24h <= 2 && rangePos > 0.40 && lwRatio > 0.25)
-      pats.push({ name: 'Breakout Retest', status: lwRatio > 0.30 && change24h >= -1 ? 'CONFIRMED' : 'FORMING', patScore: lwRatio > 0.30 ? 10 : 4, bullish: true, desc: `Retest ${lwRatio > 0.30 ? 'holding' : 'forming'}` });
-    if (!pats.length) return { name: 'None', status: 'NONE', patScore: 0, bullish: false, desc: 'No pattern' };
-    return pats.sort((a, b) => b.patScore - a.patScore)[0];
+  // ══════════════════════════════════════════════════════════════
+  // CONFLICT ENGINE
+  // ══════════════════════════════════════════════════════════════
+  function checkConflicts(change24h, change7d, change30d, rangePos, regime, btcCh7, fgV) {
+    const conflicts = [];
+    const htfBear = (change7d || 0) < -10 || (change30d || 0) < -55;
+    const ltfBull = change24h > 0 && rangePos > 0.45;
+    if (htfBear && ltfBull) conflicts.push({ sev: 'HIGH', note: 'HTF bear + LTF bull = dead cat risk' });
+    if (regime.includes('BEAR') && change24h > 6) conflicts.push({ sev: 'HIGH', note: `Bear regime + +${change24h.toFixed(1)}% = suspect pump` });
+    if (change24h > 9 && (btcCh7 || 0) < 0) conflicts.push({ sev: 'HIGH', note: 'Pump while BTC falls = unsustainable' });
+    if (fgV <= 15 && change24h > 7) conflicts.push({ sev: 'MEDIUM', note: 'Extreme fear + pump = low conviction' });
+    const hi = conflicts.filter(c => c.sev === 'HIGH').length;
+    const med = conflicts.filter(c => c.sev === 'MEDIUM').length;
+    const level = hi >= 1 || hi + med >= 2 ? 'HIGH' : med >= 1 ? 'MEDIUM' : 'LOW';
+    return { conflicts, level, action: level === 'HIGH' ? 'REJECT' : level === 'MEDIUM' ? 'WAIT' : 'PROCEED' };
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // 8. TRADE STATE MACHINE
-  // ═══════════════════════════════════════════════════════════
-  function getState(sym, price, entLo, entHi, sl, tp1, tp2, tp3, score, tier, actCnt) {
+  // ══════════════════════════════════════════════════════════════
+  // TRADE STATE MACHINE (PERSISTENT)
+  // ══════════════════════════════════════════════════════════════
+  function getTradeState(sym, price, entLo, entHi, rr) {
     const now = Date.now();
     const ex = TRADE_STORE.get(sym);
     const EXPIRY = 72 * 3600 * 1000;
 
     if (ex) {
       const s = ex.state;
+      // LOCKED: once triggered/active, only SL hit can remove
       if (s === 'IN_ZONE' || s === 'TRIGGERED' || s === 'ACTIVE') {
         if (price <= ex.sl * 0.999) {
           const pnl = ex.ep > 0 ? +((price - ex.ep) / ex.ep * 100).toFixed(2) : 0;
           TRADE_STORE.set(sym, { ...ex, state: 'INVALID', closed: now, pnl });
-          return { state: 'INVALID', tag: 'INVALID ❌ SL HIT', active: false, pnl };
+          return { state: 'INVALID', tag: '❌ INVALID — SL HIT', active: false, pnl };
         }
         if (price >= ex.tp1 * 0.998) {
           const pnl = +((ex.tp1 - ex.ep) / ex.ep * 100).toFixed(2);
           TRADE_STORE.set(sym, { ...ex, state: 'COMPLETED', closed: now, pnl });
-          return { state: 'COMPLETED', tag: `COMPLETED ✅ +${pnl}%`, active: false, pnl };
+          return { state: 'COMPLETED', tag: `✅ COMPLETED +${pnl}%`, active: false, pnl };
         }
         const pnl = ex.ep > 0 ? +((price - ex.ep) / ex.ep * 100).toFixed(2) : 0;
-        return { state: s, tag: `${s} 🟢 PnL:${pnl >= 0 ? '+' : ''}${pnl}%`, active: true, ep: ex.ep, pnl, sl: ex.sl, tp1: ex.tp1, tp2: ex.tp2, tp3: ex.tp3, tier: ex.tier };
+        return {
+          state: s, active: true, ep: ex.ep, pnl,
+          tag: s + ' 🟢 PnL: ' + (pnl >= 0 ? '+' : '') + pnl + '%',
+          sl: ex.sl, tp1: ex.tp1, tp2: ex.tp2, rr: ex.rr, tier: ex.tier,
+          lockedEntry: ex.ep, lockedSL: ex.sl, lockedTP1: ex.tp1, lockedTP2: ex.tp2,
+        };
       }
       if (s === 'READY' && now - (ex.st || now) > EXPIRY) {
         TRADE_STORE.set(sym, { ...ex, state: 'EXPIRED' });
-        return { state: 'EXPIRED', tag: 'EXPIRED ⏰', active: false };
+        SETUP_TIMESTAMPS.delete(sym);
+        return { state: 'EXPIRED', tag: '⏰ EXPIRED', active: false };
       }
     }
 
-    if (actCnt >= MAX_ACTIVE) return { state: 'READY', tag: 'READY — Max 3 active', active: false, blocked: true };
+    // Count active trades
+    let actCnt = 0;
+    TRADE_STORE.forEach(v => { if (['IN_ZONE','TRIGGERED','ACTIVE'].includes(v.state)) actCnt++; });
+    if (actCnt >= MAX_ACTIVE) return { state: 'READY', tag: '📋 READY — Max 3 active', active: false, blocked: true };
+
+    // New: check if price in entry zone
     if (price >= entLo * 0.999 && price <= entHi * 1.01) {
-      TRADE_STORE.set(sym, { state: 'IN_ZONE', ep: price, et: now, st: now, sl, tp1, tp2, tp3, score, tier });
-      return { state: 'IN_ZONE', tag: 'IN_ZONE ⚡ CONFIRM THEN ENTER', active: true, ep: price };
+      const entry = { state: 'IN_ZONE', ep: price, et: now, st: ex?.st || now, sl: rr.slPrice, tp1: rr.tp1, tp2: rr.tp2, rr: rr.rrLabel };
+      TRADE_STORE.set(sym, entry);
+      return { state: 'IN_ZONE', tag: '⚡ IN_ZONE — AWAIT CONFIRMATION', active: true, ep: price };
     }
-    if (!ex || ex.state === 'EXPIRED') TRADE_STORE.set(sym, { state: 'READY', st: now, sl, tp1, tp2, tp3, score, tier });
+
+    if (!ex || ex.state === 'EXPIRED') TRADE_STORE.set(sym, { state: 'READY', st: now, sl: rr.slPrice, tp1: rr.tp1, tp2: rr.tp2, rr: rr.rrLabel });
     const d = (entLo - price) / price;
-    return { state: 'READY', tag: `READY — ${d <= 0 ? 'AT ZONE ✅' : d < 0.02 ? 'NEAR 2%' : d < 0.05 ? 'NEAR 5%' : 'WAITING'}`, active: false };
+    return { state: 'READY', tag: '📋 READY — ' + (d <= 0 ? 'AT ZONE' : d < 0.02 ? 'NEAR 2%' : d < 0.05 ? 'NEAR 5%' : 'WAITING'), active: false };
   }
 
-  // MTF checker
-  function checkMTF(change24h, change7d, change30d, rangePos) {
-    const htf = (change7d || 0) > 2 && (change30d || 0) > -45 ? 'BULLISH' : (change7d || 0) < -10 || (change30d || 0) < -55 ? 'BEARISH' : 'NEUTRAL';
-    const ltf = change24h > 0.5 && rangePos > 0.45 ? 'BULLISH' : change24h < -5 && rangePos < 0.40 ? 'BEARISH' : 'NEUTRAL';
-    if (htf === 'BULLISH' && ltf === 'BULLISH') return { htf, ltf, label: 'ALIGNED ✅', score: 10, note: 'Both TFs bullish' };
-    if (htf === 'BULLISH' && ltf === 'NEUTRAL') return { htf, ltf, label: 'PARTIAL ⚠️', score: 5, note: 'HTF bull, LTF neutral' };
-    if (htf === 'BEARISH' && ltf === 'BULLISH') return { htf, ltf, label: 'CONFLICT ❌', score: -15, note: 'HTF bear vs LTF bull = dead cat' };
-    if (htf === 'BEARISH') return { htf, ltf, label: 'BEARISH ❌', score: -20, note: 'HTF bearish — reject long' };
-    return { htf, ltf, label: 'NEUTRAL ⚖️', score: 0, note: 'Neutral alignment' };
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // MAIN HANDLER
-  // ═══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════
+  // MAIN
+  // ══════════════════════════════════════════════════════════════
   try {
     const t0 = Date.now();
 
@@ -415,10 +367,8 @@ export default async function handler(req, res) {
 
     const btcDom = +(glb?.market_cap_percentage?.btc || 58).toFixed(1);
     const dsh = Math.floor((Date.now() - new Date('2024-04-20').getTime()) / 86400000);
-    const cycleBonus = dsh < 365 ? 3 : dsh < 547 ? 2 : dsh < 730 ? 0 : -2;
     const cyclePhase = dsh < 365 ? 'Bull Early ✅' : dsh < 547 ? 'Bull Peak ⚠️' : dsh < 730 ? 'Distribution ⚠️' : 'Bear/Accum';
-
-    const regime = detectRegimeAndWeights(btcCh7, btcCh24, btcDom, fgV, btcTrend);
+    const regime = detectRegime(btcCh7, btcCh24, btcDom, fgV, btcTrend);
 
     const STABLES = new Set(['USDT','USDC','BUSD','TUSD','DAI','FDUSD','USDP','FRAX','LUSD','USDS','SUSD','GUSD','PYUSD','CRVUSD','USDD','CUSD','USDX','USDB','XUSD','USDJ','AUSD','AGEUR','JEUR','XSGD','EURS','EURT','CADC','GYEN','NZDS','BRLA','MXNT','BIDR','BVND','IDRT','TRYB','BRLC','PAXG','XAUT','WBTC','WETH','WBNB','STETH','CBETH','RETH','BETH']);
     const BAD = ['UP','DOWN','BEAR','BULL','3L','3S','2L','2S'];
@@ -444,223 +394,155 @@ export default async function handler(req, res) {
       if (STABLES.has(b) || seen.has(b) || HAN.test(c.name || '')) return;
       const v = +(c.total_volume || 0), p = +(c.current_price || 0);
       if (v < 1e6 || p <= 0 || (p >= 0.97 && p <= 1.03)) return;
-      candidates.push({ base: b, price: p, vol24h: v, change24h: +(c.price_change_percentage_24h || 0), high: p * 1.02, low: p * 0.98, open: p / (1 + (+(c.price_change_percentage_24h || 0)) / 100), change7d: +(c.price_change_percentage_7d || 0), change30d: +(c.price_change_percentage_30d || 0), ath: +(c.ath || 0), marketCap: +(c.market_cap || 0), cgName: c.name || b });
+      candidates.push({ base: b, price: p, vol24h: v, change24h: +(c.price_change_percentage_24h || 0), high: p * 1.02, low: p * 0.98, open: p / (1 + (+(c.price_change_percentage_24h||0))/100), change7d: +(c.price_change_percentage_7d||0), change30d: +(c.price_change_percentage_30d||0), ath: +(c.ath||0), marketCap: +(c.market_cap||0), cgName: c.name||b });
     });
 
-    let actCnt = 0;
-    TRADE_STORE.forEach(v => { if (v.state === 'IN_ZONE' || v.state === 'TRIGGERED' || v.state === 'ACTIVE') actCnt++; });
+    const killed = { KILL: 0, HARD: 0, PI: 0, SM: 0, RR: 0, CONFLICT: 0, SCORE: 0, STALE: 0 };
+    const validSetups = [];
+    const activeSetups = [];
 
-    const killed = { KILL_SWITCH: 0, HARD: 0, SM: 0, PI: 0, CONFLICT: 0, MTF: 0, SCORE: 0, STALE: 0 };
-    const outputs = [];
-    const actives = [];
+    let actCnt = 0;
+    TRADE_STORE.forEach(v => { if (['IN_ZONE','TRIGGERED','ACTIVE'].includes(v.state)) actCnt++; });
 
     for (const coin of candidates.slice(0, 800)) {
       const { base: sym, price, ath, change24h, vol24h, change7d, change30d } = coin;
       if (!price || price <= 0) continue;
-      if (ath > 0 && ((price - ath) / ath * 100) < -99) { killed.STALE++; continue; }
+      if (ath > 0 && ((price-ath)/ath*100) < -99) { killed.STALE++; continue; }
 
       const range = Math.max(coin.high - coin.low, price * 0.01);
       const rangePos = (price - coin.low) / range;
       const lw = Math.min(price, coin.open) - coin.low;
       const lwRatio = lw / range;
       const bodyRatio = Math.abs(price - coin.open) / range;
-      const fromATH = ath > 0 ? ((price - ath) / ath * 100) : 0;
       const vt = vol24h >= 500e6 ? 5 : vol24h >= 100e6 ? 4 : vol24h >= 30e6 ? 3 : vol24h >= 10e6 ? 2 : vol24h >= 2e6 ? 1 : 0;
 
-      // Protect active trades
+      // Protect active trades — always process
       const ex = TRADE_STORE.get(sym);
-      if (ex && (ex.state === 'IN_ZONE' || ex.state === 'TRIGGERED' || ex.state === 'ACTIVE')) {
+      if (ex && ['IN_ZONE','TRIGGERED','ACTIVE'].includes(ex.state)) {
         if (price <= ex.sl * 0.999) {
           TRADE_STORE.set(sym, { ...ex, state: 'INVALID', closed: Date.now() });
           continue;
         }
         const pnl = ex.ep > 0 ? +((price - ex.ep) / ex.ep * 100).toFixed(2) : 0;
-        const pat = detectPattern(price, coin.high, coin.low, coin.open, change24h, change7d, change30d, vol24h, rangePos, lwRatio, bodyRatio);
-        actives.push({ symbol: sym, price, status: ex.state, tag: ex.state + ' 🟢 PnL:' + (pnl >= 0 ? '+' : '') + pnl + '%', tier: ex.tier || 'A', ep: ex.ep, pnl, sl: ex.sl, tp1: ex.tp1, tp2: ex.tp2, tp3: ex.tp3, change24h: +change24h.toFixed(2), pattern: pat });
+        activeSetups.push({ symbol: sym, price, status: ex.state, tag: ex.state + ' 🟢 PnL:' + (pnl>=0?'+':'') + pnl + '%', tier: ex.tier||'A', ep: ex.ep, pnl, sl: ex.sl, tp1: ex.tp1, tp2: ex.tp2, rr: ex.rr, change24h: +change24h.toFixed(2), locked: true });
         continue;
       }
 
-      // KILL SWITCH
-      if (regime.killSwitch) { killed.KILL_SWITCH++; continue; }
+      if (regime.kill) { killed.KILL++; continue; }
 
-      // Pre-Impulse check
+      // Pre-Impulse
       const pi = detectPreImpulse(price, coin.high, coin.low, coin.open, change24h, change7d, vol24h, rangePos, lwRatio, bodyRatio);
-
-      // Zones
-      const slP = Math.max(price * (1 - 0.09 - 0.03), coin.low * 0.96);
-      let tp1, tp2, tp3;
-      if (ath > 0 && fromATH < -25) {
-        const d = ath - price;
-        tp1 = Math.min(price + d * 0.382, price * 3);
-        tp2 = Math.min(price + d * 0.618, price * 6);
-        tp3 = Math.min(price + d, price * 10);
-      } else {
-        const sl = price - slP;
-        tp1 = price + sl * 3; tp2 = price + sl * 5; tp3 = price + sl * 8;
-      }
-      const slDist = Math.max(price - slP, price * 0.005);
-      const rr1 = +((tp1 - price) / slDist).toFixed(2);
-      const rr2 = +((tp2 - price) / slDist).toFixed(2);
-      const rr3 = +((tp3 - price) / slDist).toFixed(2);
-      const entOpt = price * 0.999;
+      if (pi.alreadyPumped || !pi.valid) { killed.PI++; continue; }
 
       // Hard filter
-      const hf = hardFilter(price, entOpt, slP, rr1, change24h, vt, regime.regime, pi.alreadyPumped);
-      if (!hf.pass) { killed.HARD++; continue; }
+      if (vt < 1) { killed.HARD++; continue; }
+      if (change24h < -8) { killed.HARD++; continue; }
 
-      // SM Validation
+      // SM
       const sm = validateSM(price, coin.high, coin.low, coin.open, change24h, change7d, vol24h, rangePos, lwRatio, bodyRatio);
       if (!sm.valid) { killed.SM++; continue; }
 
-      // Pre-Impulse gate
-      if (!pi.valid) { killed.PI++; continue; }
+      // RR
+      const rr = calcRealisticRR(price, coin.low, coin.high, ath, change24h, change7d);
+      if (rr.unrealistic || rr.rr1 < 3) { killed.RR++; continue; }
 
-      // MTF
-      const mtf = checkMTF(change24h, change7d, change30d, rangePos);
-      if (mtf.score < -8) { killed.MTF++; continue; }
-
-      // Conflict Engine
-      const conf = detectConflicts(change24h, change7d, change30d, rangePos, lwRatio, regime.regime, btcCh7, fgV);
+      // Conflict
+      const conf = checkConflicts(change24h, change7d, change30d, rangePos, regime.regime, btcCh7, fgV);
       if (conf.action === 'REJECT') { killed.CONFLICT++; continue; }
 
-      // Pattern
-      const pat = detectPattern(price, coin.high, coin.low, coin.open, change24h, change7d, change30d, vol24h, rangePos, lwRatio, bodyRatio);
-
-      // Freshness
-      const now = Date.now();
-      const fts = SETUP_TS.get(sym);
-      if (!fts) SETUP_TS.set(sym, { t: now, vol: vol24h });
-      const ageH = fts ? (now - fts.t) / 3600000 : 0;
-      const volFaded = fts && vol24h < fts.vol * 0.45;
-      const fresh = ageH < 4 && !volFaded;
-      const aging = !fresh && ageH < 48 && !volFaded;
-      if (!fresh && !aging) { SETUP_TS.delete(sym); killed.STALE++; continue; }
-      const freshBonus = fresh ? 3 : 0;
-
       // Score
-      const sc = adaptiveScore(coin, btcCh24, btcCh7, fgV, regime.weights, pi, sm, mtf.score, pat.patScore, rr1, freshBonus);
+      const sc = calcScore(coin, btcCh24, btcCh7, fgV, pi, sm, rr.rr1, regime.bonus || 0);
+      const bearPen = regime.regime.includes('BEAR') ? -10 : 0;
+      const finalScore = Math.max(0, Math.min(100, sc.totalScore + bearPen));
+      const finalConf = Math.max(0, Math.min(100, sc.confidence + (regime.regime.includes('BEAR') ? -8 : 0)));
 
-      // Bear regime: require higher bar
-      const bearPenalty = regime.regime === 'BEAR' ? -10 : 0;
-      const finalScore = Math.max(0, Math.min(100, sc.finalScore + bearPenalty + regime.regimeBonus));
-      const finalConf = Math.max(0, Math.min(100, sc.confidence + (regime.regime === 'BEAR' ? -8 : 0)));
-
-      // THRESHOLDS
-      if (finalScore < 80) { killed.SCORE++; continue; }
-      if (finalConf < 85) { killed.SCORE++; continue; }
+      if (finalScore < 75 || finalConf < 80) { killed.SCORE++; continue; }
 
       // Entry confirmation
       const ec = checkConfirmation(change24h, lwRatio, bodyRatio, rangePos, vol24h);
 
-      // Quality grade
-      const allPerfect = sm.strong >= 2 && ec.valid && mtf.score >= 5 && rr1 >= 5 && pi.count >= 4;
-      const allGood = sm.valid && mtf.score >= 0 && rr1 >= 3 && pi.valid;
-      const quality = allPerfect ? { grade: 'A+', label: 'A+ SNIPER 🎯', take: true, note: 'All confluences perfect.' } :
-        allGood ? { grade: 'A', label: 'A QUALITY ✅', take: true, note: 'Strong setup, proceed.' } :
-        { grade: 'B', label: 'B — SKIP ⚠️', take: false, note: 'Missing key confirmations.' };
-      if (!quality.take) { killed.SCORE++; continue; }
-
-      const tier = finalScore >= 87 ? 'S' : finalScore >= 80 ? 'A' : null;
-      if (!tier) { killed.SCORE++; continue; }
+      // Freshness
+      const now = Date.now();
+      const fts = SETUP_TIMESTAMPS.get(sym);
+      if (!fts) SETUP_TIMESTAMPS.set(sym, { t: now, vol: vol24h });
+      const ageH = fts ? (now - fts.t) / 3600000 : 0;
+      const fresh = ageH < 4;
+      const aging = !fresh && ageH < 48 && !(fts && vol24h < fts.vol * 0.45);
+      if (!fresh && !aging) { killed.STALE++; continue; }
 
       // Trade state
       const entLo = Math.max(price * 0.98, coin.low * 0.99);
       const entHi = price * 1.01;
-      const ts = getState(sym, price, entLo, entHi, slP, tp1, tp2, tp3, finalScore, tier, actCnt);
+      const ts = getTradeState(sym, price, entLo, entHi, rr);
 
-      // Dominant edge
-      const comps = sc.components;
-      const wts = regime.weights;
-      const edgeScores = [
-        { name: 'Pre-Impulse', score: comps.piComp * wts.preImpulse },
-        { name: 'Smart Money', score: comps.smComp * wts.smartMoney },
-        { name: 'Momentum', score: comps.mom * wts.momentum },
-        { name: 'Market', score: comps.market * wts.market },
-        { name: 'Structure', score: comps.struct * wts.structure },
-      ];
-      const dominantEdge = edgeScores.sort((a, b) => b.score - a.score)[0].name;
+      const tier = finalScore >= 87 ? 'S' : finalScore >= 75 ? 'A' : null;
+      if (!tier) { killed.SCORE++; continue; }
 
-      // Pre-impulse timing
-      const piTiming = pi.count >= 4 ? 'READY 🔥' : pi.count === 3 ? 'EARLY 📈' : 'FORMING';
-
-      // Conflict level for output
-      const conflictLevel = conf.level;
+      // Store setup time
+      if (ts.state === 'IN_ZONE' && ex) TRADE_STORE.set(sym, { ...TRADE_STORE.get(sym), tier, score: finalScore });
 
       // Final decision
       let decision, decColor;
-      if (ts.state === 'IN_ZONE' && ec.valid && quality.take && conf.action !== 'WAIT') {
-        decision = 'EXECUTE ✅'; decColor = '#ff6b35';
-      } else if (conf.action === 'WAIT' || !ec.valid) {
-        decision = 'WAIT ⏳ — ' + (conf.action === 'WAIT' ? 'Conflict MEDIUM' : 'Need ' + ec.needs + ' more confirmation'); decColor = 'var(--amber)';
-      } else if (ts.blocked) {
-        decision = 'WAIT ⏳ — Max 3 trades active'; decColor = 'var(--amber)';
-      } else if (quality.take) {
-        decision = 'LIMIT ORDER ✅ — Set at ' + fmtP(entLo) + '–' + fmtP(entHi); decColor = 'var(--g)';
-      } else {
-        decision = 'REJECT ❌'; decColor = 'var(--red)';
-      }
+      if (ts.state === 'IN_ZONE' && ec.valid && conf.action === 'PROCEED') { decision = 'EXECUTE ✅'; decColor = '#ff6b35'; }
+      else if (ts.state === 'IN_ZONE' && !ec.valid) { decision = 'WAIT ⏳ — IN_ZONE, need ' + ec.needs + ' more confirmation'; decColor = 'var(--amber)'; }
+      else if (conf.action === 'WAIT') { decision = 'WAIT ⏳ — Conflict MEDIUM'; decColor = 'var(--amber)'; }
+      else if (ts.blocked) { decision = 'WAIT ⏳ — Max 3 trades active'; decColor = 'var(--amber)'; }
+      else { decision = 'READY ✅ — Set limit at ' + fmtP(entLo) + '–' + fmtP(entHi); decColor = 'var(--g)'; }
 
-      const reasons = [];
-      sm.signals.forEach(s => reasons.push(s.type.replace(/_/g, ' ') + ' (' + s.strength + '): ' + s.note));
-      pi.signals.slice(0, 2).forEach(s => reasons.push('PI → ' + s.signal.replace(/_/g, ' ') + ': ' + s.note));
-      if (fromATH < -40) reasons.push(fromATH.toFixed(0) + '% from ATH — deep value');
-      if (pat.status === 'CONFIRMED') reasons.push(pat.name + ' CONFIRMED: ' + pat.desc);
-
-      outputs.push({
+      validSetups.push({
         rank: 0, symbol: sym, name: coin.cgName || sym,
-        price, change24h: +change24h.toFixed(2), change7d: +(change7d || 0).toFixed(2),
+        price, change24h: +change24h.toFixed(2), change7d: +(change7d||0).toFixed(2),
         vol24h, fromATH: sc.fromATH !== 0 ? +sc.fromATH.toFixed(1) : null,
-        tier, tierLabel: tier === 'S' ? '🔥 TIER S — SNIPER' : '✅ TIER A',
+        tier, tierLabel: tier === 'S' ? '🔥 TIER S' : '✅ TIER A',
         finalScore, confidence: finalConf,
-        dominantEdge, quality,
-        regime: { regime: regime.regime, focus: regime.focus, color: regime.color },
-        preImpulse: { ...pi, timing: piTiming },
+        regime: { regime: regime.regime, color: regime.color, focus: regime.focus },
+        preImpulse: { count: pi.count, stage: pi.stage, valid: pi.valid, signals: pi.signals },
         smDetection: { count: sm.count, valid: sm.valid, strong: sm.strong, signals: sm.signals },
-        entryConfirmation: ec,
-        conflict: conf,
-        mtf: { htf: mtf.htf, ltf: mtf.ltf, label: mtf.label },
-        pattern: pat,
-        freshness: { fresh, aging, status: fresh ? 'FRESH 🟢' : 'AGING 🟡' },
+        entryConfirmation: { valid: ec.valid, count: ec.count, needs: ec.needs, list: ec.confirmations.map(c => c.t) },
+        conflict: { level: conf.level, action: conf.action, list: conf.conflicts },
+        freshness: { status: fresh ? 'FRESH 🟢' : 'AGING 🟡' },
         tradeState: ts, status: ts.state,
-        entryZone: { lo: +entLo.toFixed(8), optimal: +entOpt.toFixed(8), hi: +entHi.toFixed(8) },
-        stopLoss: { price: +slP.toFixed(8), pct: +((slP - price) / price * 100).toFixed(1) },
-        targets: {
-          tp1: { price: +tp1.toFixed(8), pct: +((tp1 - price) / price * 100).toFixed(1), rr: rr1, label: ath > 0 ? 'Fib 38.2%' : 'TP1' },
-          tp2: { price: +tp2.toFixed(8), pct: +((tp2 - price) / price * 100).toFixed(1), rr: rr2, label: ath > 0 ? 'Fib 61.8%' : 'TP2' },
-          tp3: { price: +tp3.toFixed(8), pct: +((tp3 - price) / price * 100).toFixed(1), rr: rr3, label: ath > 0 ? 'ATH area' : 'TP3' },
-        },
-        weightComponents: { mom: comps.mom, sm: comps.smComp, struct: comps.struct, market: comps.market, pi: comps.piComp },
-        weights: regime.weights,
-        conflictLevel,
+        rr: { tp1: rr.tp1, tp2: rr.tp2, tp1Pct: rr.tp1Pct, tp2Pct: rr.tp2Pct, rr1: rr.rr1, rr2: rr.rr2, label: rr.rrLabel, slPrice: rr.slPrice, slPct: rr.slPct },
+        entryZone: { lo: +entLo.toFixed(8), hi: +entHi.toFixed(8), optimal: +(price * 0.999).toFixed(8) },
+        scoreBreakdown: sc.components,
         decision, decisionColor: decColor,
-        reasons: reasons.slice(0, 5),
-        positionSize: quality.grade === 'A+' ? '2-3% capital' : '1-2% capital',
+        positionSize: tier === 'S' ? '2-3%' : '1-2%',
+        // Trade data format for storage
+        tradeData: { coin: sym, entry: +(price * 0.999).toFixed(8), sl: rr.slPrice, tp1: rr.tp1, tp2: rr.tp2, rr: rr.rrLabel, status: ts.state, timestamp: new Date().toISOString().split('T')[0], score: finalScore, confidence: finalConf },
       });
     }
 
-    outputs.sort((a, b) => b.finalScore - a.finalScore || b.confidence - a.confidence);
-    outputs.forEach((r, i) => r.rank = i + 1);
-    const tierS = outputs.filter(r => r.tier === 'S').slice(0, 5);
-    const tierA = outputs.filter(r => r.tier === 'A').slice(0, 8);
-    const totalKilled = Object.values(killed).reduce((a, b) => a + b, 0);
+    validSetups.sort((a, b) => b.finalScore - a.finalScore || b.confidence - a.confidence);
+    validSetups.forEach((r, i) => r.rank = i + 1);
+
+    const tierS = validSetups.filter(r => r.tier === 'S').slice(0, 5);
+    const tierA = validSetups.filter(r => r.tier === 'A').slice(0, 8);
+
+    // Export current active trades for client storage
+    const activeTrades = [];
+    TRADE_STORE.forEach((v, k) => {
+      if (['IN_ZONE','TRIGGERED','ACTIVE','COMPLETED','INVALID'].includes(v.state)) {
+        activeTrades.push({ symbol: k, state: v.state, entryPrice: v.ep, setupTime: v.st, entryTime: v.et, sl: v.sl, tp1: v.tp1, tp2: v.tp2, rr: v.rr, tier: v.tier, score: v.score, pnl: v.pnl || 0 });
+      }
+    });
 
     res.setHeader('Cache-Control', 's-maxage=60');
     return res.status(200).json({
       timestamp: Date.now(),
       scanTime: ((Date.now() - t0) / 1000).toFixed(1),
       totalScanned: candidates.length,
-      totalQualified: outputs.length,
-      totalActive: actives.length,
-      totalKilled,
+      totalQualified: validSetups.length,
+      totalKilled: Object.values(killed).reduce((a, b) => a + b, 0),
       killedBreakdown: killed,
       tierGroups: { S: tierS, A: tierA },
-      activeTrades: actives,
+      activeSetups,
+      activeTrades, // for client localStorage sync
       regime,
-      weights: regime.weights,
       systemStatus: {
-        activeTradeCount: actCnt, maxAllowed: MAX_ACTIVE, canTakeNew: actCnt < MAX_ACTIVE,
-        cyclePhase, btcTrend, fgValue: fgV, btcDom, btcCh7, btcCh24,
-        principle: 'Tolak sebanyak mungkin. Eksekusi sesedikit mungkin. Filter, bukan generator.',
+        activeCount: actCnt, maxAllowed: MAX_ACTIVE, canTake: actCnt < MAX_ACTIVE,
+        cyclePhase, btcTrend, fgValue: fgV, btcDom, btcCh7, btcPx,
+        principle: 'No random signals. Strict filter. No bad trade.',
+        storageNote: 'Trades stored in module Map + synced to localStorage via POST /api/accumulation',
       },
     });
 
