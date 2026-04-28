@@ -202,6 +202,29 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 .phase-badge{font-size:9px;color:var(--dim);font-family:var(--m);margin-top:1px}
 .mkt-ctx{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .ctx-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:4px 10px;font-size:11px;font-family:var(--m)}
+
+/* SETUP WATCHLIST */
+.wl-grid{display:grid;gap:10px;}
+.wl-card{background:var(--card);border:1px solid var(--brd2);border-radius:12px;padding:13px 15px;position:relative;transition:.2s;}
+.wl-card:hover{border-color:rgba(0,255,208,.2);}
+.wl-card.wl-triggered{border-color:rgba(255,107,53,.5);background:rgba(255,107,53,.03);}
+.wl-card.wl-tp1{border-color:rgba(0,255,208,.4);background:rgba(0,255,208,.03);}
+.wl-card.wl-completed{border-color:rgba(0,200,100,.4);opacity:.7;}
+.wl-card.wl-invalid{border-color:rgba(255,68,102,.3);opacity:.6;}
+.wl-status{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:6px;font-size:10px;font-family:var(--m);font-weight:700;}
+.wl-watching{background:rgba(255,255,255,.06);color:var(--muted);}
+.wl-triggered-badge{background:rgba(255,107,53,.15);color:#ff6b35;}
+.wl-tp1-badge{background:rgba(0,255,208,.12);color:var(--g);}
+.wl-active-badge{background:rgba(0,255,208,.1);color:var(--g);}
+.wl-completed-badge{background:rgba(0,200,100,.1);color:#44ff88;}
+.wl-invalid-badge{background:rgba(255,68,102,.1);color:var(--red);}
+.wl-locked-tag{position:absolute;top:10px;right:12px;font-size:9px;color:var(--dim);font-family:var(--m);}
+.wl-pricerow{display:flex;align-items:center;gap:10px;margin:6px 0;}
+.wl-levels{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:8px;}
+.wl-level{background:rgba(255,255,255,.03);border-radius:6px;padding:5px 6px;text-align:center;}
+.wl-empty{text-align:center;padding:30px;color:var(--muted);font-size:13px;}
+.wl-section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.pulse-dot{width:8px;height:8px;border-radius:50%;background:#ff6b35;animation:pulse 1.2s infinite;}
 </style>
 </head>
 <body>
@@ -309,6 +332,15 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 <div id="acc-tiers" style="display:none"></div>
 
 
+<!-- SETUP WATCHLIST v10.1 -->
+<h2>🔒 Setup Watchlist <span id="wl-count" style="font-size:12px;color:var(--muted);font-weight:400">0 active</span></h2>
+<div style="background:rgba(0,255,208,.04);border:1px solid rgba(0,255,204,.12);border-radius:10px;padding:8px 13px;margin-bottom:10px;font-size:11px;color:var(--muted);line-height:1.7">
+  🔒 <strong style="color:var(--g)">Setup Watchlist</strong> — Entry/SL/TP dikunci saat pertama kali valid. Setup tetap tampil sampai <strong>TP2 tercapai</strong> atau <strong>SL kena</strong>. Tidak hilang karena scan ulang.
+</div>
+<div id="wl-container" class="wl-grid">
+  <div class="wl-empty">Jalankan Smart Money Scan untuk mengisi watchlist...</div>
+</div>
+
 <!-- TRADE DASHBOARD v10.0 -->
 <h2>💾 Trade Dashboard — Memory</h2>
 <div style="background:var(--card);border:1px solid var(--brd);border-radius:11px;padding:12px 14px;margin-bottom:14px" id="trade-dashboard">
@@ -343,6 +375,41 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 <div class="footer" id="footer">AC369 FUSION v12.2 · @Alphacrypto_id · SMC+EW+OI+LiqMap</div>
 
 <script>
+// ── MEMBER ACCESS GATE ────────────────────────────────────────
+(function(){
+  const SESSION_KEY = 'ac369_session';
+  const MEMBER_API = '/api/member';
+  function loadSess(){ try{ return JSON.parse(localStorage.getItem(SESSION_KEY)||'null'); }catch(e){return null;} }
+  const sess = loadSess();
+  // If no session or expired → redirect to landing
+  if(!sess || !sess.expiry || Date.now() > new Date(sess.expiry).getTime()){
+    // Allow if on localhost/dev
+    if(location.hostname==='localhost'||location.hostname==='127.0.0.1'){ return; }
+    // Check URL param ?code=... (coming from landing page login)
+    const urlCode = new URLSearchParams(location.search).get('code');
+    if(urlCode){
+      // Validate code
+      fetch(MEMBER_API+'?action=check&code='+urlCode)
+        .then(r=>r.json())
+        .then(d=>{
+          if(d.ok&&d.valid){
+            // Build minimal session from URL check
+            localStorage.setItem(SESSION_KEY, JSON.stringify({ code:urlCode, expiry:d.expiry, plan:d.plan, planLabel:d.planLabel, valid:true }));
+            // Clean URL
+            history.replaceState({},'',location.pathname);
+          } else {
+            location.href='landing.html';
+          }
+        })
+        .catch(()=>{ /* Allow if API down */ });
+    } else {
+      // No session, no code param → redirect to landing
+      // Comment this line out for development/testing
+      // location.href = 'landing.html';
+    }
+  }
+})();
+
 'use strict';
 const $=id=>document.getElementById(id);
 const H=(id,html)=>{const e=$(id);if(e)e.innerHTML=html;};
@@ -873,6 +940,157 @@ async function fetchAltcoins(){
 
 // ── SMART MONEY ACCUMULATION SCANNER ─────────────────────────
 // ══════════════════════════════════════════════════════════════
+// SETUP WATCHLIST — Persistent Lock System v10.1
+// ══════════════════════════════════════════════════════════════
+const WL_KEY = 'ac369_watchlist_v10';
+
+function wlSave(watchlist){ try{ localStorage.setItem(WL_KEY, JSON.stringify(watchlist)); }catch(e){} }
+function wlLoad(){ try{ return JSON.parse(localStorage.getItem(WL_KEY)||'[]'); }catch(e){ return []; } }
+
+function wlMerge(serverList){
+  const stored = wlLoad();
+  const merged = [...serverList];
+  stored.forEach(function(s){
+    if(!merged.find(function(m){ return m.symbol===s.symbol; })){
+      if(!['COMPLETED','INVALID'].includes(s.status)) merged.push(s);
+    }
+  });
+  wlSave(merged);
+  return merged;
+}
+
+async function wlSyncToServer(watchlist){
+  const active = watchlist.filter(function(w){ return !['COMPLETED','INVALID'].includes(w.status); });
+  if(!active.length) return;
+  try{
+    await fetch('/api/accumulation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'syncWatchlist',watchlist:active})});
+  }catch(e){}
+}
+
+function getWlStatusClass(status){
+  if(status==='TRIGGERED')return 'wl-triggered';
+  if(status==='TP1_HIT')return 'wl-tp1';
+  if(status==='ACTIVE')return 'wl-tp1';
+  if(status==='COMPLETED')return 'wl-completed';
+  if(status==='INVALID')return 'wl-invalid';
+  return '';
+}
+function getWlBadgeClass(status){
+  if(status==='TRIGGERED')return 'wl-triggered-badge';
+  if(status==='TP1_HIT')return 'wl-tp1-badge';
+  if(status==='ACTIVE')return 'wl-active-badge';
+  if(status==='COMPLETED')return 'wl-completed-badge';
+  if(status==='INVALID')return 'wl-invalid-badge';
+  return 'wl-watching';
+}
+function getWlStatusEmoji(status){
+  const map={WATCHING:'👀',TRIGGERED:'⚡',TP1_HIT:'🎯',ACTIVE:'🟢',COMPLETED:'✅',INVALID:'❌'};
+  return map[status]||'👀';
+}
+
+function renderWatchlist(watchlist){
+  const el=document.getElementById('wl-container');
+  const countEl=document.getElementById('wl-count');
+  if(!el)return;
+  const active=watchlist.filter(function(w){return !['COMPLETED','INVALID'].includes(w.status);});
+  const done=watchlist.filter(function(w){return ['COMPLETED','INVALID'].includes(w.status);});
+  if(countEl) countEl.textContent=active.length+' active · '+done.length+' done';
+  if(!watchlist.length){ el.innerHTML='<div class="wl-empty">Belum ada setup di watchlist. Jalankan Smart Money Scan.</div>'; return; }
+
+  let h='';
+
+  // Active setups
+  if(active.length){
+    h+='<div class="wl-section-header"><div style="font-size:11px;font-weight:700;color:var(--g);letter-spacing:1px">🔒 ACTIVE WATCHLIST ('+active.length+'/10)</div></div>';
+    active.forEach(function(w){
+      var st=w.status||'WATCHING';
+      var isTrig=st==='TRIGGERED'||st==='TP1_HIT'||st==='ACTIVE';
+      var cp=w.currentPrice||w.entryPrice||0;
+      var pnl=w.entryPrice>0?+((cp-w.entryPrice)/w.entryPrice*100).toFixed(2):0;
+      var pnlColor=pnl>=0?'var(--g)':'var(--red)';
+      var distToEntry=w.entryLo>0&&cp>0?+((w.entryLo-cp)/cp*100).toFixed(1):0;
+      var inZone=cp>=w.entryLo&&cp<=w.entryHi;
+      var tp1Hit=cp>=w.tp1*0.998;
+      var tp1Pct=w.tp1&&w.entryPrice?+((w.tp1-w.entryPrice)/w.entryPrice*100).toFixed(1):w.tp1Pct||0;
+      var tp2Pct=w.tp2&&w.entryPrice?+((w.tp2-w.entryPrice)/w.entryPrice*100).toFixed(1):w.tp2Pct||0;
+      var lockedStr=w.lockedAtStr||new Date(w.lockedAt||Date.now()).toLocaleString('id-ID');
+
+      h+='<div class="wl-card '+getWlStatusClass(st)+'">';
+      h+='<div class="wl-locked-tag">🔒 Locked: '+lockedStr+'</div>';
+      // Header
+      h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;flex-wrap:wrap;">';
+      h+='<div style="font-weight:900;font-family:var(--m);font-size:16px;">'+w.symbol+'</div>';
+      h+='<div class="wl-status '+getWlBadgeClass(st)+'">'+getWlStatusEmoji(st)+' '+st+'</div>';
+      if(w.isMeme) h+='<div style="background:rgba(255,100,100,.1);color:#ff9999;border-radius:5px;padding:1px 5px;font-size:9px;font-weight:700">🎭 MEME</div>';
+      h+='<div style="font-size:10px;color:var(--muted)">'+w.tier+' · '+w.assetType+' · Score:'+w.score+'</div>';
+      h+='</div>';
+
+      // Price tracker
+      h+='<div class="wl-pricerow">';
+      h+='<div style="font-family:var(--m);font-size:15px;font-weight:700">'+fP(cp)+'</div>';
+      if(isTrig&&w.entryPrice>0){
+        h+='<div style="font-size:12px;font-weight:700;color:'+pnlColor+'">'+(pnl>=0?'+':'')+pnl.toFixed(2)+'% PnL</div>';
+      } else {
+        h+='<div style="font-size:11px;color:'+(inZone?'var(--g)':'var(--muted)')+'">'+
+          (inZone?'⚡ IN ZONE':'Jarak ke zona: '+(distToEntry>0?distToEntry+'%':'AT/ABOVE'))+
+        '</div>';
+      }
+      if(tp1Hit&&!['COMPLETED','INVALID'].includes(st)){
+        h+='<div style="background:rgba(0,255,208,.1);color:var(--g);border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">🎯 TP1 REACHED</div>';
+      }
+      h+='</div>';
+
+      // LOCKED LEVELS — these never change
+      h+='<div class="wl-levels">';
+      h+='<div class="wl-level"><div style="font-size:8px;color:var(--dim)">ENTRY ZONE</div>'+
+        '<div style="font-family:var(--m);font-size:9px;color:var(--g);font-weight:700">'+fP(w.entryLo)+'</div>'+
+        '<div style="font-size:8px;color:var(--dim)">– '+fP(w.entryHi)+'</div></div>';
+      h+='<div class="wl-level" style="background:rgba(255,68,102,.05);"><div style="font-size:8px;color:var(--red)">STOP LOSS</div>'+
+        '<div style="font-family:var(--m);font-size:10px;color:var(--red);font-weight:700">'+fP(w.sl)+'</div>'+
+        '<div style="font-size:8px;color:var(--muted)">-'+w.slPct+'%</div></div>';
+      h+='<div class="wl-level" style="background:rgba(0,255,204,.04);"><div style="font-size:8px;color:var(--g)">TP1</div>'+
+        '<div style="font-family:var(--m);font-size:10px;color:var(--g);font-weight:700">'+fP(w.tp1)+'</div>'+
+        '<div style="font-size:8px;color:var(--g)">+'+tp1Pct+'%</div></div>';
+      h+='<div class="wl-level" style="background:rgba(255,179,0,.04);"><div style="font-size:8px;color:var(--amber)">TP2</div>'+
+        '<div style="font-family:var(--m);font-size:10px;color:var(--amber);font-weight:700">'+fP(w.tp2)+'</div>'+
+        '<div style="font-size:8px;color:var(--amber)">+'+tp2Pct+'%</div></div>';
+      h+='</div>';
+
+      // Pulse indicator if triggered
+      if(isTrig){
+        h+='<div style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:10px;color:#ff6b35;font-weight:700;">';
+        h+='<div class="pulse-dot"></div> KONFIRMASI ENTRY — Harga masuk zona!';
+        h+='</div>';
+      }
+      h+='</div>';
+    });
+  }
+
+  // History
+  if(done.length){
+    h+='<div class="wl-section-header" style="margin-top:12px;"><div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:1px">📋 HISTORY ('+done.length+')</div></div>';
+    done.slice(0,5).forEach(function(w){
+      var won=w.status==='COMPLETED';
+      var pnlStr=w.pnl!=null?(w.pnl>=0?'+':'')+w.pnl.toFixed(2)+'%':'—';
+      h+='<div class="wl-card '+getWlStatusClass(w.status)+'" style="opacity:.6">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;">'+
+          '<div style="display:flex;align-items:center;gap:7px;">'+
+            '<div style="font-weight:700;font-family:var(--m);">'+w.symbol+'</div>'+
+            '<div class="wl-status '+getWlBadgeClass(w.status)+'">'+getWlStatusEmoji(w.status)+' '+w.status+'</div>'+
+            (w.isMeme?'<div style="font-size:9px;color:#ff9999;">🎭</div>':'')+
+          '</div>'+
+          '<div style="text-align:right;">'+
+            '<div style="font-family:var(--m);font-weight:700;color:'+(won?'var(--g)':'var(--red)')+'">'+pnlStr+'</div>'+
+            '<div style="font-size:9px;color:var(--dim)">Entry: '+fP(w.entryPrice)+' → TP2: '+fP(w.tp2)+'</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>';
+    });
+  }
+
+  el.innerHTML=h;
+}
+// ══════════════════════════════════════════════════════════════
 // TRADE DASHBOARD — Persistent Storage Manager v10.0
 // ══════════════════════════════════════════════════════════════
 const AC_DB = 'ac369_v10';
@@ -980,6 +1198,10 @@ async function doAccScan(){
   // Sync stored trades to server
   const storedTrades=getActiveTrades();
   if(storedTrades.length)await syncToServer(storedTrades);
+
+  // Sync watchlist to server
+  const storedWL=wlLoad();
+  if(storedWL.length) await wlSyncToServer(storedWL);
 
   try{
     const data=await apiFetch('/api/accumulation',28000);
