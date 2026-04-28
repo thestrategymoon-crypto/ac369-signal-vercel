@@ -19,6 +19,26 @@ const TRADE_STORE = new Map();
 const SETUP_TIMESTAMPS = new Map();
 const DECISION_HISTORY = new Map(); // for execution consistency
 const MAX_ACTIVE = 3;
+const MAX_WATCHLIST = 10; // max setups in lock watchlist
+
+// ── SETUP LOCK STORE ─────────────────────────────────────────────
+// Stores setups that were EVER valid — persists until TP2/SL hit
+// Key: symbol, Value: { entry/SL/TP locked, status, lockedAt, ... }
+const SETUP_LOCK = new Map();
+
+// ── TELEGRAM NOTIFIER ────────────────────────────────────────────
+const TG_TOKEN = typeof process !== 'undefined' ? (process.env.TG_BOT_TOKEN || '') : '';
+const TG_CHAT  = typeof process !== 'undefined' ? (process.env.TG_CHAT_ID || '') : '';
+async function sendTelegram(msg) {
+  if (!TG_TOKEN || !TG_CHAT) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: TG_CHAT, text: msg, parse_mode: 'HTML' }),
+    });
+  } catch (_) {}
+}
 
 // ── ASSET CLASSIFICATION ──────────────────────────────────────────
 const MAJOR_COINS = new Set(['BTC','ETH','BNB','SOL','XRP','ADA','AVAX','DOT','LINK','MATIC','ATOM','NEAR','UNI','LTC','BCH','TRX','DOGE_NOT_MEME','FIL','ALGO','VET']);
@@ -60,6 +80,21 @@ export default async function handler(req, res) {
         }
       }
       return res.status(200).json({ ok: true, synced, total: TRADE_STORE.size });
+    } catch (e) { return res.status(400).json({ error: e.message }); }
+  }
+
+  // POST action=syncWatchlist — restore locked setups from client localStorage
+  if (req.method === 'POST' && req.body?.action === 'syncWatchlist') {
+    try {
+      const clientWatchlist = req.body?.watchlist || [];
+      let restored = 0;
+      for (const w of clientWatchlist) {
+        if (w.symbol && !SETUP_LOCK.has(w.symbol) && !['COMPLETED','INVALID'].includes(w.status)) {
+          SETUP_LOCK.set(w.symbol, w);
+          restored++;
+        }
+      }
+      return res.status(200).json({ ok: true, restored, total: SETUP_LOCK.size });
     } catch (e) { return res.status(400).json({ error: e.message }); }
   }
 
@@ -277,7 +312,81 @@ export default async function handler(req, res) {
     return { state:'READY', tag:`READY — ${d<=0?'AT ZONE':d<0.02?'NEAR 2%':d<0.05?'NEAR 5%':'WAITING'}`, active:false };
   }
 
-  // ══════════════════════════════════════════════════════════════════
+  // ── SETUP LOCK ENGINE ─────────────────────────────────────────────
+  // Called when a setup is valid for the first time
+  // Returns locked data (immutable entry/SL/TP)
+  function lockSetup(sym, price, entLo, entHi, rr, score, confidence, tier, assetType, isMeme) {
+    const now = Date.now();
+    const existing = SETUP_LOCK.get(sym);
+
+    // Already locked — update current price but NEVER change entry/SL/TP
+    if (existing && !['COMPLETED','INVALID','CANCELLED'].includes(existing.status)) {
+      const currentPnl = existing.entryPrice > 0
+        ? +((price - existing.entryPrice) / existing.entryPrice * 100).toFixed(2) : 0;
+
+      // Check TP2 hit (use locked TP2)
+      if (price >= existing.tp2 * 0.998) {
+        const pnl = +((existing.tp2 - existing.entryPrice) / existing.entryPrice * 100).toFixed(2);
+        SETUP_LOCK.set(sym, { ...existing, status: 'COMPLETED', currentPrice: price, pnl, closedAt: now });
+        sendTelegram(`✅ <b>TP2 HIT — ${sym}</b>\n💰 Profit: +${pnl}%\nTP2: ${fmtP(existing.tp2)}\nEntry was: ${fmtP(existing.entryPrice)}\n🏷️ Score: ${existing.score} | ${existing.tier}`);
+        return { ...SETUP_LOCK.get(sym), isLocked: true };
+      }
+
+      // Check TP1 hit → still active
+      if (price >= existing.tp1 * 0.998 && existing.status !== 'TP1_HIT' && existing.status !== 'ACTIVE') {
+        SETUP_LOCK.set(sym, { ...existing, status: 'TP1_HIT', currentPrice: price, pnl: currentPnl });
+        sendTelegram(`🎯 <b>TP1 HIT — ${sym}</b>\n💰 Floating: +${currentPnl}%\nTP1: ${fmtP(existing.tp1)} (+${existing.tp1Pct}%)\nTP2 target: ${fmtP(existing.tp2)}\n📊 Score: ${existing.score}`);
+        return { ...SETUP_LOCK.get(sym), isLocked: true };
+      }
+
+      // Check SL hit (use locked SL)
+      if (price <= existing.sl * 0.999) {
+        const pnl = +((price - existing.entryPrice) / existing.entryPrice * 100).toFixed(2);
+        SETUP_LOCK.set(sym, { ...existing, status: 'INVALID', currentPrice: price, pnl, closedAt: now });
+        sendTelegram(`❌ <b>SL HIT — ${sym}</b>\n📉 Loss: ${pnl}%\nSL: ${fmtP(existing.sl)}\nEntry was: ${fmtP(existing.entryPrice)}\n⚠️ Setup removed from watchlist`);
+        return { ...SETUP_LOCK.get(sym), isLocked: true };
+      }
+
+      // Check TRIGGERED (price enters locked entry zone)
+      if (price >= existing.entryLo && price <= existing.entryHi && existing.status === 'WATCHING') {
+        SETUP_LOCK.set(sym, { ...existing, status: 'TRIGGERED', entryPrice: price, triggeredAt: now, currentPrice: price, pnl: 0 });
+        sendTelegram(`⚡ <b>TRIGGERED — ${sym}</b>\n📍 Price entered entry zone: ${fmtP(price)}\n🎯 Entry: ${fmtP(existing.entryLo)} – ${fmtP(existing.entryHi)}\n🛑 SL: ${fmtP(existing.sl)} | TP1: ${fmtP(existing.tp1)} (+${existing.tp1Pct}%)\n📊 Score: ${existing.score} | Conf: ${existing.confidence}%\n⚡ Konfirmasi entry sekarang!`);
+        return { ...SETUP_LOCK.get(sym), isLocked: true };
+      }
+
+      // Still WATCHING or ACTIVE — update price only
+      SETUP_LOCK.set(sym, { ...existing, currentPrice: price, pnl: currentPnl });
+      return { ...SETUP_LOCK.get(sym), isLocked: true };
+    }
+
+    // New setup — lock it (max 10 watchlist)
+    const activeWatchlist = [...SETUP_LOCK.values()].filter(s => !['COMPLETED','INVALID','CANCELLED'].includes(s.status));
+    if (activeWatchlist.length >= MAX_WATCHLIST) return null; // watchlist full
+
+    const locked = {
+      symbol: sym, status: 'WATCHING',
+      // LOCKED VALUES — never change after this point
+      entryLo: +entLo.toFixed(8), entryHi: +entHi.toFixed(8),
+      entryPrice: +(price * 0.999).toFixed(8), // optimal entry price
+      sl: rr.slPrice, slPct: rr.slPct,
+      tp1: rr.tp1, tp1Pct: rr.tp1Pct,
+      tp2: rr.tp2, tp2Pct: rr.tp2Pct,
+      rr: rr.rrLabel,
+      // Metadata
+      score, confidence, tier, assetType, isMeme,
+      lockedAt: now, lockedAtStr: new Date(now).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }),
+      currentPrice: price, pnl: 0,
+      triggeredAt: null, entryTime: null, closedAt: null,
+    };
+    SETUP_LOCK.set(sym, locked);
+
+    // Telegram: new setup locked
+    sendTelegram(`🔒 <b>SETUP LOCKED — ${sym}</b>\n📊 Score: ${score} | Conf: ${confidence}% | ${tier}\n💰 Asset: ${assetType}${isMeme ? ' 🎭 MEME' : ''}\n📍 Entry Zone: ${fmtP(entLo)} – ${fmtP(entHi)}\n🛑 SL: ${fmtP(rr.slPrice)} (-${rr.slPct}%)\n🎯 TP1: ${fmtP(rr.tp1)} (+${rr.tp1Pct}%) R:${rr.rr1}\n🎯 TP2: ${fmtP(rr.tp2)} (+${rr.tp2Pct}%) R:${rr.rr2}\n⏰ Locked: ${locked.lockedAtStr} WIB`);
+
+    return { ...locked, isLocked: true };
+  }
+
+    // ══════════════════════════════════════════════════════════════════
   // MAIN
   // ══════════════════════════════════════════════════════════════════
   try {
@@ -471,6 +580,28 @@ export default async function handler(req, res) {
       if(r.positionRank==='NORMAL'&&r.decision.includes('EXECUTE'))r.decision='READY ✅ — Limit at '+fmtP(r.entryZone.lo)+'–'+fmtP(r.entryZone.hi);
     });
 
+    // Lock valid setups to watchlist (persistent until TP2/SL)
+    allOutputs.forEach(function(output) {
+      const rrData = output.rr;
+      const ez = output.entryZone;
+      if (rrData && ez && output.finalScore >= 72) {
+        lockSetup(
+          output.symbol, output.price,
+          ez.lo, ez.hi, rrData,
+          output.finalScore, output.confidence,
+          output.tier, output.assetType, output.isMeme
+        );
+      }
+    });
+
+    // Export SETUP_LOCK watchlist
+    const watchlist = [];
+    SETUP_LOCK.forEach((v, k) => { watchlist.push({ ...v, symbol: k }); });
+    watchlist.sort((a, b) => {
+      const order = { TRIGGERED: 0, TP1_HIT: 1, ACTIVE: 2, WATCHING: 3, COMPLETED: 4, INVALID: 5 };
+      return (order[a.status] ?? 9) - (order[b.status] ?? 9) || b.score - a.score;
+    });
+
     // Separate meme from regular
     const memeOutputs = allOutputs.filter(r=>r.isMeme);
     const regularOutputs = allOutputs.filter(r=>!r.isMeme);
@@ -497,6 +628,7 @@ export default async function handler(req, res) {
       activeSetups,
       activeTrades,
       eliteCount:allOutputs.filter(r=>r.positionRank.includes('ELITE')).length,
+      watchlist, watchlistActive: watchlist.filter(w=>!['COMPLETED','INVALID'].includes(w.status)).length,
       regime, systemStatus:{ activeCount:actCnt, maxAllowed:MAX_ACTIVE, canTake:actCnt<MAX_ACTIVE, btcTrend, fgValue:fgV, btcDom, btcCh7, btcPx },
     });
   } catch(e) { return res.status(500).json({ error:e.message, totalScanned:0 }); }
