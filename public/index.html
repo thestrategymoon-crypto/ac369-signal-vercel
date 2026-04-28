@@ -866,90 +866,150 @@ async function fetchAltcoins(){
 // ── REFRESH ───────────────────────────────────────────────────
 
 // ── SMART MONEY ACCUMULATION SCANNER ─────────────────────────
+// ── LOCAL STORAGE TRADE MANAGER ──────────────────────────────
+const TRADE_DB_KEY = 'ac369_trades_v9';
+
+function saveTradesToStorage(trades) {
+  try {
+    localStorage.setItem(TRADE_DB_KEY, JSON.stringify({ trades, updated: Date.now() }));
+  } catch(e) { console.warn('Storage save failed:', e); }
+}
+
+function loadTradesFromStorage() {
+  try {
+    const d = JSON.parse(localStorage.getItem(TRADE_DB_KEY) || '{}');
+    return d.trades || [];
+  } catch { return []; }
+}
+
+function mergeActiveTrades(serverTrades) {
+  const stored = loadTradesFromStorage();
+  const merged = [...serverTrades];
+  stored.forEach(function(t) {
+    if(!merged.find(function(s){return s.symbol===t.symbol;})) {
+      if(['ACTIVE','IN_ZONE','TRIGGERED'].includes(t.state)) merged.push(t);
+    }
+  });
+  saveTradesToStorage(merged);
+  return merged;
+}
+
+async function syncTradesToServer(trades) {
+  if(!trades || !trades.length) return;
+  try {
+    await fetch('/api/accumulation', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ trades })
+    });
+  } catch(e) { console.warn('Sync failed:', e); }
+}
+
 async function doAccScan(){
   const btn=$('acc-btn'),st=$('acc-st'),prog=$('acc-prog');
   const ctx=$('acc-ctx'),tiers=$('acc-tiers');
-  btn.disabled=true;btn.textContent='⏳ Engine v8.0...';
-  st.textContent='Adaptive Weight Engine — Tolak sebanyak mungkin...';
+  btn.disabled=true;btn.textContent='⏳ Engine v9.0...';
+  st.textContent='Full Trade Engine — Pre-Impulse · SM · RR · Memory...';
   prog.style.width='8%';ctx.style.display='none';tiers.style.display='none';
+
+  // Sync stored trades to server first
+  const stored = loadTradesFromStorage();
+  if(stored.length) await syncTradesToServer(stored);
+
   try{
     const data=await apiFetch('/api/accumulation',28000);
     prog.style.width='90%';
     const reg=data.regime||{};
     const sys=data.systemStatus||{};
     const kb=data.killedBreakdown||{};
-    const wts=data.weights||{};
     const rc=reg.color||'var(--amber)';
+
+    // Merge and save trades
+    const merged=mergeActiveTrades(data.activeTrades||[]);
 
     ctx.style.display='flex';
     ctx.innerHTML=
       '<div class="ctx-item" style="border:1px solid '+rc+';color:'+rc+';font-weight:800">'+reg.regime+'</div>'+
       '<div class="ctx-item"><span style="color:var(--dim)">F&G </span><span style="color:'+(sys.fgValue<=35?'var(--g)':sys.fgValue>=75?'var(--red)':'var(--amber)')+'">'+sys.fgValue+'</span></div>'+
       '<div class="ctx-item"><span style="color:var(--dim)">BTC 7d </span><span style="color:'+(sys.btcCh7>=0?'var(--g)':'var(--red)')+'">'+sys.btcCh7+'%</span></div>'+
-      '<div class="ctx-item"><span style="color:var(--dim)">Dom </span><strong>'+sys.btcDom+'%</strong></div>'+
       '<div class="ctx-item"><span style="color:var(--g)">Valid </span><strong>'+data.totalQualified+'</strong></div>'+
       '<div class="ctx-item"><span style="color:var(--red)">Killed </span><strong>'+data.totalKilled+'</strong></div>'+
-      '<div class="ctx-item"><span style="color:var(--amber)">Active </span><strong>'+data.totalActive+'/3</strong></div>'+
-      '<div class="ctx-item" style="font-size:9px;color:var(--dim)">HF:'+kb.HARD+' SM:'+kb.SM+' PI:'+kb.PI+' Conf:'+kb.CONFLICT+'</div>';
-
-    // Weights display
-    if(wts.momentum!==undefined){
-      ctx.innerHTML+='<div class="ctx-item" style="font-size:9px;color:var(--purple)">W: M='+wts.momentum+' SM='+wts.smartMoney+' S='+wts.structure+' Mkt='+wts.market+' PI='+wts.preImpulse+'</div>';
-    }
+      '<div class="ctx-item"><span style="color:var(--amber)">Memory </span><strong>'+merged.length+'</strong></div>'+
+      '<div class="ctx-item" style="font-size:9px;color:var(--dim)">PI:'+kb.PI+' SM:'+kb.SM+' RR:'+kb.RR+' Sc:'+kb.SCORE+'</div>'+
+      '<div class="ctx-item" style="font-size:9px;color:var(--dim)">Storage: localStorage+API</div>';
 
     const tg=data.tierGroups||{};
     const all=[...(tg.S||[]),...(tg.A||[])];
-    const acts=data.activeTrades||[];
+    const acts=data.activeSetups||[];
     let h='';
 
-    // Regime advisory
+    // Regime
     h+='<div style="background:rgba(255,255,255,.03);border-left:4px solid '+rc+';border-radius:0 9px 9px 0;padding:10px 13px;margin-bottom:12px">'+
-      '<div style="font-size:10px;color:var(--dim);letter-spacing:1.5px;margin-bottom:3px">MARKET REGIME — ADAPTIVE WEIGHT ENGINE</div>'+
+      '<div style="font-size:10px;color:var(--dim);letter-spacing:1.5px;margin-bottom:2px">MARKET REGIME v9.0</div>'+
       '<div style="font-size:15px;font-weight:900;color:'+rc+'">'+reg.regime+'</div>'+
-      '<div style="font-size:11px;color:var(--muted);margin-top:3px">'+reg.focus+'</div>'+
+      '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+reg.focus+'</div>'+
     '</div>';
 
-    if(reg.killSwitch){
+    if(reg.kill){
       h+='<div style="background:rgba(255,68,102,.08);border:2px solid var(--red);border-radius:12px;padding:24px;text-align:center;margin-bottom:12px">'+
         '<div style="font-size:44px;margin-bottom:12px">🚫</div>'+
-        '<div style="font-size:20px;font-weight:900;color:var(--red)">KILL SWITCH ACTIVE — NO TRADE</div>'+
-        '<div style="font-size:12px;color:var(--muted);margin-top:8px">'+reg.description+'</div>'+
-        '<div style="margin-top:10px;font-family:var(--m);font-size:11px;color:var(--red)">No trade is a valid decision.</div>'+
+        '<div style="font-size:20px;font-weight:900;color:var(--red)">KILL SWITCH — NO TRADE</div>'+
+        '<div style="font-size:11px;color:var(--muted);margin-top:8px">'+reg.focus+'</div>'+
       '</div>';
     }
 
-    // Active trades
+    // Active trades from memory
     if(acts.length){
       h+='<div style="background:rgba(0,255,208,.03);border:2px solid rgba(0,255,208,.25);border-radius:12px;padding:12px;margin-bottom:12px">'+
-        '<div style="font-size:10px;font-weight:800;letter-spacing:2px;color:var(--g);margin-bottom:8px">🔐 ACTIVE — ENTRY LOCK</div>'+
+        '<div style="font-size:10px;font-weight:800;letter-spacing:2px;color:var(--g);margin-bottom:8px">🔐 ACTIVE TRADES — LOCKED IN MEMORY</div>'+
         acts.map(function(c){
           var pc=c.pnl>=0?'var(--g)':'var(--red)';
-          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)">'+
-            '<div><div style="font-weight:900;font-family:var(--m);font-size:14px">'+c.symbol+'</div>'+
-            '<div style="font-size:10px;color:var(--muted)">'+c.tag+'</div></div>'+
-            '<div style="text-align:right">'+
-              '<div style="font-family:var(--m);font-size:13px;font-weight:700">'+fP(c.price)+'</div>'+
-              '<div style="font-size:12px;font-weight:800;color:'+pc+'">'+(c.pnl>=0?'+':'')+c.pnl.toFixed(2)+'%</div>'+
-              '<div style="font-size:9px;color:var(--muted)">SL:'+fP(c.sl)+' TP1:'+fP(c.tp1)+'</div>'+
-            '</div></div>';
+          var rrPct=c.tp1&&c.ep?+((c.tp1-c.ep)/c.ep*100).toFixed(1):0;
+          return '<div style="background:rgba(255,255,255,.03);border-radius:8px;padding:10px;margin-bottom:6px">'+
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
+              '<div>'+
+                '<div style="font-weight:900;font-family:var(--m);font-size:15px">'+c.symbol+'</div>'+
+                '<div style="font-size:10px;color:var(--muted)">'+c.tag+'</div>'+
+                '<div style="font-size:10px;color:var(--dim)">Entry: '+fP(c.ep)+' · Locked ✓</div>'+
+              '</div>'+
+              '<div style="text-align:right">'+
+                '<div style="font-size:14px;font-weight:700;font-family:var(--m)">'+fP(c.price)+'</div>'+
+                '<div style="font-size:13px;font-weight:900;color:'+pc+'">'+(c.pnl>=0?'+':'')+c.pnl.toFixed(2)+'%</div>'+
+                '<div style="font-size:9px;color:var(--dim)">'+c.change24h+'% 24h</div>'+
+              '</div>'+
+            '</div>'+
+            '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:7px">'+
+              '<div style="background:rgba(255,68,102,.05);border:1px solid rgba(255,68,102,.15);border-radius:5px;padding:4px;text-align:center">'+
+                '<div style="font-size:8px;color:var(--muted)">STOP LOSS</div>'+
+                '<div style="font-family:var(--m);font-size:11px;font-weight:700;color:var(--red)">'+fP(c.sl)+'</div>'+
+              '</div>'+
+              '<div style="background:rgba(0,255,208,.05);border:1px solid rgba(0,255,208,.15);border-radius:5px;padding:4px;text-align:center">'+
+                '<div style="font-size:8px;color:var(--muted)">TP1 +'+rrPct+'%</div>'+
+                '<div style="font-family:var(--m);font-size:11px;font-weight:700;color:var(--g)">'+fP(c.tp1)+'</div>'+
+              '</div>'+
+              '<div style="background:rgba(255,179,0,.05);border:1px solid rgba(255,179,0,.15);border-radius:5px;padding:4px;text-align:center">'+
+                '<div style="font-size:8px;color:var(--muted)">R:R</div>'+
+                '<div style="font-family:var(--m);font-size:11px;font-weight:700;color:var(--amber)">'+(c.rr||'1:3')+'</div>'+
+              '</div>'+
+            '</div>'+
+          '</div>';
         }).join('')+
       '</div>';
     }
 
-    // No valid setups
-    if(!all.length && !acts.length && !reg.killSwitch){
-      h+='<div style="text-align:center;padding:44px 20px">'+
-        '<div style="font-size:48px;margin-bottom:16px">🛡️</div>'+
+    // No valid
+    if(!all.length && !acts.length && !reg.kill){
+      h+='<div style="text-align:center;padding:48px 20px">'+
+        '<div style="font-size:50px;margin-bottom:16px">🛡️</div>'+
         '<div style="font-size:20px;font-weight:900;color:var(--amber)">Engine Disciplined — Zero Valid Setups</div>'+
         '<div style="font-size:12px;color:var(--muted);max-width:500px;margin:10px auto;line-height:1.8">'+
-          data.totalKilled+' setups analyzed. None meet hedge fund standard.<br>'+
-          'Hard filter: '+kb.HARD+' · SM fail: '+kb.SM+' · PI fail: '+kb.PI+' · Conflict: '+kb.CONFLICT+' · Score<80: '+kb.SCORE+
+          data.totalKilled+' setups processed. Zero passed hedge fund filter.<br>'+
+          'Pre-Impulse: '+kb.PI+' · SM: '+kb.SM+' · RR: '+kb.RR+' · Score/Conf: '+kb.SCORE+
         '</div>'+
-        '<div style="margin-top:12px;font-family:var(--m);font-size:11px;color:var(--purple)">'+sys.principle+'</div>'+
+        '<div style="font-family:var(--m);font-size:11px;color:var(--purple);margin-top:12px">No bad trade is a good decision.</div>'+
       '</div>';
     }
 
-    // Render valid setups
+    // Valid setups
     all.forEach(function(c){
       var iS=c.tier==='S';
       var tc=iS?'#ff6b35':'var(--g)';
@@ -957,85 +1017,37 @@ async function doAccScan(){
       var tbr=iS?'rgba(255,107,53,.45)':'rgba(0,255,208,.30)';
       var dec=c.decision||'';
       var dc=c.decisionColor||tc;
-      var qg=c.quality||{};
-      var qc=qg.grade==='A+'?'#ff6b35':qg.grade==='A'?'var(--g)':'var(--amber)';
+      var rr=c.rr||{};
       var pi=c.preImpulse||{};
       var sm=c.smDetection||{};
       var ec=c.entryConfirmation||{};
-      var mtf=c.mtf||{};
       var conf=c.conflict||{};
-      var pat=c.pattern||{};
-      var fr=c.freshness||{};
       var ts=c.tradeState||{};
-      var tp=c.targets||{};
-      var sl=c.stopLoss||{};
       var ez=c.entryZone||{};
-      var wc=c.weightComponents||{};
-      var cw=c.weights||{};
+      var bd=c.scoreBreakdown||{};
       var cfC=c.confidence>=85?'var(--g)':c.confidence>=75?'var(--amber)':'var(--muted)';
-      var confC=conf.level==='LOW'?'var(--g)':conf.level==='MEDIUM'?'var(--amber)':'var(--red)';
-      var piC=pi.count>=4?'var(--g)':pi.count>=3?'var(--amber)':'var(--red)';
-      var patC=pat.status==='CONFIRMED'&&pat.bullish?'var(--g)':pat.status==='FAILED'?'var(--red)':'var(--amber)';
-      var piTiming=pi.timing||'FORMING';
+      var decBg=dec.includes('EXECUTE')?'rgba(255,107,53,.12)':dec.includes('WAIT')?'rgba(255,179,0,.08)':'rgba(0,255,208,.08)';
 
-      // Adaptive weight bars
-      var wBars=[
-        {l:'MOM',v:wc.mom||0,w:cw.momentum||0},
-        {l:'SM',v:wc.sm||0,w:cw.smartMoney||0},
-        {l:'STR',v:wc.struct||0,w:cw.structure||0},
-        {l:'MKT',v:wc.market||0,w:cw.market||0},
-        {l:'PI',v:wc.pi||0,w:cw.preImpulse||0},
+      // Score bars (5 components)
+      var compBars=[
+        {l:'PI',v:bd.pi||0,m:25},
+        {l:'SM',v:bd.sm||0,m:25},
+        {l:'MOM',v:bd.mom||0,m:20},
+        {l:'STR',v:bd.struct||0,m:15},
+        {l:'MKT',v:bd.mkt||0,m:15},
       ];
-      var weightBarHtml='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin:7px 0">'+
-        wBars.map(function(b){
-          var col=b.v>=80?'var(--g)':b.v>=60?'var(--amber)':'var(--muted)';
-          var barW=Math.round((b.v/100)*100);
+      var barsHtml='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin:7px 0">'+
+        compBars.map(function(b){
+          var pct=Math.round(b.v/b.m*100);
+          var col=pct>=80?'var(--g)':pct>=60?'var(--amber)':'var(--muted)';
           return '<div style="background:rgba(255,255,255,.03);border-radius:6px;padding:5px 3px;text-align:center">'+
             '<div style="font-size:8px;color:var(--dim)">'+b.l+'</div>'+
-            '<div style="height:30px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;margin:3px 0;position:relative">'+
-              '<div style="position:absolute;bottom:0;left:0;right:0;height:'+barW+'%;background:'+col+';opacity:.7;border-radius:3px"></div>'+
+            '<div style="height:32px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;position:relative;margin:2px 0">'+
+              '<div style="position:absolute;bottom:0;left:0;right:0;height:'+Math.round(b.v/b.m*100)+'%;background:'+col+';opacity:.75;border-radius:3px"></div>'+
             '</div>'+
-            '<div style="font-size:9px;font-weight:700;color:'+col+'">'+b.v+'</div>'+
-            '<div style="font-size:7px;color:var(--dim)">w'+b.w+'</div>'+
+            '<div style="font-size:10px;font-weight:700;color:'+col+'">'+b.v+'/'+b.m+'</div>'+
           '</div>';
         }).join('')+'</div>';
-
-      // Pre-Impulse signals
-      var piSignalsHtml='';
-      if(pi.signals&&pi.signals.length){
-        piSignalsHtml='<div style="margin-bottom:8px">'+
-          '<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:4px">PRE-IMPULSE SIGNALS ('+pi.count+'/5)</div>'+
-          pi.signals.map(function(s){
-            return '<div style="font-size:10px;color:var(--muted);padding:2px 0;display:flex;gap:5px">'+
-              '<span style="color:var(--amber);flex-shrink:0">⚡</span>'+
-              '<span><strong style="color:var(--txt)">'+s.signal.replace(/_/g,' ')+'</strong>: '+s.note+'</span></div>';
-          }).join('')+'</div>';
-      }
-
-      // SM signals
-      var smSignalsHtml='';
-      if(sm.signals&&sm.signals.length){
-        smSignalsHtml='<div style="margin-bottom:8px">'+
-          '<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:4px">SMART MONEY ('+sm.count+'/2 req)</div>'+
-          sm.signals.map(function(s){
-            return '<div style="font-size:10px;color:var(--muted);padding:2px 0;display:flex;gap:5px">'+
-              '<span style="color:'+(s.strength==='STRONG'?'var(--g)':'var(--amber)')+';flex-shrink:0">→</span>'+
-              '<span><strong style="color:var(--txt)">'+s.type.replace(/_/g,' ')+'</strong> ('+s.strength+'): '+s.note+'</span></div>';
-          }).join('')+'</div>';
-      }
-
-      // Conflict details
-      var confHtml='';
-      if(conf.conflicts&&conf.conflicts.length){
-        confHtml='<div style="margin-bottom:8px">'+
-          '<div style="font-size:9px;color:var(--dim);margin-bottom:3px">CONFLICTS DETECTED</div>'+
-          conf.conflicts.map(function(cf){
-            return '<div style="font-size:10px;padding:2px 0;color:'+(cf.severity==='HIGH'?'var(--red)':'var(--amber)')+'">⚠️ '+cf.note+'</div>';
-          }).join('')+'</div>';
-      }
-
-      // Decision background
-      var decBg=dec.includes('EXECUTE')?'rgba(255,107,53,.12)':dec.includes('WAIT')?'rgba(255,179,0,.08)':dec.includes('LIMIT')?'rgba(0,255,208,.08)':'rgba(255,68,102,.08)';
 
       h+='<div style="background:'+tb+';border:2px solid '+tbr+';border-radius:13px;padding:15px;margin-bottom:14px">'+
         // Header
@@ -1044,101 +1056,108 @@ async function doAccScan(){
             '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">'+
               '<div style="font-size:22px;font-weight:900;font-family:var(--m)">'+c.symbol+'</div>'+
               '<div style="color:'+tc+';border:1px solid '+tbr+';border-radius:8px;padding:3px 10px;font-size:11px;font-weight:800;background:'+tb+'">'+c.tierLabel+'</div>'+
-              '<div style="background:rgba(255,255,255,.08);border-radius:7px;padding:2px 8px;font-size:11px;font-weight:800;color:'+qc+'">'+qg.label+'</div>'+
-              '<div style="background:rgba(255,255,255,.05);border-radius:6px;padding:2px 7px;font-size:10px;color:'+(fr.fresh?'var(--g)':'var(--amber)')+'">'+fr.status+'</div>'+
+              '<div style="background:rgba(255,255,255,.06);border-radius:7px;padding:2px 8px;font-size:10px;color:'+(c.freshness&&c.freshness.status.includes('FRESH')?'var(--g)':'var(--amber)')+'">'+((c.freshness&&c.freshness.status)||'')+'</div>'+
+              (c.fromATH?'<div style="font-size:10px;color:var(--muted)">ATH '+c.fromATH+'%</div>':'')+
             '</div>'+
-            '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:3px">'+
-              '<div style="font-size:10px;color:var(--muted)">Edge: <strong style="color:'+tc+'">'+c.dominantEdge+'</strong></div>'+
-              '<div style="font-size:10px;color:var(--muted)">'+c.positionSize+'</div>'+
-              (c.fromATH?'<div style="font-size:10px;color:var(--muted)">ATH: '+c.fromATH+'%</div>':'')+
-            '</div>'+
+            '<div style="font-size:10px;color:var(--muted)">'+c.positionSize+' · Max 1:5 RR</div>'+
           '</div>'+
-          '<div style="text-align:right;min-width:90px">'+
+          '<div style="text-align:right;min-width:85px">'+
             '<div style="font-size:34px;font-weight:900;font-family:var(--m);color:'+tc+'">'+c.finalScore+'</div>'+
             '<div style="font-size:12px;font-weight:700;color:'+cfC+'">'+c.confidence+'%</div>'+
             '<div style="font-size:9px;color:var(--dim)">score/conf</div>'+
           '</div>'+
         '</div>'+
-        // Price row
+        // Price
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">'+
           '<div style="font-family:var(--m);font-size:16px;font-weight:800">'+fP(c.price)+'</div>'+
           '<div class="achg2 '+(c.change24h>=0?'up':'dn')+'">'+(c.change24h>=0?'+':'')+c.change24h.toFixed(1)+'% 24h</div>'+
           '<div class="achg2 '+(c.change7d>=0?'up':'dn')+'" style="font-size:10px">'+(c.change7d>=0?'+':'')+c.change7d.toFixed(1)+'% 7d</div>'+
-          '<div style="background:rgba(255,255,255,.06);border-radius:7px;padding:2px 8px;font-size:10px;font-weight:700;color:'+(ts.state==='IN_ZONE'?'#ff6b35':ts.state==='READY'?'var(--g)':'var(--amber)')+'">'+ts.tag+'</div>'+
+          '<div style="background:rgba(255,255,255,.06);border-radius:7px;padding:2px 8px;font-size:10px;font-weight:700;color:'+(ts.state==='IN_ZONE'?'#ff6b35':'var(--g)')+'">'+ts.tag+'</div>'+
         '</div>'+
-        // Adaptive weight bars
-        weightBarHtml+
-        // Status indicators
+        barsHtml+
+        // Status grid
         '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:8px">'+
           '<div style="background:rgba(255,255,255,.03);border-radius:7px;padding:6px 8px">'+
             '<div style="font-size:9px;color:var(--dim);margin-bottom:2px">PRE-IMPULSE</div>'+
-            '<div style="font-size:11px;font-weight:700;color:'+piC+'">'+piTiming+'</div>'+
-            '<div style="font-size:9px;color:var(--muted)">'+pi.count+'/5 signals detected</div>'+
+            '<div style="font-size:11px;font-weight:700;color:'+(pi.count>=4?'var(--g)':pi.count>=3?'var(--amber)':'var(--muted)')+'">'+pi.stage+'</div>'+
+            '<div style="font-size:9px;color:var(--muted)">'+pi.count+'/5 signals</div>'+
           '</div>'+
           '<div style="background:rgba(255,255,255,.03);border-radius:7px;padding:6px 8px">'+
-            '<div style="font-size:9px;color:var(--dim);margin-bottom:2px">CONFLICT ENGINE</div>'+
-            '<div style="font-size:11px;font-weight:700;color:'+confC+'">'+conf.level+' — '+conf.action+'</div>'+
-            '<div style="font-size:9px;color:var(--muted)">'+conf.highConflicts+' HIGH · '+conf.medConflicts+' MED</div>'+
-          '</div>'+
-          '<div style="background:rgba(255,255,255,.03);border-radius:7px;padding:6px 8px">'+
-            '<div style="font-size:9px;color:var(--dim);margin-bottom:2px">MTF ALIGNMENT</div>'+
-            '<div style="font-size:11px;font-weight:700;color:'+(mtf.label&&mtf.label.includes('ALIGNED')?'var(--g)':mtf.label&&mtf.label.includes('CONFLICT')?'var(--red)':'var(--amber)')+'">'+mtf.label+'</div>'+
-            '<div style="font-size:9px;color:var(--muted)">HTF:'+mtf.htf+' LTF:'+mtf.ltf+'</div>'+
+            '<div style="font-size:9px;color:var(--dim);margin-bottom:2px">SMART MONEY</div>'+
+            '<div style="font-size:11px;font-weight:700;color:'+(sm.valid?'var(--g)':'var(--muted)')+'">'+sm.count+'/2 '+(sm.valid?'✅':'')+'</div>'+
+            '<div style="font-size:9px;color:var(--muted)">'+(sm.signals||[]).slice(0,2).map(function(s){return s.type.replace(/_/g,' ');}).join(' · ')+'</div>'+
           '</div>'+
           '<div style="background:rgba(255,255,255,.03);border-radius:7px;padding:6px 8px">'+
             '<div style="font-size:9px;color:var(--dim);margin-bottom:2px">ENTRY CONFIRM</div>'+
-            '<div style="font-size:11px;font-weight:700;color:'+(ec.valid?'var(--g)':'var(--amber)')+'">'+ec.count+'/2 '+(ec.valid?'✅':'NEED '+ec.needs+' MORE ⏳')+'</div>'+
-            '<div style="font-size:9px;color:var(--muted)">'+(ec.confirmations||[]).join(' · ')+'</div>'+
+            '<div style="font-size:11px;font-weight:700;color:'+(ec.valid?'var(--g)':'var(--amber)')+'">'+ec.count+'/2 '+(ec.valid?'✅':'WAIT ⏳')+'</div>'+
+            '<div style="font-size:9px;color:var(--muted)">'+(ec.list||[]).join(' · ')+'</div>'+
+          '</div>'+
+          '<div style="background:rgba(255,255,255,.03);border-radius:7px;padding:6px 8px">'+
+            '<div style="font-size:9px;color:var(--dim);margin-bottom:2px">CONFLICT</div>'+
+            '<div style="font-size:11px;font-weight:700;color:'+(conf.level==='LOW'?'var(--g)':conf.level==='MEDIUM'?'var(--amber)':'var(--red)')+'">'+conf.level+'</div>'+
+            '<div style="font-size:9px;color:var(--muted)">'+conf.action+'</div>'+
           '</div>'+
         '</div>'+
         // Entry + SL
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">'+
-          '<div style="background:rgba(0,255,208,.04);border:1px solid rgba(0,255,208,.15);border-radius:7px;padding:7px 9px">'+
+          '<div style="background:rgba(0,255,208,.04);border:1px solid rgba(0,255,204,.15);border-radius:7px;padding:7px 9px">'+
             '<div style="font-size:9px;color:var(--g);font-weight:700;letter-spacing:1px;margin-bottom:3px">📦 ENTRY ZONE</div>'+
             '<div style="font-family:var(--m);font-weight:700;font-size:11px;color:var(--g)">'+fP(ez.lo)+' – '+fP(ez.hi)+'</div>'+
             '<div style="font-size:10px;color:var(--muted)">Optimal: '+fP(ez.optimal)+'</div>'+
           '</div>'+
           '<div style="background:rgba(255,68,102,.04);border:1px solid rgba(255,68,102,.15);border-radius:7px;padding:7px 9px">'+
             '<div style="font-size:9px;color:var(--red);font-weight:700;letter-spacing:1px;margin-bottom:3px">🛑 STOP LOSS</div>'+
-            '<div style="font-family:var(--m);font-weight:700;font-size:12px;color:var(--red)">'+fP(sl.price)+'</div>'+
-            '<div style="font-size:10px;color:var(--muted)">'+sl.pct+'% invalidation</div>'+
+            '<div style="font-family:var(--m);font-weight:700;font-size:12px;color:var(--red)">'+fP(rr.slPrice)+'</div>'+
+            '<div style="font-size:10px;color:var(--muted)">-'+rr.slPct+'% from entry</div>'+
           '</div>'+
         '</div>'+
-        // TPs
-        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px">'+
-          [tp.tp1,tp.tp2,tp.tp3].filter(Boolean).map(function(t2,i){
-            return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:7px;padding:6px;text-align:center">'+
-              '<div style="font-size:9px;color:var(--muted)">TP'+(i+1)+' '+t2.label+'</div>'+
-              '<div style="font-family:var(--m);font-weight:800;font-size:11px;color:'+(i===2?'var(--amber)':'var(--g)')+'">'+fP(t2.price)+'</div>'+
-              '<div style="font-size:10px;color:var(--g)">+'+t2.pct+'%</div>'+
-              '<div style="font-size:10px;color:var(--amber);font-family:var(--m)">R:'+t2.rr+'</div>'+
-            '</div>';
-          }).join('')+
+        // TP1 + TP2 (realistic, SL-based)
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">'+
+          '<div style="background:rgba(0,255,208,.05);border:1px solid rgba(0,255,208,.2);border-radius:7px;padding:8px;text-align:center">'+
+            '<div style="font-size:9px;color:var(--g);font-weight:700">TP1 — R:'+rr.rr1+'</div>'+
+            '<div style="font-family:var(--m);font-weight:900;font-size:14px;color:var(--g)">'+fP(rr.tp1)+'</div>'+
+            '<div style="font-size:12px;color:var(--g)">+'+rr.tp1Pct+'%</div>'+
+          '</div>'+
+          '<div style="background:rgba(255,179,0,.05);border:1px solid rgba(255,179,0,.2);border-radius:7px;padding:8px;text-align:center">'+
+            '<div style="font-size:9px;color:var(--amber);font-weight:700">TP2 — R:'+rr.rr2+'</div>'+
+            '<div style="font-family:var(--m);font-weight:900;font-size:14px;color:var(--amber)">'+fP(rr.tp2)+'</div>'+
+            '<div style="font-size:12px;color:var(--amber)">+'+rr.tp2Pct+'%</div>'+
+          '</div>'+
         '</div>'+
-        // Pattern
-        (pat.name!=='None'?'<div style="background:rgba(168,85,247,.05);border:1px solid rgba(168,85,247,.15);border-radius:7px;padding:7px 9px;margin-bottom:8px">'+
-          '<div style="font-size:9px;color:var(--purple);font-weight:700;margin-bottom:2px">🔬 PATTERN</div>'+
-          '<div style="font-size:11px;font-weight:700;color:'+patC+'">'+pat.name+' — '+pat.status+' ('+pat.patScore+(pat.patScore>0?' pts':' pts')+')</div>'+
-          '<div style="font-size:10px;color:var(--muted)">'+pat.desc+'</div>'+
+        // PI Signals
+        (pi.signals&&pi.signals.length?'<div style="margin-bottom:8px;padding:7px 9px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:7px">'+
+          '<div style="font-size:9px;color:var(--dim);margin-bottom:4px">⚡ PRE-IMPULSE SIGNALS ('+pi.count+'/5)</div>'+
+          pi.signals.map(function(s){
+            return '<div style="font-size:10px;color:var(--muted);padding:2px 0">'+
+              '<span style="color:var(--amber)">→ </span>'+s.s.replace(/_/g,' ')+': '+s.note+'</div>';
+          }).join('')+'</div>':'')+
+        // SM Signals
+        (sm.signals&&sm.signals.length?'<div style="margin-bottom:8px;padding:7px 9px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:7px">'+
+          '<div style="font-size:9px;color:var(--dim);margin-bottom:4px">🏦 SMART MONEY ('+sm.count+'/2)</div>'+
+          sm.signals.map(function(s){
+            return '<div style="font-size:10px;color:var(--muted);padding:2px 0">'+
+              '<span style="color:'+(s.strength==='STRONG'?'var(--g)':'var(--amber)')+'">→ </span>'+s.type.replace(/_/g,' ')+' ('+s.strength+')</div>';
+          }).join('')+'</div>':'')+
+        // Trade data (for copy)
+        (c.tradeData?'<div style="margin-bottom:8px;padding:7px 9px;background:rgba(100,100,255,.04);border:1px solid rgba(100,100,255,.12);border-radius:7px">'+
+          '<div style="font-size:9px;color:var(--blue);font-weight:700;margin-bottom:4px">💾 TRADE DATA (stored in memory)</div>'+
+          '<div style="font-size:9px;font-family:var(--m);color:var(--muted)">'+JSON.stringify(c.tradeData, null, 0).substring(0, 150)+'</div>'+
         '</div>':'')+
-        // Pre-Impulse + SM signals
-        piSignalsHtml+smSignalsHtml+confHtml+
-        // FINAL DECISION
+        // Decision
         '<div style="background:'+decBg+';border-left:4px solid '+dc+';border-radius:0 9px 9px 0;padding:10px 12px">'+
           '<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:4px">FINAL DECISION</div>'+
           '<div style="font-size:17px;font-weight:900;color:'+dc+'">'+dec+'</div>'+
-          '<div style="font-size:10px;color:var(--muted);margin-top:3px">'+qg.note+'</div>'+
         '</div>'+
       '</div>';
     });
 
     h+='<div style="margin-top:12px;padding:9px 12px;background:rgba(255,255,255,.02);border-radius:8px;border-left:3px solid var(--purple);font-size:11px;color:var(--muted)">'+
-      '<strong style="color:var(--purple)">Prinsip:</strong> '+sys.principle+'</div>';
+      '<strong style="color:var(--purple)">v9.0:</strong> '+sys.principle+' Trades stored in localStorage + API sync.</div>';
 
     tiers.style.display='block';
     tiers.innerHTML=h;
     prog.style.width='100%';
-    st.textContent='v8.0 ['+reg.regime+']: '+data.totalQualified+' valid · '+data.totalActive+' active · '+data.totalKilled+' killed · '+data.scanTime+'s';
+    st.textContent='v9.0: '+data.totalQualified+' valid · '+acts.length+' active · '+data.totalKilled+' killed · '+data.scanTime+'s';
     setTimeout(function(){prog.style.width='0';},2000);
   }catch(e){
     st.textContent='❌ '+e.message;prog.style.width='0';
