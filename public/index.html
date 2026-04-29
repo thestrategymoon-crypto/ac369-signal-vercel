@@ -639,28 +639,87 @@ function doSearch(){
   if(!q)return;
   if(btn){btn.disabled=true;btn.textContent='Analyzing...';}
   res.innerHTML='<div style="color:var(--muted);padding:14px;text-align:center">Menganalisis '+q+'...</div>';
-  apiFetch('/api/search?coins='+encodeURIComponent(q),30000).then(function(data){
-    if(!data||!data.results||!data.results.length){res.innerHTML='<div style="color:var(--muted);padding:14px">Tidak ada data: '+q+'</div>';return;}
-    var h='';
-    data.results.forEach(function(c){
-      var ch=+(c.change24h||0),chC=ch>=0?'var(--g)':'var(--red)';
-      var bias=c.trendAlign||c.signal||'NEUTRAL';
-      var biasC=bias.includes('BULL')?'var(--g)':bias.includes('BEAR')?'var(--red)':'var(--amber)';
-      var ew=c.elliottWave?(typeof c.elliottWave==='object'?(c.elliottWave.wave||JSON.stringify(c.elliottWave)):c.elliottWave):'';
-      h+='<div style="background:var(--c2);border:1px solid var(--brd);border-radius:10px;padding:14px;margin-bottom:10px">';
-      h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">';
-      h+='<div><div style="font-size:20px;font-weight:800;font-family:var(--m)">'+c.symbol+'</div>';
-      h+='<div style="font-size:11px;color:var(--muted)">'+(c.name||'')+'</div></div>';
-      h+='<div style="text-align:right">';
-      h+='<div style="font-size:18px;font-weight:700;font-family:var(--m)">$'+fP(c.price)+'</div>';
-      h+='<div class="achg '+(ch>=0?'up':'dn')+'" style="font-size:12px">'+(ch>=0?'+':'')+ch.toFixed(2)+'% 24h</div>';
-      h+='</div></div>';
-      if(bias!=='NEUTRAL')h+='<div style="font-size:11px;margin-bottom:4px">Trend: <strong style="color:'+biasC+'">'+bias+'</strong></div>';
-      if(c.smcSignal)h+='<div style="font-size:11px;margin-bottom:4px">SMC: <strong>'+c.smcSignal+'</strong></div>';
-      if(ew)h+='<div style="font-size:11px;margin-bottom:4px">Elliott: <strong>'+ew+'</strong></div>';
-      if(c.recommendation)h+='<div style="background:rgba(0,255,204,.06);border-left:3px solid var(--g);border-radius:0 7px 7px 0;padding:7px 10px;margin-top:8px;font-size:12px">'+c.recommendation+'</div>';
+  apiFetch('/api/search?symbol='+encodeURIComponent(q.split(',')[0].trim().toUpperCase()),30000).then(function(d){
+    if(!d||!d.symbol){res.innerHTML='<div style="color:var(--muted);padding:14px">Tidak ada data untuk: '+q+'</div>';return;}
+    var ch=+(d.change24h||0),chC=ch>=0?'var(--g)':'var(--red)';
+    var sm=d.summary||{};
+    var rec=d.recommendation||{};
+    var kl=d.keyLevels||{};
+    var ts=d.tradeSetup||{};
+    var tf=d.timeframes||{};
+    var deriv=d.derivatives||{};
+    var biasC=sm.bias==='BULLISH'||sm.bias==='STRONG_BULLISH'?'var(--g)':sm.bias==='BEARISH'||sm.bias==='STRONG_BEARISH'?'var(--red)':'var(--amber)';
+    var recC=rec.action&&rec.action.includes('Buy')?'var(--g)':rec.action&&rec.action.includes('Sell')?'var(--red)':'var(--amber)';
+    var h='<div style="background:var(--c2);border:1px solid var(--brd);border-radius:12px;padding:16px">';
+    // Header
+    h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">';
+    h+='<div><div style="font-size:22px;font-weight:900;font-family:var(--m)">'+d.symbol+'</div>';
+    h+='<div style="font-size:11px;color:var(--muted)">'+(d.name||'')+' · Vol $'+(d.volume24h?(d.volume24h/1e6).toFixed(0)+'M':'—')+'</div></div>';
+    h+='<div style="text-align:right"><div style="font-size:20px;font-weight:800;font-family:var(--m);color:var(--g)">$'+fP(d.price)+'</div>';
+    h+='<div class="achg '+(ch>=0?'up':'dn')+'">'+(ch>=0?'+':'')+ch.toFixed(2)+'% 24h</div></div></div>';
+    // One-liner summary
+    if(sm.oneLiner)h+='<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;line-height:1.6;color:var(--txt)">'+sm.oneLiner+'</div>';
+    // Bias + Signal + Prob
+    h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">';
+    h+='<div style="background:rgba(255,255,255,.03);border-radius:8px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--dim)">BIAS</div><div style="font-size:13px;font-weight:800;color:'+biasC+'">'+(sm.bias||d.bias||'—')+'</div></div>';
+    h+='<div style="background:rgba(255,255,255,.03);border-radius:8px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--dim)">SIGNAL</div><div style="font-size:13px;font-weight:800;color:var(--amber)">'+(sm.signal||'—')+'</div></div>';
+    h+='<div style="background:rgba(255,255,255,.03);border-radius:8px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--dim)">PROB</div><div style="font-size:13px;font-weight:800;color:'+((sm.probability||0)>=70?'var(--g)':'var(--amber)')+'">'+(sm.probability||'—')+'%</div></div>';
+    h+='</div>';
+    // Multi-timeframe
+    h+='<div style="font-size:10px;font-weight:700;color:var(--dim);letter-spacing:1px;margin-bottom:6px">MULTI-TIMEFRAME</div>';
+    h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">';
+    ['1H','4H','1D'].forEach(function(tf2){
+      var t=tf[tf2]||{};var tC=(t.trend||'').includes('Bullish')?'var(--g)':(t.trend||'').includes('Bearish')?'var(--red)':'var(--amber)';
+      h+='<div style="background:rgba(255,255,255,.03);border-radius:7px;padding:7px">';
+      h+='<div style="font-size:9px;color:var(--dim);font-family:var(--m)">'+tf2+'</div>';
+      h+='<div style="font-size:11px;font-weight:700;color:'+tC+';margin-top:2px">'+(t.trend||'—')+'</div>';
+      var ew=t.elliottWave?(t.elliottWave.wave||t.elliottWave):'—';
+      if(typeof ew==='object')ew=ew.wave||'—';
+      h+='<div style="font-size:9px;color:var(--muted)">'+ew+'</div>';
+      if(t.smc&&t.smc.fvg)h+='<div style="font-size:9px;color:var(--amber)">FVG '+t.smc.fvg+'</div>';
       h+='</div>';
     });
+    h+='</div>';
+    // Key levels
+    if(kl.support||kl.resistance){
+      h+='<div style="font-size:10px;font-weight:700;color:var(--dim);letter-spacing:1px;margin-bottom:6px">KEY LEVELS</div>';
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">';
+      h+='<div style="background:rgba(0,255,204,.04);border:1px solid rgba(0,255,204,.15);border-radius:7px;padding:7px"><div style="font-size:9px;color:var(--g)">SUPPORT</div>';
+      h+='<div style="font-family:var(--m);font-size:12px;font-weight:700;color:var(--g)">$'+fP(kl.support)+'</div>';
+      if(kl.support2)h+='<div style="font-size:10px;color:var(--muted)">S2: $'+fP(kl.support2)+'</div>';
+      h+='</div>';
+      h+='<div style="background:rgba(255,68,102,.04);border:1px solid rgba(255,68,102,.15);border-radius:7px;padding:7px"><div style="font-size:9px;color:var(--red)">RESISTANCE</div>';
+      h+='<div style="font-family:var(--m);font-size:12px;font-weight:700;color:var(--red)">$'+fP(kl.resistance)+'</div>';
+      if(kl.resistance2)h+='<div style="font-size:10px;color:var(--muted)">R2: $'+fP(kl.resistance2)+'</div>';
+      h+='</div></div>';
+    }
+    // Trade setup if available
+    if(ts&&(ts.entry||ts.sl)){
+      h+='<div style="font-size:10px;font-weight:700;color:var(--dim);letter-spacing:1px;margin-bottom:6px">TRADE SETUP</div>';
+      h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:10px">';
+      h+='<div style="background:rgba(0,255,204,.04);border-radius:7px;padding:6px;text-align:center"><div style="font-size:8px;color:var(--g)">ENTRY</div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--g)">$'+fP(ts.entry)+'</div></div>';
+      h+='<div style="background:rgba(255,68,102,.04);border-radius:7px;padding:6px;text-align:center"><div style="font-size:8px;color:var(--red)">STOP LOSS</div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--red)">$'+fP(ts.sl||ts.stopLoss)+'</div></div>';
+      h+='<div style="background:rgba(0,255,204,.05);border-radius:7px;padding:6px;text-align:center"><div style="font-size:8px;color:var(--g)">TP1</div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--g)">$'+fP(ts.tp1)+'</div></div>';
+      h+='<div style="background:rgba(255,179,0,.04);border-radius:7px;padding:6px;text-align:center"><div style="font-size:8px;color:var(--amber)">TP2</div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--amber)">$'+fP(ts.tp2)+'</div></div>';
+      h+='</div>';
+    }
+    // Derivatives if available
+    if(deriv&&deriv.sentiment){
+      h+='<div style="background:rgba(255,255,255,.03);border-radius:7px;padding:8px;margin-bottom:10px;font-size:11px">';
+      h+='<span style="color:var(--dim)">Derivatives: </span><strong>'+(deriv.sentiment||'—')+'</strong>';
+      if(deriv.fundingRate!=null)h+=' · Funding: <span style="color:'+(+deriv.fundingRate>0?'var(--g)':'var(--red)')+'">'+((+deriv.fundingRate*100).toFixed(4))+'%</span>';
+      h+='</div>';
+    }
+    // Recommendation
+    if(rec.action){
+      h+='<div style="background:'+(recC==='var(--g)'?'rgba(0,255,204,.06)':recC==='var(--red)'?'rgba(255,68,102,.06)':'rgba(255,179,0,.06)')+';border-left:4px solid '+recC+';border-radius:0 9px 9px 0;padding:10px 13px">';
+      h+='<div style="font-size:9px;color:var(--dim);margin-bottom:3px">REKOMENDASI</div>';
+      h+='<div style="font-size:15px;font-weight:900;color:'+recC+'">'+rec.action+'</div>';
+      if(rec.explanation)h+='<div style="font-size:11px;color:var(--muted);margin-top:3px">'+rec.explanation+'</div>';
+      if(rec.reasons&&rec.reasons.length){h+='<div style="margin-top:6px">';rec.reasons.slice(0,4).forEach(function(r){h+='<div style="font-size:10px;color:var(--muted);padding:1px 0">→ '+r+'</div>';});h+='</div>';}
+      h+='</div>';
+    }
+    h+='</div>';
     res.innerHTML=h;
   }).catch(function(e){
     res.innerHTML='<div style="color:var(--red);padding:14px">Error: '+(e.message||'timeout')+'<br><button onclick="doSearch()" style="margin-top:6px;background:rgba(0,255,204,.1);border:1px solid rgba(0,255,204,.3);color:var(--g);padding:3px 10px;border-radius:5px;font-size:10px;cursor:pointer">Retry</button></div>';
@@ -691,7 +750,8 @@ function doScan(){
     if(chips){
       chips.style.display='flex';
       var mo=data.marketOverview||data.summary||{};
-      var hpCount=results.filter(function(r){return(r.probability||0)>=73;}).length;
+      var allR=data.results||[];
+      var hpCount=allR.filter(function(r){return(r.probability||0)>=73;}).length;
       chips.innerHTML='<span class="mchip">'+data.totalScanned+' dipindai</span>'+
         '<span class="mchip" style="color:var(--g)">'+(mo.bullishCount||0)+' bullish</span>'+
         '<span class="mchip" style="color:var(--red)">'+(mo.bearishCount||0)+' bearish</span>'+
