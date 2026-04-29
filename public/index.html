@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>AC369 FUSION v12.2</title>
+<title>AC369 FUSION v11.0</title>
 <style>
 :root{
   --bg:#07070f;--card:#0e0e1f;--c2:#13132a;--brd:rgba(100,100,255,.12);
@@ -231,7 +231,7 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 
 <div class="hdr">
   <div style="font-size:10px;letter-spacing:2.5px;color:var(--dim);margin-bottom:3px"><span class="dot"></span>LIVE · INSTITUTIONAL GRADE · AC369 FUSION</div>
-  <h1>🧠 AC369 FUSION v12.2</h1>
+  <h1>🧠 AC369 FUSION v11.0</h1>
   <div class="sub">SMC · Elliott Wave · Derivatives · Liquidation Map · @Alphacrypto_id</div>
 </div>
 
@@ -372,7 +372,7 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
   <div class="card s2" id="an-c"><div class="ct">📢 Narasi Altcoin</div><div class="ld"><span class="ms"></span></div></div>
 </div>
 
-<div class="footer" id="footer">AC369 FUSION v12.2 · @Alphacrypto_id · SMC+EW+OI+LiqMap</div>
+<div class="footer" id="footer">AC369 FUSION v11.0 · @Alphacrypto_id · SMC+EW+OI+LiqMap</div>
 
 <script>
 // ══════════════════════════════════════════════════════════════
@@ -877,12 +877,15 @@ async function doAccScan(){
 }
 
 async function refreshAll(){
+  var upd=$('upd');
+  if(upd)upd.textContent='⏳';
   await Promise.allSettled([
-    fetch('/api/bias').then(r=>r.json()).then(renderBias).catch(()=>{}),
-    fetch('/api/analytics').then(r=>r.json()).then(renderAnalytics).catch(()=>{}),
-    fetch('/api/macro').then(r=>r.json()).then(renderMacro).catch(()=>{}),
-    fetch('/api/altcoins').then(r=>r.json()).then(renderAltcoins).catch(()=>{}),
+    apiFetch('/api/bias',12000).then(renderBias).catch(function(e){renderBiasError(e);}),
+    apiFetch('/api/analytics',20000).then(renderAnalytics).catch(function(e){renderAnalyticsError(e);}),
+    apiFetch('/api/macro',15000).then(renderMacro).catch(function(e){renderMacroError(e);}),
+    apiFetch('/api/altcoins',15000).then(renderAltcoins).catch(function(e){renderAltcoinsError(e);}),
   ]);
+  if(upd)upd.textContent=new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
 }
 
 // Init
@@ -893,6 +896,46 @@ document.getElementById('s-in')&&document.getElementById('s-in').addEventListene
 // RENDER FUNCTIONS — Bias, Analytics, Macro, Altcoins, Scanner, Search
 // ══════════════════════════════════════════════════════════════
 
+
+// ── ERROR HANDLERS ────────────────────────────────────────────
+function showSectionError(id, label, err){
+  var el=$(id);
+  if(!el)return;
+  el.innerHTML='<div style="padding:14px;text-align:center">'+
+    '<div style="font-size:22px;margin-bottom:8px">⚠️</div>'+
+    '<div style="font-size:12px;color:var(--red);margin-bottom:6px">'+label+' gagal memuat</div>'+
+    '<div style="font-size:10px;color:var(--dim);margin-bottom:10px">'+(err&&err.message?err.message:'Network error')+'</div>'+
+    '<button onclick="refreshAll()" style="background:rgba(0,255,208,.1);border:1px solid rgba(0,255,208,.3);color:var(--g);padding:5px 14px;border-radius:6px;font-size:11px;cursor:pointer">🔄 Coba Lagi</button>'+
+  '</div>';
+}
+
+function renderBiasError(e){
+  var bar=$('bias-bar'), lbl=$('bias-label');
+  if(lbl)lbl.textContent='Error — klik Refresh';
+  if(bar)bar.style.background='var(--red)';
+  if($('bias-rec'))$('bias-rec').textContent=(e&&e.message)||'API tidak merespons. Cek koneksi.';
+}
+
+function renderAnalyticsError(e){
+  if($('btc-c'))$('btc-c').innerHTML='<div style="padding:14px;color:var(--red);font-size:11px">⚠️ BTC data error<br><small style="color:var(--dim)">'+(e&&e.message||'timeout')+'</small><br><button onclick="apiFetch(\'/api/analytics\',20000).then(renderAnalytics).catch(renderAnalyticsError)" style="margin-top:6px;background:rgba(0,255,208,.1);border:1px solid rgba(0,255,204,.3);color:var(--g);padding:3px 10px;border-radius:5px;font-size:10px;cursor:pointer">Retry</button></div>';
+  if($('eth-c'))$('eth-c').innerHTML='<div style="padding:14px;color:var(--red);font-size:11px">⚠️ ETH data error</div>';
+  if($('narr-sm'))$('narr-sm').innerHTML='<span style="color:var(--dim)">Analytics tidak tersedia</span>';
+}
+
+function renderMacroError(e){
+  ['fg-c','dom-c','mv-c','alt-c','cyc-c'].forEach(function(id){
+    var el=$(id);
+    if(el)el.innerHTML='<div style="color:var(--red);font-size:10px">⚠️ Error</div>';
+  });
+}
+
+function renderAltcoinsError(e){
+  ['gain-c','vol-c','rsi-c'].forEach(function(id){
+    var el=$(id);
+    if(el)el.innerHTML='<div style="color:var(--red);font-size:10px">⚠️ Error memuat data</div>';
+  });
+  if($('an-c'))$('an-c').innerHTML='<span style="color:var(--dim)">Data tidak tersedia</span>';
+}
 function renderBias(data){
   if(!data)return;
   var b=data.bias||'NEUTRAL',sc=data.biasScore||50;
@@ -1075,13 +1118,8 @@ async function doScan(){
 window.addEventListener('DOMContentLoaded',function(){
   renderTradeDashboard();
   renderWatchlist(wlLoad());
-  // Auto-load all other sections
-  setTimeout(function(){
-    fetch('/api/bias').then(function(r){return r.json();}).then(renderBias).catch(function(){});
-    fetch('/api/analytics').then(function(r){return r.json();}).then(renderAnalytics).catch(function(){});
-    fetch('/api/macro').then(function(r){return r.json();}).then(renderMacro).catch(function(){});
-    fetch('/api/altcoins').then(function(r){return r.json();}).then(renderAltcoins).catch(function(){});
-  }, 300);
+  // Auto-load all sections with proper timeout + error handling
+  setTimeout(function(){ refreshAll(); }, 400);
 });
 
 </script>
