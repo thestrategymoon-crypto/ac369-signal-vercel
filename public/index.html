@@ -586,21 +586,29 @@ function renderMacroError(e){
 // ── RENDER: ALTCOINS ─────────────────────────────────────────
 function renderAltcoins(data){
   if(!data)return;
+  // change24h comes as STRING "3.52%" or "−2.1%" from API
+  function parseChange(val){
+    if(val==null)return 0;
+    if(typeof val==='number')return val;
+    return parseFloat(String(val).replace('%','').replace('−','-'))||0;
+  }
   function listHtml(arr,colorFn){
     if(!arr||!arr.length)return'<div style="color:var(--muted);font-size:12px;padding:8px">Tidak ada data</div>';
     return arr.slice(0,8).map(function(c){
-      var ch=+(c.change24h||0);
+      var ch=parseChange(c.change24h);
       var px=c.price?'$'+fP(c.price):'';
-      return'<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)">'+
-        '<div style="font-family:var(--m);font-size:12px;font-weight:700">'+c.symbol+' <span style="font-size:10px;color:var(--dim);font-weight:400">'+px+'</span></div>'+
-        '<div style="font-size:11px;font-weight:700;color:'+colorFn(ch)+'">'+(ch>=0?'+':'')+ch.toFixed(2)+'%</div>'+
+      var extra=c.rsi?'<span style="font-size:9px;color:var(--amber);margin-left:5px">RSI '+c.rsi+'</span>':'';
+      var sig=c.signal?'<span style="font-size:9px;color:var(--muted);margin-left:4px">'+c.signal+'</span>':'';
+      return'<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)">'+
+        '<div style="font-family:var(--m);font-size:12px;font-weight:700">'+c.symbol+' <span style="font-size:9px;color:var(--dim);font-weight:400">'+px+'</span>'+sig+'</div>'+
+        '<div style="font-size:11px;font-weight:700;color:'+colorFn(ch)+'">'+(ch>=0?'+':'')+ch.toFixed(2)+'%'+extra+'</div>'+
       '</div>';
     }).join('');
   }
   var gc=$('gain-c');
   if(gc){var ct=gc.querySelector('.ct');gc.innerHTML=(ct?ct.outerHTML:'')+listHtml(data.topGainers,function(c){return c>=0?'var(--g)':'var(--red)';});}
   var vc=$('vol-c');
-  if(vc){var ct2=vc.querySelector('.ct');vc.innerHTML=(ct2?ct2.outerHTML:'')+listHtml(data.volumeBreakouts,function(){return'var(--amber)';});}
+  if(vc){var ct2=vc.querySelector('.ct');vc.innerHTML=(ct2?ct2.outerHTML:'')+listHtml(data.volumeBreakouts,function(c){return c>=0?'var(--g)':'var(--red)';});}
   var rc=$('rsi-c');
   if(rc){var ct3=rc.querySelector('.ct');rc.innerHTML=(ct3?ct3.outerHTML:'')+listHtml(data.rsiExtremes,function(c){return c>=0?'var(--g)':'var(--red)';});}
   var anc=$('an-c');
@@ -682,11 +690,12 @@ function doScan(){
     if(tabs)tabs.style.display='flex';
     if(chips){
       chips.style.display='flex';
-      var sm=data.summary||{};
+      var mo=data.marketOverview||data.summary||{};
+      var hpCount=results.filter(function(r){return(r.probability||0)>=73;}).length;
       chips.innerHTML='<span class="mchip">'+data.totalScanned+' dipindai</span>'+
-        '<span class="mchip" style="color:var(--g)">'+(sm.bullishCount||0)+' bullish</span>'+
-        '<span class="mchip" style="color:var(--red)">'+(sm.bearishCount||0)+' bearish</span>'+
-        '<span class="mchip" style="color:var(--amber)">'+(sm.highProbCount||0)+' high-prob</span>';
+        '<span class="mchip" style="color:var(--g)">'+(mo.bullishCount||0)+' bullish</span>'+
+        '<span class="mchip" style="color:var(--red)">'+(mo.bearishCount||0)+' bearish</span>'+
+        '<span class="mchip" style="color:var(--amber)">'+hpCount+' high-prob</span>';
     }
     if(tbl)tbl.style.display='table';
     renderTable(data,currentTab);
@@ -700,28 +709,43 @@ function doScan(){
 
 function renderTable(data,tab){
   var body=$('sc-body');if(!body||!data)return;
+  // scanner-full uses correct tab keys: institutional, fullSend, highProbBull, smcSetups, ewSetups, volumeBreakout, strongSell, bullish
   var results=data[tab]||data.results||[];
-  if(!results.length){body.innerHTML='<tr><td colspan="12" style="padding:20px;text-align:center;color:var(--muted)">Tidak ada data</td></tr>';return;}
+  if(!results.length){body.innerHTML='<tr><td colspan="11" style="padding:20px;text-align:center;color:var(--muted)">Tidak ada data untuk tab ini</td></tr>';return;}
   body.innerHTML=results.slice(0,60).map(function(c,i){
     var ch=+(c.change24h||0),chC=ch>=0?'var(--g)':'var(--red)';
     var prob=+(c.probability||c.prob||0);
     var probC=prob>=80?'var(--g)':prob>=65?'var(--amber)':'var(--muted)';
-    var bias=c.trendAlign||c.signal||'NEUTRAL';
-    var biasC=bias.includes('BULL')?'var(--g)':bias.includes('BEAR')?'var(--red)':'var(--amber)';
-    var ew=c.elliottWave?(typeof c.elliottWave==='object'?c.elliottWave.wave||'Wave':c.elliottWave):'—';
+    // trendAlignment has emojis like "🚀 FULL SEND", "✅ STRONG BUY", "⚖️ SIDEWAYS"
+    var bias=c.trendAlignment||c.trendAlign||'NEUTRAL';
+    var biasC=bias.includes('SEND')||bias.includes('STRONG')||bias.includes('BUY')?'var(--g)':bias.includes('SELL')||bias.includes('BEAR')?'var(--red)':'var(--amber)';
+    // SMC signal is nested in c.smc.signal
+    var smcSig=c.smc?(c.smc.signal||'—'):(c.smcSignal||'—');
+    var smcC=smcSig==='Bullish'?'var(--g)':smcSig==='Bearish'?'var(--red)':'var(--muted)';
+    // Elliott wave is nested in c.elliottWave.wave
+    var ew=c.elliottWave?(typeof c.elliottWave==='object'?(c.elliottWave.wave||'—'):c.elliottWave):'—';
+    // Candle: scanner doesn't have dedicated candle field
+    var candle=c.pattern||(c.chartPatterns&&c.chartPatterns.length?c.chartPatterns[0].name||'—':'—');
+    if(c.chartPatterns&&c.chartPatterns.length)candle=c.chartPatterns[0].name||'—';
+    // Astro: already formatted string, take first line
+    var astro=c.astro?(String(c.astro).split('\n')[0]||String(c.astro)):'—';
+    if(astro.length>30)astro=astro.substring(0,30)+'...';
+    // Signal: use probLabel or signals array
+    var sig=c.probLabel||'—';
+    if(sig==='—'&&c.signals&&c.signals.length)sig=c.signals[0]||'HOLD';
     return'<tr style="border-bottom:1px solid rgba(255,255,255,.04)">'+
       '<td style="padding:6px;color:var(--dim);font-size:10px">'+(i+1)+'</td>'+
       '<td style="padding:6px;font-family:var(--m);font-weight:700">'+c.symbol+'</td>'+
       '<td style="padding:6px;font-family:var(--m)">$'+fP(c.price)+'</td>'+
-      '<td style="padding:6px;color:'+chC+';font-weight:700">'+(ch>=0?'+':'')+ch.toFixed(2)+'%</td>'+
+      '<td style="padding:6px;font-weight:700;color:'+chC+'">'+(ch>=0?'+':'')+ch.toFixed(2)+'%</td>'+
       '<td style="padding:6px;color:var(--muted);font-size:10px">'+(c.volume24h?'$'+(c.volume24h/1e6).toFixed(0)+'M':'—')+'</td>'+
-      '<td style="padding:6px"><span style="color:'+biasC+';font-size:11px;font-weight:700">'+bias+'</span></td>'+
-      '<td style="padding:6px;font-size:10px;color:var(--muted)">'+(c.smcSignal||'—')+'</td>'+
+      '<td style="padding:6px;font-size:11px;font-weight:700;color:'+biasC+'">'+bias+'</td>'+
+      '<td style="padding:6px;font-size:11px;font-weight:700;color:'+smcC+'">'+smcSig+'</td>'+
       '<td style="padding:6px;font-size:10px;color:var(--muted)">'+ew+'</td>'+
-      '<td style="padding:6px;font-size:10px;color:var(--muted)">'+(c.candlePattern||c.candle||'—')+'</td>'+
-      '<td style="padding:6px;font-size:10px;color:var(--muted)">'+(c.astro||c.moonPhase||'—')+'</td>'+
+      '<td style="padding:6px;font-size:10px;color:var(--muted)">'+candle+'</td>'+
+      '<td style="padding:6px;font-size:10px;color:var(--muted)">'+astro+'</td>'+
       '<td style="padding:6px;font-family:var(--m);font-weight:700;color:'+probC+'">'+prob+'%</td>'+
-      '<td style="padding:6px;font-size:10px;color:var(--muted)">'+(c.signal||c.finalSignal||'HOLD')+'</td>'+
+      '<td style="padding:6px;font-size:10px;color:var(--muted)">'+sig+'</td>'+
     '</tr>';
   }).join('');
 }
