@@ -1,4 +1,4 @@
-// api/altcoins.js — AC369 FUSION v10.6 FINAL
+// api/altcoins.js — AC369 FUSION v12.0
 // Source: Binance Spot → CoinGecko → CoinCap
 // FIXED: isArray check before every .filter()
 
@@ -74,13 +74,13 @@ export default async function handler(req, res) {
       const topGainers = sorted.slice(0, 15).map(t => ({
         symbol: t.symbol.replace('USDT', ''),
         price: +(+t.lastPrice).toFixed(6),
-        change24h: +(+t.priceChangePercent).toFixed(2) + '%',
+        change24h: +(+t.priceChangePercent).toFixed(2),
         volume: Math.round(+t.quoteVolume),
       }));
       const topLosers = sorted.slice(-10).reverse().map(t => ({
         symbol: t.symbol.replace('USDT', ''),
         price: +(+t.lastPrice).toFixed(6),
-        change24h: +(+t.priceChangePercent).toFixed(2) + '%',
+        change24h: +(+t.priceChangePercent).toFixed(2),
         volume: Math.round(+t.quoteVolume),
       }));
       const volumeBreakouts = filtered
@@ -89,7 +89,7 @@ export default async function handler(req, res) {
         .slice(0, 10).map(t => ({
           symbol: t.symbol.replace('USDT', ''),
           price: +(+t.lastPrice).toFixed(6),
-          change24h: +(+t.priceChangePercent).toFixed(2) + '%',
+          change24h: +(+t.priceChangePercent).toFixed(2),
           volumeUSD: Math.round(+t.quoteVolume),
           signal: +(t.priceChangePercent) > 0 ? 'Bullish Breakout' : 'Bearish Breakdown',
         }));
@@ -121,7 +121,7 @@ export default async function handler(req, res) {
         else if (rsi > 65) { condition = 'Overbought'; condDetail = 'Potensi koreksi'; }
         else if (rsi > 50) { condition = 'Bullish Zone'; condDetail = 'Momentum positif'; }
         else { condition = 'Bearish Zone'; condDetail = 'Momentum negatif'; }
-        rsiExtremes.push({ symbol: sym.replace('USDT', ''), price: +(+tk.lastPrice).toFixed(6), change24h: +(+tk.priceChangePercent).toFixed(2) + '%', rsi: rsi.toFixed(2), condition, condDetail, dataSource: dsrc });
+        rsiExtremes.push({ symbol: sym.replace('USDT', ''), price: +(+tk.lastPrice).toFixed(6), change24h: +(+tk.priceChangePercent).toFixed(2), rsi: rsi.toFixed(2), condition, condDetail, dataSource: dsrc });
       }
       rsiExtremes.sort((a, b) => Math.abs(+b.rsi - 50) - Math.abs(+a.rsi - 50));
 
@@ -141,7 +141,7 @@ export default async function handler(req, res) {
     if (isCG) {
       // ── COINGECKO FORMAT ───────────────────────────────────────
       const sorted = [...tickers].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
-      const mp = c => ({ symbol: (c.symbol || '').toUpperCase(), price: +(c.current_price || 0).toFixed(6), change24h: +(c.price_change_percentage_24h || 0).toFixed(2) + '%', volume: Math.round(c.total_volume || 0) });
+      const mp = c => ({ symbol: (c.symbol || '').toUpperCase(), price: +(c.current_price || 0).toFixed(6), change24h: +(c.price_change_percentage_24h || 0), volume: Math.round(c.total_volume || 0) });
       const topGainers = sorted.filter(c => (c.price_change_percentage_24h || 0) > 0).slice(0, 15).map(mp);
       const topLosers = [...tickers].sort((a, b) => (a.price_change_percentage_24h || 0) - (b.price_change_percentage_24h || 0)).slice(0, 10).map(mp);
       const volumeBreakouts = tickers.filter(c => (c.total_volume || 0) > 10000000 && Math.abs(c.price_change_percentage_24h || 0) > 3)
@@ -154,7 +154,7 @@ export default async function handler(req, res) {
         const chg = c.price_change_percentage_24h || 0;
         const rsi = Math.min(95, Math.max(5, 50 + chg * 2.5));
         const condition = rsi < 35 ? 'Oversold (Est.)' : rsi > 65 ? 'Overbought (Est.)' : rsi > 50 ? 'Bullish Zone' : 'Bearish Zone';
-        return { symbol: sym, price: +(c.current_price || 0).toFixed(6), change24h: chg.toFixed(2) + '%', rsi: rsi.toFixed(2), condition, condDetail: 'Estimasi dari price change', dataSource: 'cg_estimate' };
+        return { symbol: sym, price: +(c.current_price || 0).toFixed(6), change24h: +chg.toFixed(2), rsi: rsi.toFixed(2), condition, condDetail: 'Estimasi dari price change', dataSource: 'cg_estimate' };
       }).filter(Boolean);
       const topG = topGainers[0];
       return res.status(200).json({ timestamp: Date.now(), dataSource: 'coingecko', topGainers, topLosers, volumeBreakouts, rsiExtremes, narrative: (topG ? `🔥 Top gainer: ${topG.symbol} (${topG.change24h}). ` : '') + '[Data CoinGecko]' });
