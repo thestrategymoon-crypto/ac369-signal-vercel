@@ -479,15 +479,17 @@ function renderBias(data){
   if($('bias-fg'))$('bias-fg').textContent='F&G: '+(data.fgValue!=null?data.fgValue:'—');
   if($('bias-dom'))$('bias-dom').textContent='BTC Dom: '+(data.btcDom?data.btcDom+'%':'—');
   if($('bias-btc'))$('bias-btc').textContent='BTC 4H: '+(data.btcTrend||'—');
-  // Bar
+  // Update outer card class (bb-bull/bb-bear/bb-ne) - NOT style
   var bar=$('bias-bar');
-  if(bar){bar.style.width=(data.biasScore||50)+'%';bar.style.background=bc;}
+  if(bar){
+    bar.className='bias-bar '+(b.includes('BULL')?'bb-bull':b.includes('BEAR')?'bb-bear':'bb-ne');
+  }
   // Chips
   var chips=$('bias-chips');
   if(chips){
     var d2=data.details||[];
     chips.innerHTML=d2.map(function(c){
-      return'<span style="background:rgba(255,255,255,.07);border-radius:7px;padding:4px 12px;font-size:11px;white-space:nowrap">'+c+'</span>';
+      return'<span class="bchip">'+c+'</span>';
     }).join('');
   }
   // Strip updates
@@ -602,6 +604,19 @@ function renderAnalytics(data){
     if(kl.support){h+='<div style="display:flex;justify-content:space-between;margin-bottom:4px"><div style="font-size:12px;color:var(--muted)">Support</div><div style="font-size:12px;font-weight:700;color:var(--g)">$'+fP(kl.support)+'</div></div>';}
     if(kl.resistance){h+='<div style="display:flex;justify-content:space-between;margin-bottom:8px"><div style="font-size:12px;color:var(--muted)">Resistance</div><div style="font-size:12px;font-weight:700;color:var(--red)">$'+fP(kl.resistance)+'</div></div>';}
 
+    // MACD + BB squeeze (v12.2 power features)
+    var macd=d.macd||{};var bb=d.bb||{};var atr=d.atr||{};
+    var macd4h=macd['4h']||{};var bb4h=bb['4h']||bb;
+    var macdTags=[];
+    if(macd4h.crossover)macdTags.push({t:'MACD '+macd4h.crossover,c:macd4h.crossover.includes('bull')||macd4h.crossover.includes('golden')?'var(--g)':'var(--red)'});
+    if(bb4h.squeeze===true||bb.squeeze===true)macdTags.push({t:'BB Squeeze',c:'var(--amber)'});
+    if(atr.volatility)macdTags.push({t:'Vol:'+atr.volatility,c:atr.volatility==='HIGH'?'var(--red)':atr.volatility==='MEDIUM'?'var(--amber)':'var(--muted)'});
+    if(macdTags.length){
+      h+='<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">';
+      macdTags.forEach(function(tag){h+='<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:5px;padding:2px 7px;font-size:10px;color:'+tag.c+'">'+tag.t+'</div>';});
+      h+='</div>';
+    }
+
     // Score bar
     if(sb.bull!=null||sb.bear!=null){
       var bull=sb.bull||0,bear=sb.bear||0;
@@ -612,9 +627,12 @@ function renderAnalytics(data){
       h+='<div style="height:4px;width:'+bullPct+'%;background:var(--g);border-radius:2px"></div></div>';
     }
 
-    // Summary
+    // Summary + candle count
     if(d.technicalSummary)h+='<div style="font-size:10px;color:var(--muted);line-height:1.5;border-top:1px solid rgba(255,255,255,.06);padding-top:7px">'+d.technicalSummary+'</div>';
-    if(d.dataSource)h+='<div style="font-size:9px;color:var(--dim);margin-top:4px">src: '+d.dataSource+'</div>';
+    var srcInfo='';
+    if(d.dataSource)srcInfo+='src: '+d.dataSource;
+    if(d.candleCount)srcInfo+=' · Data: '+d.candleCount+' candles'+(d.dataQuality?' ('+d.dataQuality+')':'');
+    if(srcInfo)h+='<div style="font-size:9px;color:var(--dim);margin-top:4px">'+srcInfo+'</div>';
 
     el.innerHTML=h;
   }
