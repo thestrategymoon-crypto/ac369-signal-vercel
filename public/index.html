@@ -723,6 +723,24 @@ function renderAltcoinsError(e){
 }
 
 // ── REFRESH ALL ───────────────────────────────────────────────
+
+// ── CLICK COIN → INSTANT ANALYSIS ───────────────────────────
+function clickCoin(sym){
+  var inp=$('s-in');
+  if(!inp)return;
+  inp.value=sym;
+  // Scroll to search section
+  var searchSection=inp.closest('section')||inp.parentElement;
+  if(searchSection)searchSection.scrollIntoView({behavior:'smooth',block:'center'});
+  else window.scrollTo({top:0,behavior:'smooth'});
+  // Flash the input
+  inp.style.transition='box-shadow .2s';
+  inp.style.boxShadow='0 0 0 3px rgba(0,255,208,.4)';
+  setTimeout(function(){inp.style.boxShadow='';},800);
+  // Trigger search after brief delay
+  setTimeout(function(){doSearch();},300);
+}
+
 function refreshAll(){
   var upd=$('upd');if(upd)upd.textContent='...';
   return Promise.all([
@@ -919,7 +937,8 @@ function renderTable(data,tab){
     if(sig==='—'&&c.signals&&c.signals.length)sig=c.signals[0]||'HOLD';
     return'<tr style="border-bottom:1px solid rgba(255,255,255,.04)">'+
       '<td style="padding:6px;color:var(--dim);font-size:10px">'+(i+1)+'</td>'+
-      '<td style="padding:6px;font-family:var(--m);font-weight:700">'+c.symbol+'</td>'+
+      '<td style="padding:6px;font-family:var(--m);font-weight:700;cursor:pointer;color:var(--g)" onclick="clickCoin(\''+c.symbol+'\')" title="Klik untuk analisa '+c.symbol+'">'+
+        '<span style="border-bottom:1px solid rgba(0,255,208,.3)">'+c.symbol+'</span></td>'+
       '<td style="padding:6px;font-family:var(--m)">$'+fP(c.price)+'</td>'+
       '<td style="padding:6px;font-weight:700;color:'+chC+'">'+(ch>=0?'+':'')+ch.toFixed(2)+'%</td>'+
       '<td style="padding:6px;color:var(--muted);font-size:10px">'+(c.volume24h?'$'+(c.volume24h/1e6).toFixed(0)+'M':'—')+'</td>'+
@@ -960,7 +979,7 @@ function renderTradeDashboard(){
       h+='<div style="background:rgba(0,255,204,.03);border:1px solid rgba(0,255,204,.18);border-radius:9px;padding:10px 12px;margin-bottom:7px">';
       h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">';
       h+='<div style="display:flex;align-items:center;gap:7px">';
-      h+='<div style="font-weight:900;font-family:var(--m);font-size:14px">'+t.coin+'</div>';
+      h+='<div style="font-weight:900;font-family:var(--m);font-size:14px;cursor:pointer;color:var(--g);border-bottom:1px solid rgba(0,255,208,.3)" onclick="clickCoin(\''+t.coin+'\');" title="Klik analisa">'+t.coin+'</div>';
       h+='<div style="background:rgba(0,255,204,.1);color:var(--g);border-radius:5px;padding:1px 7px;font-size:9px;font-weight:700">'+t.status+'</div>';
       h+='<div style="font-size:9px;color:var(--dim)">'+t.timestamp+'</div>';
       h+='</div>';
@@ -1028,7 +1047,7 @@ function renderWatchlist(wl){
       h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:7px">';
       h+='<div>';
       h+='<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px">';
-      h+='<span style="font-weight:900;font-family:var(--m);font-size:15px">'+w.symbol+'</span>';
+      h+='<span style="font-weight:900;font-family:var(--m);font-size:15px;cursor:pointer;border-bottom:1px solid rgba(0,255,208,.3)" onclick="clickCoin(\''+w.symbol+'\');" title="Klik analisa '+w.symbol+'">'+w.symbol+'</span>';
       h+='<span style="background:rgba(255,255,255,.07);border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;color:'+colors[st]+'">'+emojis[st]+' '+st+'</span>';
       if(w.isMeme)h+='<span style="background:rgba(255,100,100,.1);color:#ff9999;border-radius:5px;padding:1px 5px;font-size:9px">MEME</span>';
       h+='</div>';
@@ -1099,7 +1118,7 @@ function renderSetupCard(c){
   var card='<div style="background:'+tb+';border:2px solid '+tbr+';border-radius:13px;padding:15px;margin-bottom:12px'+elGlow+'">';
   card+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px">';
   card+='<div style="flex:1"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">';
-  card+='<span style="font-size:21px;font-weight:900;font-family:var(--m)">'+c.symbol+'</span>';
+  card+='<span style="font-size:21px;font-weight:900;font-family:var(--m);cursor:pointer;border-bottom:2px solid '+tc+';padding-bottom:1px" onclick="clickCoin(\''+c.symbol+'\');" title="Klik analisa '+c.symbol+'">'+c.symbol+'</span>';
   card+='<span style="color:'+tc+';border:1px solid '+tbr+';border-radius:8px;padding:3px 9px;font-size:11px;font-weight:800;background:'+tb+'">'+c.tierLabel+'</span>';
   card+='<span style="background:'+(isElite?'rgba(255,179,0,.2)':'rgba(255,255,255,.06)')+';border-radius:7px;padding:2px 7px;font-size:10px;font-weight:800;color:'+(isElite?'var(--amber)':'var(--muted)')+'">'+c.positionRank+'</span>';
   if(iM)card+='<span style="background:rgba(255,100,100,.15);color:#ff9999;border-radius:5px;padding:1px 6px;font-size:9px;font-weight:700">MEME</span>';
@@ -1192,7 +1211,7 @@ async function doAccScan(){
         var pc=c.pnl>=0?'var(--g)':'var(--red)';
         h+='<div style="background:rgba(255,255,255,.03);border-radius:8px;padding:9px 11px;margin-bottom:6px">';
         h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">';
-        h+='<div style="font-weight:900;font-family:var(--m);font-size:15px">'+c.symbol+'</div>';
+        h+='<div style="font-weight:900;font-family:var(--m);font-size:15px;cursor:pointer;color:var(--g);border-bottom:1px solid rgba(0,255,208,.3)" onclick="clickCoin(\''+c.symbol+'\');" title="Klik analisa">'+c.symbol+'</div>';
         h+='<div style="font-size:13px;font-weight:700;font-family:var(--m);color:'+pc+'">'+(c.pnl>=0?'+':'')+c.pnl.toFixed(2)+'%</div>';
         h+='</div>';
         h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px">';
