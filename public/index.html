@@ -242,19 +242,19 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 <!-- SCANNER -->
 <h2>?? Scanner Institusional — SMC + Elliott + Volume</h2>
 <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px;flex-wrap:wrap">
-  <button class="btn bscan" id="sc-btn" onclick="doScan()">?? Scan Institusional</button>
+  <button class="btn bscan" id="sc-btn" onclick="doScan()">🚀 Scan Institusional</button>
   <span id="sc-st" style="font-size:11px;color:var(--muted);font-family:var(--m)">Filter: SMC OB/FVG + Elliott Wave + Volume Breakout</span>
 </div>
 <div class="prog"><div class="pfil" id="sc-prog"></div></div>
 <div class="tabs" id="sc-tabs" style="display:none">
-  <button class="tab on" onclick="showTab('institutional',this)">?? Institusional</button>
-  <button class="tab" onclick="showTab('fullSend',this)">?? FULL SEND</button>
-  <button class="tab" onclick="showTab('highProbBull',this)">?? High Prob</button>
-  <button class="tab" onclick="showTab('smcSetups',this)">?? SMC OB/FVG</button>
-  <button class="tab" onclick="showTab('ewSetups',this)">?? Wave 3</button>
-  <button class="tab" onclick="showTab('volumeBreakout',this)">?? Vol Breakout</button>
-  <button class="tab" onclick="showTab('strongSell',this)">?? Short/Sell</button>
-  <button class="tab" onclick="showTab('bullish',this)">?? Semua</button>
+  <button class="tab on" onclick="showTab('institutional',this)">📊 Institusional</button>
+  <button class="tab" onclick="showTab('fullSend',this)">🚀 FULL SEND</button>
+  <button class="tab" onclick="showTab('highProbBull',this)">💎 High Prob</button>
+  <button class="tab" onclick="showTab('smcSetups',this)">📦 SMC OB/FVG</button>
+  <button class="tab" onclick="showTab('ewSetups',this)">🌊 Wave 3</button>
+  <button class="tab" onclick="showTab('volumeBreakout',this)">💥 Vol Breakout</button>
+  <button class="tab" onclick="showTab('strongSell',this)">🔴 Short/Sell</button>
+  <button class="tab" onclick="showTab('bullish',this)">📋 Semua</button>
 </div>
 <div class="mchips" id="sc-chips" style="display:none"></div>
 <div class="scwrap">
@@ -392,9 +392,16 @@ async function doScan(){
   tabs.style.display='none';chips.style.display='none';
   try{
     const t0=Date.now();
-    const res=await fetch('/api/scanner-full');
-    if(!res.ok)throw new Error('❌ API '+res.status);
+    // Timeout 28s untuk iPad
+    const ctrl=new AbortController();
+    const timer=setTimeout(()=>ctrl.abort(),28000);
+    let res;
+    try{res=await fetch('/api/scanner-full',{signal:ctrl.signal});}
+    catch(fetchErr){clearTimeout(timer);throw new Error('Network timeout — cek koneksi internet');}
+    clearTimeout(timer);
+    if(!res.ok)throw new Error('API error '+res.status+' — coba lagi');
     const data=await res.json();
+    if(data.error)throw new Error(data.error);
     prog.style.width='92%';
     if(!data.results||!data.results.length){st.textContent=`✅ ${data.totalScanned||0} dipindai — Tidak ada yang lolos filter.`;prog.style.width='0';return;}
     scanData=data;
@@ -420,7 +427,7 @@ async function doScan(){
     st.textContent=`✅ ${totalQ} lolos filter · ${astro.moonEmoji||'??'} ${astro.moonPhase||''}`;
     setTimeout(()=>prog.style.width='0',2000);
   }catch(e){st.textContent='❌ '+e.message;prog.style.width='0';}
-  finally{btn.disabled=false;btn.textContent='?? Scan Institusional';}
+  finally{btn.disabled=false;btn.textContent='🚀 Scan Institusional';}
 }
 
 function showTab(tab,el){curTab=tab;document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));el.classList.add('on');renderTable(tab);}
