@@ -1,4 +1,4 @@
-// api/accumulation.js — AC369 FUSION v12.2 FIXED
+// api/accumulation.js — AC369 FUSION v12.3
 // ══════════════════════════════════════════════════════════════════
 // COMPLETE 7-LAYER ICT/SMC DETECTION ENGINE
 //
@@ -200,12 +200,12 @@ export default async function handler(req, res) {
       return { r: 'CHAOTIC', kill: true, color: '#ff4466', piMin: 5, sMin: 99, cMin: 99, bonus: -999, focus: 'NO TRADE — extreme volatility', hv, moon };
     // BEAR: find counter-trend gems at support (relaxed thresholds)
     if (btcCh7 < -10 || (btcCh7 < -7 && trend === 'BEARISH'))
-      return { r: 'BEAR',   kill: false, color: '#ff4466', piMin: 2, sMin: 40, cMin: 42, bonus: 0 + cb,  focus: `Bear: counter-trend gems only. ${hv.emoji} ${hv.phase}`, hv, moon };
+      return { r: 'BEAR',   kill: false, color: '#ff4466', piMin: 1, sMin: 35, cMin: 36, bonus: 0 + cb,  focus: `Bear: counter-trend gems only. ${hv.emoji} ${hv.phase}`, hv, moon };
     // BULL: momentum plays
     if (btcCh7 > 8 || (btcCh7 > 5 && trend === 'BULLISH' && fg > 50))
-      return { r: 'BULL',   kill: false, color: '#00ffd0', piMin: 2, sMin: 42, cMin: 44, bonus: 8 + cb,  focus: `Bull: momentum optimal. ${hv.emoji} ${hv.desc}`, hv, moon };
+      return { r: 'BULL',   kill: false, color: '#00ffd0', piMin: 1, sMin: 35, cMin: 37, bonus: 8 + cb,  focus: `Bull: momentum optimal. ${hv.emoji} ${hv.desc}`, hv, moon };
     // RANGE: accumulation setups
-    return { r: 'RANGE',  kill: false, color: '#FFB300', piMin: 2, sMin: 38, cMin: 40, bonus: 3 + cb,  focus: `Range: accumulation mode. ${moon.emoji} ${moon.label}`, hv, moon };
+    return { r: 'RANGE',  kill: false, color: '#FFB300', piMin: 1, sMin: 32, cMin: 34, bonus: 3 + cb,  focus: `Range: accumulation mode. ${moon.emoji} ${moon.label}`, hv, moon };
   }
 
   // ════════════════════════════════════════════════════════════════
@@ -533,18 +533,41 @@ export default async function handler(req, res) {
   function layer23_SMValidation(price, high, low, open, ch24, ch7, vol, rp, lw, body) {
     const vt = vol >= 500e6 ? 5 : vol >= 100e6 ? 4 : vol >= 30e6 ? 3 : vol >= 10e6 ? 2 : vol >= 2e6 ? 1 : 0;
     const sigs = [];
-    if (lw > 0.38 && rp < 0.55 && price > low * 1.002) {
-      const str = lw > 0.55 ? 'STRONG' : 'MODERATE';
-      sigs.push({ type: 'BSL_SWEEP', strength: str, pts: str === 'STRONG' ? 22 : 14 });
-    }
-    if (ch24 > 2.5 && ch24 < 12 && rp > 0.52 && lw > 0.18) sigs.push({ type: 'BOS', strength: ch24 > 5 ? 'STRONG' : 'MODERATE', pts: ch24 > 5 ? 18 : 11 });
-    if ((ch7||0) < -5 && ch24 > 3 && lw > 0.20 && rp > 0.45) sigs.push({ type: 'CHOCH', strength: 'STRONG', pts: 20 });
-    if (vt >= 2 && Math.abs(ch24) <= 4) sigs.push({ type: 'SSL_ACCUM', strength: vt >= 4 ? 'STRONG' : 'MODERATE', pts: vt >= 4 ? 22 : 13 });
-    else if (vt >= 1 && Math.abs(ch24) <= 2) sigs.push({ type: 'SSL_ACCUM', strength: 'MODERATE', pts: 10 });
-    if (vt >= 1 && body < 0.25 && lw > 0.25) sigs.push({ type: 'DEMAND_ZONE', strength: 'STRONG', pts: 20 });
+
+    // BSL/SSL Sweep: wick below support + recovery
+    if (lw > 0.30 && rp < 0.60 && price > low * 1.001)
+      sigs.push({ type: 'BSL_SWEEP', strength: lw > 0.50 ? 'STRONG' : 'MODERATE', pts: lw > 0.50 ? 22 : 12 });
+
+    // BOS: structure break upward
+    if (ch24 > 1.5 && ch24 < 15 && rp > 0.45)
+      sigs.push({ type: 'BOS', strength: ch24 > 5 ? 'STRONG' : 'MODERATE', pts: ch24 > 5 ? 18 : 10 });
+
+    // CHoCH: trend reversal
+    if ((ch7||0) < -5 && ch24 > 1.5 && rp > 0.35)
+      sigs.push({ type: 'CHOCH', strength: 'STRONG', pts: 20 });
+
+    // SSL Accum: volume with controlled move (FIXED: ch24 <= 10 instead of 4)
+    if (vt >= 2 && Math.abs(ch24) <= 10)
+      sigs.push({ type: 'SSL_ACCUM', strength: vt >= 4 ? 'STRONG' : 'MODERATE', pts: vt >= 4 ? 22 : 13 });
+    else if (vt >= 1 && Math.abs(ch24) <= 8)
+      sigs.push({ type: 'SSL_ACCUM', strength: 'MODERATE', pts: 10 });
+
+    // Demand Zone: small body + any wick (FIXED: body < 0.40 was < 0.25)
+    if (vt >= 1 && body < 0.45 && lw > 0.15)
+      sigs.push({ type: 'DEMAND_ZONE', strength: lw > 0.35 ? 'STRONG' : 'MODERATE', pts: lw > 0.35 ? 18 : 10 });
+
+    // Discount Position: price in lower 50% of range = SM interest zone
+    if (rp < 0.50 && vt >= 1)
+      sigs.push({ type: 'DISCOUNT_POS', strength: 'MODERATE', pts: 8 });
+
+    // Any coin with volume qualifies for baseline signal
+    if (vt >= 2 && sigs.length === 0)
+      sigs.push({ type: 'VOL_ACTIVE', strength: 'MODERATE', pts: 8 });
+
     const strong = sigs.filter(s => s.strength === 'STRONG').length;
     const smScore = Math.min(25, Math.round(sigs.reduce((a, s) => a + s.pts, 0) * 25 / 66));
-    return { sigs, count: sigs.length, strong, smScore, valid: sigs.length >= 1 };
+    // Valid = always true if there's ANY volume signal (vt >= 1)
+    return { sigs, count: sigs.length, strong, smScore, valid: sigs.length >= 1 || vt >= 1 };
   }
 
   // LAYER 5 DERIV SCORE
