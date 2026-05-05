@@ -195,10 +195,17 @@ export default async function handler(req, res) {
   // ════════════════════════════════════════════════════════════════
   function regime(btcCh7, btcCh24, btcDom, fg, trend, hv, moon) {
     const cb = hv.bonus + moon.bonus;
-    if (Math.abs(btcCh24) > 12 || fg <= 8 || fg >= 93) return { r: 'CHAOTIC', kill: true, color: '#ff4466', piMin: 5, sMin: 99, cMin: 99, bonus: -999, focus: 'NO TRADE', hv, moon };
-    if (btcCh7 < -8 || (btcCh7 < -5 && trend === 'BEARISH')) return { r: 'BEAR', kill: false, color: '#ff4466', piMin: 4, sMin: 82, cMin: 85, bonus: -10 + cb, focus: `Bear strict. ${hv.emoji} ${hv.phase}`, hv, moon };
-    if (btcCh7 > 8 || (btcCh7 > 5 && trend === 'BULLISH' && fg > 50)) return { r: 'BULL', kill: false, color: '#00ffd0', piMin: 3, sMin: 75, cMin: 80, bonus: 8 + cb, focus: `Bull optimal. ${hv.emoji} ${hv.desc}`, hv, moon };
-    return { r: 'RANGE', kill: false, color: '#FFB300', piMin: 2, sMin: 72, cMin: 78, bonus: 3 + cb, focus: `Range accumulation. ${moon.emoji} ${moon.label}`, hv, moon };
+    // CHAOTIC: extreme volatility = no trade
+    if (Math.abs(btcCh24) > 15 || fg <= 5 || fg >= 95)
+      return { r: 'CHAOTIC', kill: true, color: '#ff4466', piMin: 5, sMin: 99, cMin: 99, bonus: -999, focus: 'NO TRADE — extreme volatility', hv, moon };
+    // BEAR: find counter-trend gems at support (relaxed thresholds)
+    if (btcCh7 < -10 || (btcCh7 < -7 && trend === 'BEARISH'))
+      return { r: 'BEAR',   kill: false, color: '#ff4466', piMin: 2, sMin: 40, cMin: 42, bonus: 0 + cb,  focus: `Bear: counter-trend gems only. ${hv.emoji} ${hv.phase}`, hv, moon };
+    // BULL: momentum plays
+    if (btcCh7 > 8 || (btcCh7 > 5 && trend === 'BULLISH' && fg > 50))
+      return { r: 'BULL',   kill: false, color: '#00ffd0', piMin: 2, sMin: 42, cMin: 44, bonus: 8 + cb,  focus: `Bull: momentum optimal. ${hv.emoji} ${hv.desc}`, hv, moon };
+    // RANGE: accumulation setups
+    return { r: 'RANGE',  kill: false, color: '#FFB300', piMin: 2, sMin: 38, cMin: 40, bonus: 3 + cb,  focus: `Range: accumulation mode. ${moon.emoji} ${moon.label}`, hv, moon };
   }
 
   // ════════════════════════════════════════════════════════════════
@@ -504,15 +511,18 @@ export default async function handler(req, res) {
     const vt = vol >= 500e6 ? 5 : vol >= 100e6 ? 4 : vol >= 30e6 ? 3 : vol >= 10e6 ? 2 : vol >= 2e6 ? 1 : 0;
     const range24 = high > low ? (high - low) / low : 0;
     const sigs = [];
-    const isSpring = lw > 0.45 && rp < 0.40 && price > low * 1.003 && vt >= 1;
+    const isSpring = lw > 0.30 && rp < 0.45 && price > low * 1.001 && vt >= 1;
     if (isSpring) sigs.push({ s: 'WYCKOFF_SPRING', pts: 25, note: `Spring Phase C: wick ${(lw*100).toFixed(0)}% below support` });
-    if (vt >= (isMeme ? 2 : 3) && Math.abs(ch24) <= 4 && rp < 0.50) sigs.push({ s: 'ORDER_BLOCK_ACCUM', pts: 20, note: `$${(vol/1e6).toFixed(0)}M absorbed at lows — institutional OB` });
-    else if (vt >= 1 && Math.abs(ch24) <= 2) sigs.push({ s: 'VOLUME_ACCUM', pts: 10, note: `$${(vol/1e6).toFixed(0)}M + flat` });
-    if (range24 < (isMeme ? 0.08 : 0.055) && Math.abs(ch24) < 4 && vol > 3e6) sigs.push({ s: 'COMPRESSION', pts: 18, note: `Range ${(range24*100).toFixed(1)}% — Phase B coiling` });
+    if (vt >= (isMeme ? 1 : 2) && Math.abs(ch24) <= 5 && rp < 0.55) sigs.push({ s: 'ORDER_BLOCK_ACCUM', pts: 20, note: `$${(vol/1e6).toFixed(0)}M absorbed at lows — institutional OB` });
+    else if (vt >= 1 && Math.abs(ch24) <= 4) sigs.push({ s: 'VOLUME_ACCUM', pts: 10, note: `$${(vol/1e6).toFixed(0)}M + consolidating` });
+    if (range24 < (isMeme ? 0.12 : 0.08) && Math.abs(ch24) < 6 && vol > 1e6) sigs.push({ s: 'COMPRESSION', pts: 18, note: `Range ${(range24*100).toFixed(1)}% — Phase B coiling` });
     if (vt >= 1 && body < 0.25 && lw > 0.25 && rp < 0.58) sigs.push({ s: 'ABSORPTION', pts: 18, note: `Body ${(body*100).toFixed(0)}%/wick ${(lw*100).toFixed(0)}% — SM absorbing supply` });
-    if (ch24 > 0.3 && ch24 < (isMeme ? 15 : 8) && (ch7||0) > -15 && rp > 0.38) sigs.push({ s: 'HIGHER_LOW', pts: 15, note: `+${ch24.toFixed(1)}% HL Phase D SOS` });
+    if (ch24 > 0.1 && ch24 < (isMeme ? 20 : 12) && (ch7||0) > -25 && rp > 0.28) sigs.push({ s: 'HIGHER_LOW', pts: 15, note: `+${ch24.toFixed(1)}% HL Phase D SOS` });
     if (hv && ['EARLY_BULL','BULL_RUN','ACCUMULATION'].includes(hv.phase) && vt >= 1) sigs.push({ s: 'CYCLE_ALIGN', pts: 10, note: `${hv.emoji} ${hv.phase}` });
     if ((ch7||0) > 8 && Math.abs(ch24) < 6) sigs.push({ s: 'REL_STRENGTH', pts: 14, note: `7d +${(ch7||0).toFixed(1)}% outperforming` });
+    // Range Position: coin in lower 40% of range = discount = SM interest
+    if (rp < 0.40 && vol > 2e6 && Math.abs(ch24) < 8)
+      sigs.push({ s: 'DISCOUNT_ZONE', pts: 8, note: `Price at ${(rp*100).toFixed(0)}% range — discount territory` });
     const count = sigs.length;
     const score = Math.min(25, Math.round(sigs.reduce((a, s) => a + s.pts, 0) * 25 / 100));
     const stage = count >= 5 ? 'READY 🔥' : count >= 4 ? 'STRONG 💪' : count === 3 ? 'EARLY 📈' : count === 2 ? 'FORMING 🔄' : 'WEAK ⚠️';
@@ -534,7 +544,7 @@ export default async function handler(req, res) {
     if (vt >= 1 && body < 0.25 && lw > 0.25) sigs.push({ type: 'DEMAND_ZONE', strength: 'STRONG', pts: 20 });
     const strong = sigs.filter(s => s.strength === 'STRONG').length;
     const smScore = Math.min(25, Math.round(sigs.reduce((a, s) => a + s.pts, 0) * 25 / 66));
-    return { sigs, count: sigs.length, strong, smScore, valid: sigs.length >= 2 };
+    return { sigs, count: sigs.length, strong, smScore, valid: sigs.length >= 1 };
   }
 
   // LAYER 5 DERIV SCORE
@@ -579,7 +589,10 @@ export default async function handler(req, res) {
     const fromATH = ath > 0 ? ((price - ath) / ath * 100) : 0;
     const rs7 = (ch7||0) - btcCh7;
     const vt = vol >= 500e6 ? 5 : vol >= 100e6 ? 4 : vol >= 30e6 ? 3 : vol >= 10e6 ? 2 : vol >= 2e6 ? 1 : 0;
-    let mom = rs7 > 12 ? 20 : rs7 > 8 ? 18 : rs7 > 5 ? 16 : rs7 > 2 ? 14 : rs7 > 0 && btcCh7 < 0 ? 16 : rs7 >= -3 && ch24 >= 0 ? 11 : ch24 > 2 ? 9 : rs7 < -10 ? 4 : 7;
+    // Momentum: minimum floor of 7 even in bad conditions
+    let mom = rs7 > 12 ? 20 : rs7 > 8 ? 18 : rs7 > 5 ? 16 : rs7 > 2 ? 14 :
+              rs7 > 0 && btcCh7 < 0 ? 16 : rs7 >= -3 && ch24 >= 0 ? 12 :
+              ch24 > 2 ? 10 : rs7 < -10 ? 6 : 8;
     if (fg <= 25) mom = Math.min(20, mom + 3);
     if (isMeme && ch24 > 3 && vt >= 2) mom = Math.min(20, mom + 3);
     const ssl = (Math.min(price,open)-low)/range > 0.38 && rp < 0.52;
@@ -590,7 +603,9 @@ export default async function handler(req, res) {
     const golden = fromATH <= -55 && fromATH >= -80;
     const deepVal = fromATH <= -80 && fromATH >= -97;
     const early = fromATH <= -30 && fromATH >= -55;
-    let mkt = golden && rp < 0.50 ? 15 : golden ? 12 : deepVal && rp < 0.45 ? 13 : early && rp < 0.40 ? 10 : early ? 8 : rp < 0.35 ? 7 : 4;
+    // Market context: higher floor, reward all discount positions
+    let mkt = golden && rp < 0.50 ? 15 : golden ? 12 : deepVal && rp < 0.45 ? 13 :
+              early && rp < 0.40 ? 11 : early ? 9 : rp < 0.40 ? 9 : rp < 0.50 ? 8 : 6;
     if (fg <= 25) mkt = Math.min(15, mkt + 3);
     if (rr1 >= 4) mkt = Math.min(15, mkt + 2);
     if (golden && hv && ['EARLY_BULL','BULL_RUN'].includes(hv.phase)) mkt = Math.min(15, mkt + 2);
@@ -599,9 +614,10 @@ export default async function handler(req, res) {
     const narrativeB = Math.max(0, Math.min(8, narrativeBonus || 0));
     const raw = pi.score + sm.smScore + mom + str + mkt + regBonus + cosmicBonus + derivBonus + narrativeB;
     const totalScore = Math.max(0, Math.min(100, Math.round(raw)));
-    const smAdj = sm.strong >= 2 ? 15 : sm.valid ? 8 : -15;
-    const piAdj = pi.count >= 5 ? 20 : pi.count >= 4 ? 15 : pi.count >= 3 ? 10 : pi.count >= 2 ? 5 : -10;
-    const rrAdj = rr1 >= 4.5 ? 10 : rr1 >= 4 ? 8 : rr1 >= 3 ? 4 : rr1 >= 2 ? 2 : -15;
+    // Confidence: balanced adjustments, less punishing
+    const smAdj = sm.strong >= 2 ? 12 : sm.valid ? 6 : -8;   // less punishment
+    const piAdj = pi.count >= 5 ? 15 : pi.count >= 4 ? 12 : pi.count >= 3 ? 8 : pi.count >= 2 ? 5 : pi.count >= 1 ? 2 : -5;
+    const rrAdj = rr1 >= 4.5 ? 10 : rr1 >= 4 ? 8 : rr1 >= 3 ? 4 : rr1 >= 2.5 ? 2 : -5; // less punishment
     const athAdj = golden ? 5 : deepVal ? 3 : early ? 0 : -2;
     const conf = Math.max(0, Math.min(100, Math.round((raw/100)*100 + smAdj + piAdj + rrAdj + athAdj)));
     return { totalScore, conf, comps: { pi: pi.score, sm: sm.smScore, mom, str, mkt }, fromATH, cosmicBonus, derivBonus, narrativeB };
@@ -748,9 +764,12 @@ export default async function handler(req, res) {
       }
       if (reg.kill) { killed.KILL++; continue; }
       const pi = layer1_SMPattern(price, coin.high, coin.low, coin.open, ch24, ch7, vol, rp, lw, body, isMeme, hv);
-      if (pi.pumped || pi.count < reg.piMin) { killed.PI++; continue; }
-      if (vt < 1 && !isMeme) { killed.PI++; continue; }
-      if (ch24 < -10) { killed.PI++; continue; }
+      if (pi.pumped) { killed.PI++; continue; }
+      if (pi.count < reg.piMin) { killed.PI++; continue; }
+      // Allow coins with vol >= 500k (was requiring vt >= 1 = 2M+)
+      const volMin = isMeme ? 200000 : 500000;
+      if (vol < volMin) { killed.PI++; continue; }
+      if (ch24 < -12) { killed.PI++; continue; }
       const sm = layer23_SMValidation(price, coin.high, coin.low, coin.open, ch24, ch7, vol, rp, lw, body);
       if (!sm.valid) { killed.SM++; continue; }
       const rr = calcRR(price, coin.low, coin.high, ath, isMeme, hv);
@@ -758,7 +777,8 @@ export default async function handler(req, res) {
       const conf = conflicts(ch24, ch7, ch30, rp, reg.r, btcCh7, fg, hv);
       if (conf.action === 'REJECT') { killed.CONFLICT++; continue; }
       const deriv = layer5_DerivScore(sym, derivData);
-      if (deriv.score <= -8) { killed.CONFLICT++; continue; }
+      // Only kill if STRONGLY bearish derivatives (overleveraged longs)
+      if (deriv.score <= -10 && deriv.signal !== 'NO_DATA') { killed.CONFLICT++; continue; }
       const narr = layer7_Narrative(sym, btcDom, fg, btcCh7);
 
       // ── ICT/SMC LAYER 1-4: Kill Zone + Liq + Structure + Pattern ──
@@ -781,13 +801,18 @@ export default async function handler(req, res) {
       const fts = SETUP_TS.get(sym);
       if (!fts) SETUP_TS.set(sym, { t: now, vol });
       const ageH = fts ? (now-fts.t)/3600000 : 0, volFaded = fts && vol < fts.vol*0.45;
-      const fresh = ageH < (isMeme?2:6) && !volFaded, valid2 = !fresh && ageH < (isMeme?4:24) && !volFaded, weak = !fresh && !valid2 && ageH < (isMeme?6:48) && !volFaded;
+      // STALE: very lenient - first scan always fresh, track over time
+      const fresh  = ageH < (isMeme ? 4  : 12) && !volFaded;
+      const valid2 = !fresh && ageH < (isMeme ? 12 : 48) && !volFaded;
+      const weak   = !fresh && !valid2 && ageH < (isMeme ? 24 : 96) && !volFaded;
+      // On first scan (fts was null → ageH=0), always fresh
       if (!fresh && !valid2 && !weak) { killed.STALE++; continue; }
       const tsStatus = fresh ? 'FRESH ⚡' : valid2 ? 'VALID ✓' : 'WEAK ⚠️';
       const ec = entryConf(ch24, lw, body, rp, vol);
       const entLo = Math.max(price*0.97, coin.low*0.99);
       const entHi = price*1.01;
-      const tier = finalScore >= 87 ? 'S' : finalScore >= 75 ? 'A' : null;
+      // Tier S: top quality setups | Tier A: good setups
+      const tier = finalScore >= 65 ? 'S' : finalScore >= 40 ? 'A' : null;
       if (!tier) { killed.SCORE++; continue; }
 
       // ── ICT Prob Score + Entry Package (needs tier) ──────────────
@@ -806,7 +831,7 @@ export default async function handler(req, res) {
 
       const prevDec = DECISION_HIST.get(sym);
       let decision, decColor;
-      const isElite = finalScore >= 87 && finalConf >= 82 && sm.strong >= 2;
+      const isElite = finalScore >= 65 && finalConf >= 65 && sm.strong >= 1 && probScore.score >= 6;
       const execOK = ts.state === 'IN_ZONE' && ec.valid && conf.action === 'PROCEED' && !ts.blocked;
 
       if (execOK && isElite) {
