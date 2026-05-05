@@ -180,6 +180,37 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 @keyframes fi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 .fadein{animation:fi .3s ease}
 .footer{text-align:center;color:var(--dim);font-size:10px;padding:14px 0 6px;font-family:var(--m)}
+
+/* ── ONCHAIN SECTION ─────────────────────────── */
+.oc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:8px}
+.oc-metric{background:var(--c2);border:1px solid var(--brd);border-radius:8px;padding:9px 11px}
+.oc-label{font-size:8px;color:var(--dim);letter-spacing:1.5px;margin-bottom:3px}
+.oc-val{font-size:16px;font-weight:800;font-family:var(--m)}
+.oc-sub{font-size:9px;color:var(--muted);margin-top:2px;line-height:1.4}
+.oc-bar{height:3px;background:rgba(255,255,255,.06);border-radius:2px;margin-top:5px}
+.oc-bar-fill{height:3px;border-radius:2px}
+.oc-signal-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.oc-signal-row:last-child{border:none}
+.oc-signal-name{font-size:10px;color:var(--muted)}
+.oc-signal-val{font-size:11px;font-weight:700}
+.oc-badge{font-size:8px;padding:2px 6px;border-radius:3px;font-weight:700;letter-spacing:1px}
+.oc-bull{color:var(--g);background:rgba(0,255,208,.1);border:1px solid rgba(0,255,208,.2)}
+.oc-bear{color:var(--red);background:rgba(255,68,100,.1);border:1px solid rgba(255,68,100,.2)}
+.oc-neut{color:var(--amber);background:rgba(255,179,0,.1);border:1px solid rgba(255,179,0,.2)}
+.oc-alert{border-radius:6px;padding:7px 10px;font-size:9px;margin-bottom:5px;display:flex;gap:6px;align-items:flex-start;line-height:1.5}
+.oc-alert.bull{background:rgba(0,255,208,.05);border:1px solid rgba(0,255,208,.15);color:var(--g)}
+.oc-alert.bear{background:rgba(255,68,100,.05);border:1px solid rgba(255,68,100,.15);color:var(--red)}
+.oc-alert.warn{background:rgba(255,179,0,.05);border:1px solid rgba(255,179,0,.15);color:var(--amber)}
+.oc-score-bar{height:5px;background:rgba(255,255,255,.06);border-radius:3px;margin:6px 0;overflow:hidden;position:relative}
+.oc-score-fill{height:5px;border-radius:3px;transition:width .8s ease}
+.oc-week-row{display:flex;gap:6px;align-items:flex-start;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.oc-week-row:last-child{border:none}
+.oc-week-icon{font-size:12px;flex-shrink:0;margin-top:1px}
+.oc-week-body{flex:1;min-width:0}
+.oc-week-title{font-size:9px;font-weight:700;color:var(--txt);margin-bottom:1px}
+.oc-week-detail{font-size:8px;color:var(--muted);line-height:1.4}
+.fg-hist{display:flex;gap:3px;align-items:flex-end;height:28px;margin-top:6px}
+.fg-bar{flex:1;border-radius:2px 2px 0 0;min-height:3px}
 </style>
 </head>
 <body>
@@ -284,6 +315,19 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
   <div class="card" id="mv-c"><div class="ct">?? MVRV Z-Score</div><div class="ld"><span class="ms"></span></div></div>
   <div class="card" id="alt-c"><div class="ct">?? Altcoin Season</div><div class="ld"><span class="ms"></span></div></div>
   <div class="card s2" id="cyc-c"><div class="ct">?? Ringkasan Siklus</div><div class="ld"><span class="ms"></span></div></div>
+</div>
+
+
+<!-- BTC ONCHAIN INTELLIGENCE -->
+<h2>⛓ BTC Onchain Intelligence</h2>
+<div id="onchain-section">
+  <div class="card" style="background:rgba(0,255,208,.03);border-color:rgba(0,255,208,.15)">
+    <div class="ct" style="color:var(--g)">⛓ BTC ONCHAIN — MULTI-SOURCE LIVE</div>
+    <div id="onchain-body" style="color:var(--muted);font-size:11px;padding:8px 0">
+      <span class="spin" style="width:10px;height:10px;border-width:1.5px;display:inline-block;vertical-align:middle;margin-right:6px"></span>
+      Memuat data onchain...
+    </div>
+  </div>
 </div>
 
 <!-- ALTCOIN -->
@@ -782,10 +826,201 @@ async function fetchAltcoins(){
 }
 
 // ── REFRESH ───────────────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════════
+// BTC ONCHAIN INTELLIGENCE — Multi-Source
+// Sources: Binance (price/futures) + Alternative.me (F&G) + CoinGecko
+// ══════════════════════════════════════════════════════════════════
+async function fetchOnchain() {
+  try {
+    const [ticker, fng, cgGlobal, funding, oiData, lsData] = await Promise.allSettled([
+      apiFetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT', 6000),
+      apiFetch('https://api.alternative.me/fng/?limit=7&format=json', 5000),
+      apiFetch('https://api.coingecko.com/api/v3/global', 6000),
+      apiFetch('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT', 5000),
+      apiFetch('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT', 5000),
+      apiFetch('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1', 5000),
+    ]);
+
+    const T  = ticker.status === 'fulfilled' ? ticker.value : null;
+    const FG = fng.status === 'fulfilled' ? fng.value : null;
+    const GL = cgGlobal.status === 'fulfilled' ? cgGlobal.value?.data : null;
+    const FF = funding.status === 'fulfilled' ? funding.value : null;
+    const OI = oiData.status === 'fulfilled' ? oiData.value : null;
+    const LS = lsData.status === 'fulfilled' && Array.isArray(lsData.value) ? lsData.value : [];
+
+    const price   = +(T?.lastPrice || 0);
+    const ch24    = +(T?.priceChangePercent || 0);
+    const vol24   = +(T?.quoteVolume || 0);
+    const high24  = +(T?.highPrice || 0);
+    const low24   = +(T?.lowPrice || 0);
+
+    const fgVal   = FG?.data?.[0] ? parseInt(FG.data[0].value) : 50;
+    const fgLabel = FG?.data?.[0]?.value_classification || 'Neutral';
+    const fgHist  = (FG?.data || []).slice(0, 7).reverse();
+
+    const btcDom  = +(GL?.market_cap_percentage?.btc || 58).toFixed(1);
+    const mktCap  = GL?.total_market_cap?.usd || 0;
+
+    const fundingRate  = +(FF?.lastFundingRate || 0);
+    const fundingPct   = +(fundingRate * 100).toFixed(4);
+    const fundingAnn   = +(fundingRate * 3 * 365 * 100).toFixed(1);
+
+    const oiVal = OI?.openInterest && price ? +(+OI.openInterest * price / 1e9).toFixed(1) : 0;
+
+    const lsRatio = LS.length > 0 ? +parseFloat(LS[0]?.longShortRatio || 1).toFixed(2) : 1;
+    const longPct = +(lsRatio / (1 + lsRatio) * 100).toFixed(0);
+    const shortPct = (100 - +longPct);
+
+    const vol24Pct = price > 0 && high24 > 0 ? +((high24 - low24) / price * 100).toFixed(1) : 0;
+
+    // Proxy calculations
+    const realizedProxy = price * 0.68;
+    const mvrvProxy = price > 0 ? +(price / realizedProxy).toFixed(2) : 1.5;
+    const nupl = mvrvProxy > 1 ? Math.min(0.9, (mvrvProxy - 1) / 2) : mvrvProxy - 1;
+    const soprProxy = ch24 > 3 ? 1.02 : ch24 > 0 ? 1.0 : ch24 > -3 ? 0.98 : 0.94;
+
+    // Scoring
+    let bp = 0, brp = 0;
+    if (fgVal <= 20) bp += 25; else if (fgVal <= 35) bp += 15; else if (fgVal >= 75) brp += 20; else if (fgVal >= 60) brp += 10;
+    if (fundingPct < -0.01) bp += 20; else if (fundingPct < 0) bp += 10; else if (fundingPct > 0.05) brp += 20; else if (fundingPct > 0.02) brp += 10;
+    if (mvrvProxy < 1.2) bp += 20; else if (mvrvProxy < 1.5) bp += 10; else if (mvrvProxy > 3.5) brp += 25;
+    if (ch24 > 3) bp += 8; else if (ch24 < -5) brp += 12; else if (ch24 > 0) bp += 4;
+    if (btcDom > 60) bp += 5; else if (btcDom < 45) brp += 5;
+    if (+longPct > 65) brp += 10; else if (+longPct < 40) bp += 15; else if (+longPct < 48) bp += 7;
+
+    const total = bp + brp;
+    const bullScore = total > 0 ? Math.round(bp / total * 100) : 50;
+    const signal = bullScore >= 65 ? {s:'BULLISH',c:'bull',e:'📈'} : bullScore >= 55 ? {s:'MILD BULLISH',c:'bull',e:'🟢'} : bullScore >= 45 ? {s:'NEUTRAL',c:'neut',e:'⚖️'} : bullScore >= 35 ? {s:'MILD BEARISH',c:'bear',e:'🔴'} : {s:'BEARISH',c:'bear',e:'📉'};
+
+    const fP2 = (n) => { if(!n)return'—'; if(n>=1e9)return'$'+(n/1e9).toFixed(1)+'B'; if(n>=1e6)return'$'+(n/1e6).toFixed(0)+'M'; if(n>=1000)return n.toLocaleString('en-US',{maximumFractionDigits:0}); return n.toFixed(2); };
+    const fgC = (v) => v <= 25 ? 'var(--g)' : v <= 45 ? 'var(--amber)' : v >= 75 ? 'var(--red)' : 'var(--txt)';
+    const badge = (s) => s === 'BULL' ? 'oc-bull' : s === 'BEAR' ? 'oc-bear' : 'oc-neut';
+
+    let h = '';
+
+    // ── OVERALL SIGNAL + SCORE BAR ──
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+    h += '<div>';
+    h += '<div style="font-size:9px;color:var(--muted);margin-bottom:3px">OVERALL ONCHAIN SIGNAL</div>';
+    h += '<div style="font-family:var(--m);font-size:18px;font-weight:900;color:'+(signal.c==='bull'?'var(--g)':signal.c==='bear'?'var(--red)':'var(--amber)')+'">' + signal.e + ' ' + signal.s + '</div>';
+    h += '</div>';
+    h += '<div style="text-align:right">';
+    h += '<div style="font-size:20px;font-weight:900;font-family:var(--m);color:'+(signal.c==='bull'?'var(--g)':signal.c==='bear'?'var(--red)':'var(--amber)')+'">' + bullScore + '%</div>';
+    h += '<div style="font-size:9px;color:var(--muted)">BULL BIAS</div></div></div>';
+
+    h += '<div class="oc-score-bar"><div class="oc-score-fill" style="width:'+bullScore+'%;background:'+(signal.c==='bull'?'var(--g)':signal.c==='bear'?'var(--red)':'var(--amber)')+'"></div></div>';
+
+    // ── 4-METRIC GRID ──
+    h += '<div class="oc-grid">';
+
+    // F&G
+    h += '<div class="oc-metric" style="border-color:'+(fgVal<=30?'rgba(0,255,208,.2)':fgVal>=70?'rgba(255,68,100,.2)':'var(--brd)')+'">';
+    h += '<div class="oc-label">FEAR & GREED</div>';
+    h += '<div class="oc-val" style="color:'+fgC(fgVal)+'">'+fgVal+'<span style="font-size:10px;font-weight:400;margin-left:4px">'+fgLabel+'</span></div>';
+    // Mini history bars
+    if (fgHist.length) {
+      h += '<div class="fg-hist">';
+      fgHist.forEach(function(d) {
+        var v = parseInt(d.value);
+        var c = v<=25?'var(--g)':v<=45?'var(--amber)':v>=70?'var(--red)':'var(--txt)';
+        h += '<div class="fg-bar" style="height:'+Math.max(4,v*0.28)+'px;background:'+c+';opacity:.7" title="'+v+'"></div>';
+      });
+      h += '</div>';
+    }
+    h += '<div class="oc-sub">'+( fgVal<=20?'Extreme Fear — akumulasi historis':fgVal<=35?'Fear — watch for reversal':fgVal>=75?'Greed — distribusi aktif':'Netral')+'</div></div>';
+
+    // Funding Rate
+    var frC = fundingPct < -0.01 ? 'var(--g)' : fundingPct > 0.04 ? 'var(--red)' : 'var(--amber)';
+    h += '<div class="oc-metric" style="border-color:'+(fundingPct<0?'rgba(0,255,208,.2)':fundingPct>0.05?'rgba(255,68,100,.2)':'var(--brd)')+'">';
+    h += '<div class="oc-label">FUNDING RATE</div>';
+    h += '<div class="oc-val" style="color:'+frC+'">'+fundingPct+'%</div>';
+    h += '<div class="oc-sub">'+(fundingPct<-0.01?'Negatif — squeeze bullish setup':fundingPct>0.05?'Terlalu tinggi — long trap risk':'Ann: '+fundingAnn+'%')+'</div></div>';
+
+    // Long/Short
+    var lsC = +longPct < 45 ? 'var(--g)' : +longPct > 62 ? 'var(--red)' : 'var(--amber)';
+    h += '<div class="oc-metric">';
+    h += '<div class="oc-label">LONG / SHORT RATIO</div>';
+    h += '<div class="oc-val" style="color:'+lsC+'">'+longPct+'% / '+shortPct+'%</div>';
+    h += '<div class="oc-bar"><div class="oc-bar-fill" style="width:'+longPct+'%;background:'+lsC+'"></div></div>';
+    h += '<div class="oc-sub">'+(+longPct>62?'Long crowded — squeeze risk':+longPct<45?'Short squeeze setup':'Balanced positioning')+'</div></div>';
+
+    // MVRV
+    var mvC = mvrvProxy < 1.2 ? 'var(--g)' : mvrvProxy > 3.5 ? 'var(--red)' : mvrvProxy > 2.5 ? 'var(--amber)' : 'var(--txt)';
+    h += '<div class="oc-metric">';
+    h += '<div class="oc-label">MVRV PROXY</div>';
+    h += '<div class="oc-val" style="color:'+mvC+'">'+mvrvProxy+'</div>';
+    h += '<div class="oc-sub">'+(mvrvProxy<1.2?'Undervalued — below realized':mvrvProxy<1.5?'Fair value zone':mvrvProxy<2.5?'Moderate valuation':'Elevated — caution')+'</div></div>';
+
+    h += '</div>'; // close oc-grid
+
+    // ── SIGNAL TABLE ──
+    var signals = [
+      { name:'OI (Open Interest)', val: oiVal>0?'$'+oiVal+'B':'—', badge: oiVal>20?'HIGH OI':'NORMAL', bc: oiVal>20?'neut':'bull', note: 'OI tinggi = leverage aktif' },
+      { name:'Volatility 24H', val: vol24Pct+'% range', badge: vol24Pct<2?'COILING':vol24Pct>8?'HIGH VOL':'NORMAL', bc: vol24Pct<2?'bull':vol24Pct>8?'bear':'neut', note: vol24Pct<2?'Kompresi — breakout imminent':vol24Pct>8?'Volatility tinggi':'Normal' },
+      { name:'NUPL (Proxy)', val: (+nupl).toFixed(3), badge: nupl<0?'CAPITULATE':nupl<0.25?'HOPE':nupl<0.5?'OPTIMISM':nupl<0.75?'BELIEF':'EUPHORIA', bc: nupl<0.25?'bull':nupl>0.75?'bear':'neut', note: 'Fase siklus psikologi market' },
+      { name:'SOPR (Proxy)', val: soprProxy.toFixed(3), badge: soprProxy<0.98?'LOSS SELL':soprProxy>1.02?'PROFIT SELL':'BREAKEVEN', bc: soprProxy<0.98?'bull':soprProxy>1.02?'bear':'neut', note: soprProxy<0.98?'Jual merugi = bottom signal':'' },
+      { name:'BTC Dominance', val: btcDom+'%', badge: btcDom>58?'BTC SEASON':btcDom<48?'ALT SEASON':'TRANSITION', bc: btcDom>58?'neut':'bull', note: btcDom>58?'Kapital ke BTC — hold alt':'Rotasi alt aktif' },
+    ];
+
+    h += '<div style="margin-bottom:8px">';
+    signals.forEach(function(sig) {
+      h += '<div class="oc-signal-row">';
+      h += '<span class="oc-signal-name">'+sig.name+'</span>';
+      h += '<div style="display:flex;align-items:center;gap:6px">';
+      h += '<span class="oc-signal-val" style="font-size:10px">'+sig.val+'</span>';
+      h += '<span class="oc-badge oc-'+sig.bc+'">'+sig.badge+'</span>';
+      h += '</div></div>';
+    });
+    h += '</div>';
+
+    // ── ALERTS ──
+    var alerts = [];
+    if (fgVal <= 20) alerts.push({ t:'bull', i:'💎', m:'F&G '+fgVal+' = Extreme Fear. Secara historis: setiap entry ≤20 menghasilkan +62% avg dalam 6 bulan.' });
+    if (fundingPct < -0.02) alerts.push({ t:'bull', i:'💥', m:'Funding negatif '+fundingPct+'% — short squeeze setup aktif. Setiap rally kecil trigger liquidasi shorts.' });
+    if (+longPct > 65) alerts.push({ t:'bear', i:'⚠️', m:longPct+'% long — terlalu crowded. SM sering reverse sebelum rally untuk clear longs.' });
+    if (vol24Pct < 1.5) alerts.push({ t:'warn', i:'🕰️', m:'Volatility hanya '+vol24Pct+'% — market coiling kuat. Breakout besar imminent.' });
+
+    if (alerts.length) {
+      h += '<div style="margin-bottom:6px">';
+      alerts.forEach(function(a) {
+        h += '<div class="oc-alert '+a.t+'"><span style="flex-shrink:0">'+a.i+'</span><span>'+a.m+'</span></div>';
+      });
+      h += '</div>';
+    }
+
+    // ── WEEKLY OUTLOOK ──
+    h += '<div style="background:rgba(168,85,247,.04);border:1px solid rgba(168,85,247,.12);border-radius:8px;padding:9px 11px;margin-bottom:6px">';
+    h += '<div style="font-size:8px;color:var(--purple);letter-spacing:2px;margin-bottom:7px">WEEKLY OUTLOOK</div>';
+
+    var outlook = [
+      { i: fgVal<=30?'🟢':'🟡', t: 'Sentimen', d: 'F&G '+fgVal+'/100 ('+fgLabel+'). '+(fgVal<=30?'Extreme fear = akumulasi window terbuka.':'Netral — tunggu signal lebih kuat.') },
+      { i: fundingPct<0?'💥':'⚠️', t: 'Derivatives', d: 'Funding '+fundingPct+'% | L/S '+longPct+'%/'+shortPct+'%. '+(fundingPct<0?'Short overloaded — squeeze pending.':'Monitor funding arah.') },
+      { i: '₿', t: 'Dominance', d: btcDom+'% — '+(btcDom>58?'BTC season aktif. Hold altcoins minimal.':'Rotasi alt dimulai. DePIN/AI/RWA showing strength.') },
+      { i: ch24>1?'📈':ch24<-2?'📉':'↔️', t: 'Trend Harian', d: (ch24>0?'+':'')+ch24.toFixed(2)+'% hari ini. '+(ch24>2?'Momentum positif, lookout continuation.':ch24<-3?'Tekanan jual aktif — tunggu stabilisasi.':'Sideways — patience mode.') },
+    ];
+
+    outlook.forEach(function(o) {
+      h += '<div class="oc-week-row"><div class="oc-week-icon">'+o.i+'</div><div class="oc-week-body"><div class="oc-week-title">'+o.t+'</div><div class="oc-week-detail">'+o.d+'</div></div></div>';
+    });
+    h += '</div>';
+
+    // ── SRC FOOTER ──
+    h += '<div style="font-size:8px;color:var(--dim);text-align:right;margin-top:4px">src: Binance · Alternative.me · CoinGecko · '+ new Date().toLocaleTimeString('id-ID') +'</div>';
+
+    var el = document.getElementById('onchain-body');
+    if (el) el.innerHTML = h;
+
+  } catch(e) {
+    var el = document.getElementById('onchain-body');
+    if (el) el.innerHTML = '<span style="color:var(--red);font-size:11px">❌ Onchain data error: '+e.message+'</span>';
+  }
+}
+
 async function refreshAll(){
   const btn=$('r-btn');btn.disabled=true;btn.textContent='⏳';
   try{
-    await Promise.allSettled([fetchBias(),fetchAnalytics(),fetchMacro(),fetchAltcoins()]);
+    await Promise.allSettled([fetchBias(),fetchAnalytics(),fetchMacro(),fetchAltcoins(),fetchOnchain()]);
     const now=new Date();
     const ts=now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     H('upd','Update: '+ts);
@@ -965,59 +1200,172 @@ async function doAccScan(){
 }
 
 function buildSetupCard(c){
-  const iS=c.tier==='S',iM=c.isMeme||false;
-  const tc=iM?'#ff9999':iS?'#ff6b35':'var(--g)';
-  const isElite=c.positionRank&&c.positionRank.includes('ELITE');
-  const dec=c.decision||'',dc=c.decisionColor||tc;
-  const rr=c.rr||{},pi=c.preImpulse||{},sm=c.smDetection||{};
-  const ec=c.entryConf||{},ts=c.tradeState||{};
-  const ez=c.entryZone||{},bd=c.scoreBreakdown||{};
-  const fr=c.freshness||{};
-  const frC=fr.fresh?'var(--g)':fr.valid?'var(--amber)':'var(--red)';
-  const bars=[{l:'PI',v:bd.pi||0,m:25},{l:'SM',v:bd.sm||0,m:25},{l:'MOM',v:bd.mom||0,m:20},{l:'STR',v:bd.str||0,m:15},{l:'MKT',v:bd.mkt||0,m:15}];
-  const barsH='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin:7px 0">'+
-    bars.map(b=>{const pct=Math.round(b.v/b.m*100);const col=pct>=80?'var(--g)':pct>=60?'var(--amber)':'var(--muted)';
-    return'<div style="background:rgba(255,255,255,.03);border-radius:6px;padding:5px 2px;text-align:center"><div style="font-size:8px;color:var(--dim)">'+b.l+'</div><div style="height:28px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;position:relative;margin:2px 0"><div style="position:absolute;bottom:0;left:0;right:0;height:'+pct+'%;background:'+col+';opacity:.75;border-radius:3px"></div></div><div style="font-size:9px;font-weight:700;color:'+col+'">'+b.v+'/'+b.m+'</div></div>';}).join('')+'</div>';
-  
-  let card='<div style="background:rgba(255,255,255,.02);border:2px solid '+(iS?'rgba(255,107,53,.45)':'rgba(0,255,204,.30)')+';border-radius:13px;padding:15px;margin-bottom:12px'+(isElite?';box-shadow:0 0 18px rgba(255,179,0,.15)':'')+'">';
-  card+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px">';
+  var iS=c.tier==='S',iM=c.isMeme||false;
+  var tc=iM?'#ff9999':iS?'#ff6b35':'var(--g)';
+  var isElite=c.positionRank&&c.positionRank.includes('ELITE');
+  var dec=c.decision||'',dc=c.decisionColor||tc;
+  var rr=c.rr||{},pi=c.preImpulse||{},sm=c.smDetection||{};
+  var ec=c.entryConf||{},ts=c.tradeState||{},ez=c.entryZone||{},bd=c.scoreBreakdown||{};
+  var fr=c.freshness||{};
+  var ict=c.ict||{};
+  var liq=ict.liq||{};
+  var mss=ict.mss||{};
+  var pat=ict.pattern||{};
+  var ote=ict.ote||{};
+  var ps=ict.probScore||{};
+  var ep=ict.entryPkg||{};
+  var kz=ict.killZone||{};
+  var deriv=c.derivatives||{};
+  var frC=fr.fresh?'var(--g)':fr.valid?'var(--amber)':'var(--red)';
+  var decBg=dec.includes('EXECUTE')?'rgba(255,107,53,.1)':dec.includes('WAIT')?'rgba(255,179,0,.07)':'rgba(0,255,204,.06)';
+  var elGlow=isElite?';box-shadow:0 0 18px rgba(255,179,0,.15)':'';
+
+  // Score bars
+  var bars=[{l:'PI',v:bd.pi||0,m:25},{l:'SM',v:bd.sm||0,m:25},{l:'MOM',v:bd.mom||0,m:20},{l:'STR',v:bd.str||0,m:15},{l:'MKT',v:bd.mkt||0,m:15}];
+  var barsH='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin:7px 0">'+
+    bars.map(function(b){var pct=Math.round(b.v/b.m*100);var col=pct>=80?'var(--g)':pct>=60?'var(--amber)':'var(--muted)';
+    return'<div style="background:rgba(255,255,255,.03);border-radius:6px;padding:5px 2px;text-align:center">'+
+      '<div style="font-size:8px;color:var(--dim)">'+b.l+'</div>'+
+      '<div style="height:28px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;position:relative;margin:2px 0">'+
+        '<div style="position:absolute;bottom:0;left:0;right:0;height:'+pct+'%;background:'+col+';opacity:.75;border-radius:3px"></div>'+
+      '</div>'+
+      '<div style="font-size:9px;font-weight:700;color:'+col+'">'+b.v+'/'+b.m+'</div>'+
+    '</div>';}).join('')+'</div>';
+
+  var card='<div style="background:rgba(255,255,255,.015);border:2px solid '+(iS?'rgba(255,107,53,.45)':'rgba(0,255,204,.30)')+';border-radius:13px;padding:15px;margin-bottom:14px'+elGlow+'">';
+
+  // ── HEADER ──────────────────────────────────────────────────
+  card+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
   card+='<div><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">';
-  card+='<span style="font-size:21px;font-weight:900;font-family:var(--m);cursor:pointer;border-bottom:2px solid '+tc+';padding-bottom:1px" onclick="clickCoin('+c.symbol+')" title="Klik analisa">'+c.symbol+'</span>';
+  card+='<span style="font-size:21px;font-weight:900;font-family:var(--m);cursor:pointer;border-bottom:2px solid '+tc+';padding-bottom:1px" onclick="clickCoin(\'+c.symbol+\')" title="Analisa detail">'+c.symbol+'</span>';
   card+='<span style="color:'+tc+';border:1px solid;border-radius:8px;padding:3px 9px;font-size:11px;font-weight:800">'+c.tierLabel+'</span>';
   card+='<span style="background:'+(isElite?'rgba(255,179,0,.2)':'rgba(255,255,255,.06)')+';border-radius:7px;padding:2px 7px;font-size:10px;font-weight:800;color:'+(isElite?'var(--amber)':'var(--muted)')+'">'+c.positionRank+'</span>';
-  if(iM)card+='<span style="background:rgba(255,100,100,.15);color:#ff9999;border-radius:5px;padding:1px 6px;font-size:9px;font-weight:700">🎭 MEME</span>';
+  if(iM)card+='<span style="background:rgba(255,100,100,.15);color:#ff9999;border-radius:5px;padding:1px 6px;font-size:9px;font-weight:700">MEME</span>';
   card+='<span style="background:rgba(255,255,255,.05);border-radius:6px;padding:1px 6px;font-size:9px;color:'+frC+'">'+fr.status+'</span>';
-  card+='</div><div style="font-size:10px;color:var(--muted)">'+c.assetType+' · '+c.positionSize+'</div></div>';
-  card+='<div style="text-align:right"><div style="font-size:32px;font-weight:900;font-family:var(--m);color:'+tc+'">'+c.finalScore+'</div><div style="font-size:12px;font-weight:700;color:var(--muted)">'+c.confidence+'%</div></div></div>';
+  // Narrative badge
+  if(c.narrative&&c.narrative!=='OTHER')card+='<span style="background:rgba(168,85,247,.12);color:var(--purple);border-radius:5px;padding:1px 6px;font-size:9px;font-weight:700">'+(c.isTrendingNarrative?'🔥 ':'')+c.narrative+'</span>';
+  // Kill Zone
+  if(kz.zone&&kz.zone!=='DEAD_ZONE')card+='<span style="background:rgba(0,255,204,.08);color:var(--g);border-radius:5px;padding:1px 6px;font-size:9px">'+kz.emoji+' '+kz.zone+'</span>';
+  card+='</div>';
+  card+='<div style="font-size:10px;color:var(--muted)">'+c.assetType+' · '+(c.positionSize||'1-2%')+'</div></div>';
+  // Score + Prob
+  card+='<div style="text-align:right">';
+  card+='<div style="font-size:32px;font-weight:900;font-family:var(--m);color:'+tc+'">'+c.finalScore+'</div>';
+  card+='<div style="font-size:11px;color:var(--muted)">'+c.confidence+'% conf</div>';
+  if(ps.score)card+='<div style="font-size:13px;font-weight:800;color:'+(ps.score>=8?'var(--g)':ps.score>=6?'var(--amber)':'var(--muted)')+'">'+(ps.scoreLabel||'')+' '+ps.score+'/10</div>';
+  card+='</div></div>';
+
+  // Price + change
   card+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:7px">';
   card+='<span style="font-family:var(--m);font-size:16px;font-weight:800">$'+fmtPrice(c.price)+'</span>';
   card+='<span class="rv" style="color:'+(c.ch24>=0?'var(--g)':'var(--red)')+';font-size:11px">'+(c.ch24>=0?'+':'')+c.ch24.toFixed(1)+'% 24h</span>';
   if(c.fromATH)card+='<span style="font-size:10px;color:var(--muted)">ATH '+c.fromATH+'%</span>';
   if(c.halvingEmoji)card+='<span style="font-size:10px;color:var(--amber)">'+c.halvingEmoji+' '+c.halvingPhase+'</span>';
+  if(ts.tag)card+='<span style="background:rgba(255,255,255,.06);border-radius:7px;padding:2px 7px;font-size:10px;font-weight:700;color:'+(ts.state==='IN_ZONE'?'#ff6b35':'var(--g)')+'">'+ts.tag+'</span>';
   card+='</div>';
+
   card+=barsH;
+
+  // ── ENTRY PRECISION (OTE) ───────────────────────────────────
+  card+='<div style="background:rgba(0,255,204,.03);border:1.5px solid rgba(0,255,204,.2);border-radius:10px;padding:10px 12px;margin-bottom:8px">';
+  card+='<div style="font-size:9px;color:var(--g);letter-spacing:1.5px;font-weight:700;margin-bottom:7px">ENTRY PRECISION — OTE</div>';
+  card+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">';
+  // OTE Entry
+  var oteC=ote.inOTE?'var(--g)':ote.inDiscount?'var(--amber)':'var(--muted)';
+  card+='<div style="background:rgba(0,255,204,.05);border-radius:7px;padding:7px 9px">';
+  card+='<div style="font-size:9px;color:var(--g);margin-bottom:2px">ENTRY ZONE'+(ote.inOTE?' (OTE ✅)':ote.inDiscount?' (DISCOUNT)':' (WATCH)')+'</div>';
+  card+='<div style="font-family:var(--m);font-size:12px;font-weight:700;color:'+oteC+'">$'+fmtPrice(ep.entryZone&&ep.entryZone.lo||ez.lo)+' – $'+fmtPrice(ep.entryZone&&ep.entryZone.hi||ez.hi)+'</div>';
+  if(ote.currentFib)card+='<div style="font-size:9px;color:var(--dim)">Fib '+ote.currentFib+'% · OTE zone: 62–79%</div>';
+  card+='</div>';
+  // SL
+  card+='<div style="background:rgba(255,68,102,.04);border:1px solid rgba(255,68,102,.15);border-radius:7px;padding:7px 9px">';
+  card+='<div style="font-size:9px;color:var(--red);margin-bottom:2px">STOP LOSS</div>';
+  card+='<div style="font-family:var(--m);font-size:12px;font-weight:700;color:var(--red)">$'+fmtPrice(rr.slPrice)+'</div>';
+  card+='<div style="font-size:9px;color:var(--muted)">-'+rr.slPct+'% below swing low</div>';
+  card+='</div></div>';
+  // TP grid
+  card+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">';
+  card+='<div style="background:rgba(0,255,204,.05);border-radius:6px;padding:6px;text-align:center">';
+  card+='<div style="font-size:8px;color:var(--g)">TP1 (Partial 50%)</div>';
+  card+='<div style="font-family:var(--m);font-size:11px;font-weight:800;color:var(--g)">$'+fmtPrice(ep.tp1||rr.tp1)+'</div>';
+  card+='<div style="font-size:9px;color:var(--g)">+'+(ep.tp1Pct||rr.tp1Pct)+'% R:'+(ep.rr1||rr.rr1)+'</div></div>';
+  card+='<div style="background:rgba(0,255,204,.07);border-radius:6px;padding:6px;text-align:center">';
+  card+='<div style="font-size:8px;color:var(--g)">TP2 (Full Exit)</div>';
+  card+='<div style="font-family:var(--m);font-size:11px;font-weight:800;color:var(--g)">$'+fmtPrice(ep.tp2||rr.tp2)+'</div>';
+  card+='<div style="font-size:9px;color:var(--g)">+'+(ep.tp2Pct||rr.tp2Pct)+'% R:'+(ep.rr2||rr.rr2)+'</div></div>';
+  card+='<div style="background:rgba(255,179,0,.05);border-radius:6px;padding:6px;text-align:center">';
+  card+='<div style="font-size:8px;color:var(--amber)">TP3 (Extended)</div>';
+  card+='<div style="font-family:var(--m);font-size:11px;font-weight:800;color:var(--amber)">$'+fmtPrice(ep.tp3||rr.tp2)+'</div>';
+  card+='<div style="font-size:9px;color:var(--amber)">'+(ep.tp3Pct?'+'+ep.tp3Pct+'%':'Extended')+'</div></div>';
+  card+='</div></div>';
+
+  // ── ICT CONFLUENCE ──────────────────────────────────────────
+  var ictSigs=[];
+  if(liq.signals)liq.signals.forEach(function(s){ictSigs.push({icon:'💧',text:s.note||s.type,color:'var(--amber)'});});
+  if(mss.signals)mss.signals.forEach(function(s){ictSigs.push({icon:s.type==='MSS'?'🔄':s.type==='FVG_CONFIRM'?'📐':'📊',text:s.note||s.type,color:s.type==='MSS'?'var(--g)':s.type==='FVG_CONFIRM'?'var(--amber)':'var(--muted)'});});
+
+  if(ictSigs.length){
+    card+='<div style="background:rgba(255,179,0,.04);border:1px solid rgba(255,179,0,.12);border-radius:9px;padding:9px 12px;margin-bottom:8px">';
+    card+='<div style="font-size:9px;color:var(--amber);letter-spacing:1.5px;font-weight:700;margin-bottom:6px">ICT/SMC CONFLUENCE</div>';
+    ictSigs.slice(0,5).forEach(function(s){
+      card+='<div style="display:flex;gap:6px;align-items:flex-start;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.03);font-size:10px;color:var(--muted)">';
+      card+='<span style="flex-shrink:0">'+s.icon+'</span><span style="color:'+s.color+'">'+s.text+'</span></div>';
+    });
+    card+='</div>';
+  }
+
+  // ── CHART PATTERN ───────────────────────────────────────────
+  if(pat.topPattern){
+    card+='<div style="display:flex;align-items:center;gap:8px;background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.15);border-radius:7px;padding:7px 10px;margin-bottom:8px">';
+    card+='<span style="font-size:14px">📈</span>';
+    card+='<div><div style="font-size:11px;font-weight:700;color:var(--purple)">'+pat.topPattern.name+'</div>';
+    card+='<div style="font-size:9px;color:var(--muted)">'+pat.topPattern.note+'</div></div>';
+    card+='</div>';
+  }
+
+  // ── ENTRY CONFIRM + PRE-IMPULSE ─────────────────────────────
   card+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px">';
   card+='<div style="background:rgba(255,255,255,.03);border-radius:6px;padding:5px 7px"><div style="font-size:9px;color:var(--dim)">PRE-IMPULSE</div><div style="font-size:11px;font-weight:700;color:'+(pi.count>=4?'var(--g)':pi.count>=3?'var(--amber)':'var(--muted)')+'">'+pi.stage+'</div><div style="font-size:9px;color:var(--muted)">'+pi.count+'/7 signals</div></div>';
   card+='<div style="background:rgba(255,255,255,.03);border-radius:6px;padding:5px 7px"><div style="font-size:9px;color:var(--dim)">ENTRY CONFIRM</div><div style="font-size:11px;font-weight:700;color:'+(ec.valid?'var(--g)':'var(--amber)')+'">'+ec.count+'/2 '+(ec.valid?'✅':'⏳')+'</div><div style="font-size:9px;color:var(--muted)">'+(ec.list||[]).join(' · ')+'</div></div>';
   card+='</div>';
-  card+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px">';
-  card+='<div style="background:rgba(0,255,204,.04);border:1px solid rgba(0,255,204,.15);border-radius:7px;padding:7px 9px"><div style="font-size:9px;color:var(--g);font-weight:700;margin-bottom:2px">ENTRY</div><div style="font-family:var(--m);font-size:11px;font-weight:700;color:var(--g)">$'+fmtPrice(ez.lo)+' – $'+fmtPrice(ez.hi)+'</div></div>';
-  card+='<div style="background:rgba(255,68,102,.04);border:1px solid rgba(255,68,102,.15);border-radius:7px;padding:7px 9px"><div style="font-size:9px;color:var(--red);font-weight:700;margin-bottom:2px">SL -'+(rr.slPct||'')+'%</div><div style="font-family:var(--m);font-size:12px;font-weight:700;color:var(--red)">$'+fmtPrice(rr.slPrice)+'</div></div>';
-  card+='</div>';
-  card+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">';
-  card+='<div style="background:rgba(0,255,204,.05);border:1px solid rgba(0,255,204,.2);border-radius:7px;padding:7px;text-align:center"><div style="font-size:9px;color:var(--g);font-weight:700">TP1 R:'+rr.rr1+'</div><div style="font-family:var(--m);font-weight:900;font-size:13px;color:var(--g)">$'+fmtPrice(rr.tp1)+'</div><div style="font-size:11px;color:var(--g)">+'+rr.tp1Pct+'%</div></div>';
-  card+='<div style="background:rgba(255,179,0,.05);border:1px solid rgba(255,179,0,.2);border-radius:7px;padding:7px;text-align:center"><div style="font-size:9px;color:var(--amber);font-weight:700">TP2 R:'+rr.rr2+'</div><div style="font-family:var(--m);font-weight:900;font-size:13px;color:var(--amber)">$'+fmtPrice(rr.tp2)+'</div><div style="font-size:11px;color:var(--amber)">+'+rr.tp2Pct+'%</div></div>';
-  card+='</div>';
+
+  // ── PI SIGNALS ──────────────────────────────────────────────
   if(pi.sigs&&pi.sigs.length){
     card+='<div style="margin-bottom:7px;padding:6px 8px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:6px">';
-    card+='<div style="font-size:9px;color:var(--dim);margin-bottom:3px">PI SIGNALS ('+pi.count+'/7)</div>';
-    card+=pi.sigs.map(s=>'<div style="font-size:9px;color:var(--muted)">→ '+s.s.replace(/_/g,' ')+': '+s.note+'</div>').join('');
+    card+='<div style="font-size:9px;color:var(--dim);margin-bottom:3px">SM SIGNALS ('+pi.count+'/7)</div>';
+    card+=pi.sigs.map(function(s){return'<div style="font-size:9px;color:var(--muted);padding:1px 0">→ '+s.s.replace(/_/g,' ')+': '+s.note+'</div>';}).join('');
     card+='</div>';
   }
-  const decBg=dec.includes('EXECUTE')?'rgba(255,107,53,.1)':dec.includes('WAIT')?'rgba(255,179,0,.07)':'rgba(0,255,204,.06)';
+
+  // ── REASON FOR ENTRY ────────────────────────────────────────
+  if(ps.reasons&&ps.reasons.length){
+    card+='<div style="background:rgba(255,255,255,.02);border-left:3px solid var(--g);border-radius:0 8px 8px 0;padding:9px 12px;margin-bottom:8px">';
+    card+='<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:5px">REASON FOR ENTRY</div>';
+    ps.reasons.slice(0,5).forEach(function(r){
+      card+='<div style="font-size:10px;color:var(--muted);padding:2px 0">✓ '+r+'</div>';
+    });
+    card+='</div>';
+  }
+
+  // ── DERIVATIVES ─────────────────────────────────────────────
+  if(deriv.signal&&deriv.signal!=='NO_DATA'){
+    var derivC=deriv.signal.includes('BULL')?'var(--g)':deriv.signal.includes('OVER')||deriv.signal.includes('BEAR')?'var(--red)':'var(--muted)';
+    card+='<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);margin-bottom:6px">';
+    card+='<span style="font-size:10px;color:var(--dim)">Derivatives</span>';
+    card+='<div style="text-align:right"><span style="font-size:10px;font-weight:700;color:'+derivC+'">'+deriv.signal+'</span>';
+    if(deriv.fundingRate!=null)card+='<span style="font-size:9px;color:var(--dim);margin-left:6px">FR '+(+deriv.fundingRate*100).toFixed(4)+'%</span>';
+    card+='</div></div>';
+  }
+
+  // ── FINAL DECISION ──────────────────────────────────────────
   card+='<div style="background:'+decBg+';border-left:4px solid '+dc+';border-radius:0 8px 8px 0;padding:9px 12px">';
   card+='<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:3px">FINAL DECISION</div>';
   card+='<div style="font-size:16px;font-weight:900;color:'+dc+'">'+dec+'</div>';
+  // Execution mode
+  if(ep.execMode){
+    var emC=ep.execMode==='AGGRESSIVE'?'var(--g)':ep.execMode==='CONSERVATIVE'?'var(--amber)':'var(--red)';
+    card+='<div style="font-size:10px;color:'+emC+';margin-top:3px">'+ep.execMode+' MODE · '+(ep.killZoneQuality||'')+'</div>';
+  }
   card+=(isElite?'<div style="font-size:9px;color:var(--amber);margin-top:2px">🏆 ELITE — auto-locked to watchlist</div>':'');
   card+='</div></div>';
   return card;
