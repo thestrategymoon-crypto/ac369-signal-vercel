@@ -833,13 +833,20 @@ async function fetchAltcoins(){
 // ══════════════════════════════════════════════════════════════════
 async function fetchOnchain() {
   try {
+    // Helper fetch with timeout
+    const ocFetch = async (url, ms) => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), ms || 7000);
+      try { const r = await fetch(url, {signal: ctrl.signal}); clearTimeout(t); if (!r.ok) return null; return await r.json(); }
+      catch { clearTimeout(t); return null; }
+    };
     const [ticker, fng, cgGlobal, funding, oiData, lsData] = await Promise.allSettled([
-      apiFetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT', 6000),
-      apiFetch('https://api.alternative.me/fng/?limit=7&format=json', 5000),
-      apiFetch('https://api.coingecko.com/api/v3/global', 6000),
-      apiFetch('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT', 5000),
-      apiFetch('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT', 5000),
-      apiFetch('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1', 5000),
+      ocFetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT', 6000),
+      ocFetch('https://api.alternative.me/fng/?limit=7&format=json', 5000),
+      ocFetch('https://api.coingecko.com/api/v3/global', 6000),
+      ocFetch('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT', 5000),
+      ocFetch('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT', 5000),
+      ocFetch('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1', 5000),
     ]);
 
     const T  = ticker.status === 'fulfilled' ? ticker.value : null;
@@ -1188,12 +1195,25 @@ async function doAccScan(){
       meme.forEach(c=>{h+=buildSetupCard(c);});
     }
 
+    // ── Engine Disciplined / Zero results message ────────────────
+    if(!regular.length && !meme.length && !acts.length && !reg.kill) {
+      h += '<div style="text-align:center;padding:44px 20px">' +
+        '<div style="font-size:44px;margin-bottom:12px">🛡️</div>' +
+        '<div style="font-size:16px;font-weight:900;color:var(--amber);font-family:var(--m)">Engine Disciplined</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-top:6px">Zero Valid Setups saat ini</div>' +
+        '<div style="font-size:10px;color:var(--dim);margin-top:8px;line-height:1.6">' +
+        'Scanned: ' + data.totalScanned + ' koin | Killed: ' + data.totalKilled + '<br>' +
+        'PI: ' + (kb.PI||0) + ' · SM: ' + (kb.SM||0) + ' · Score: ' + (kb.SCORE||0) + ' · Conflict: ' + (kb.CONFLICT||0) + '<br>' +
+        '<span style="color:var(--g)">Engine menolak semua karena tidak memenuhi 7-layer minimum threshold</span></div>' +
+        '</div>';
+    }
     if(tiers){tiers.innerHTML=h;}
     if(prog){prog.style.width='100%';setTimeout(()=>{prog.style.width='0';},2000);}
     if(st)st.textContent='v12.2: '+data.totalQualified+' valid · '+(data.eliteCount||0)+' ELITE · '+acts.length+' active · WL:'+(data.wlActive||0)+' · '+data.scanTime+'s';
   }catch(e){
     if(st)st.textContent='❌ '+e.message;
     if(prog)prog.style.width='0';
+    if(tiers)tiers.innerHTML='<div style="text-align:center;padding:30px;color:var(--red);font-size:11px">❌ Error: '+e.message+'<br><span style="font-size:10px;color:var(--muted)">Coba klik Scan lagi</span></div>';
   }finally{
     btn.disabled=false;btn.textContent='🧠 Smart Money Scan';
   }
