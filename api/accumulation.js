@@ -1,4 +1,4 @@
-// api/accumulation.js — AC369 FUSION v12.1
+// api/accumulation.js — AC369 FUSION v12.2 FIXED
 // ══════════════════════════════════════════════════════════════════
 // COMPLETE 7-LAYER ICT/SMC DETECTION ENGINE
 //
@@ -773,9 +773,10 @@ export default async function handler(req, res) {
       const sm = layer23_SMValidation(price, coin.high, coin.low, coin.open, ch24, ch7, vol, rp, lw, body);
       if (!sm.valid) { killed.SM++; continue; }
       const rr = calcRR(price, coin.low, coin.high, ath, isMeme, hv);
-      if (rr.unrealistic || (isMeme ? rr.rr1 < 2 : rr.rr1 < 3)) { killed.RR++; continue; }
+      if (rr.unrealistic) { killed.RR++; continue; } // only skip truly impossible R:R
       const conf = conflicts(ch24, ch7, ch30, rp, reg.r, btcCh7, fg, hv);
-      if (conf.action === 'REJECT') { killed.CONFLICT++; continue; }
+      // Only reject HIGH severity conflicts (not MEDIUM)
+      if (conf.level === 'HIGH' && conf.cs.length >= 2) { killed.CONFLICT++; continue; }
       const deriv = layer5_DerivScore(sym, derivData);
       // Only kill if STRONGLY bearish derivatives (overleveraged longs)
       if (deriv.score <= -10 && deriv.signal !== 'NO_DATA') { killed.CONFLICT++; continue; }
@@ -801,12 +802,12 @@ export default async function handler(req, res) {
       const fts = SETUP_TS.get(sym);
       if (!fts) SETUP_TS.set(sym, { t: now, vol });
       const ageH = fts ? (now-fts.t)/3600000 : 0, volFaded = fts && vol < fts.vol*0.45;
-      // STALE: very lenient - first scan always fresh, track over time
-      const fresh  = ageH < (isMeme ? 4  : 12) && !volFaded;
-      const valid2 = !fresh && ageH < (isMeme ? 12 : 48) && !volFaded;
-      const weak   = !fresh && !valid2 && ageH < (isMeme ? 24 : 96) && !volFaded;
-      // On first scan (fts was null → ageH=0), always fresh
-      if (!fresh && !valid2 && !weak) { killed.STALE++; continue; }
+      // STALE: always fresh on cold start (fts was null = ageH=0)
+      const fresh  = ageH < (isMeme ? 24 : 72) || !fts;
+      const valid2 = !fresh && ageH < (isMeme ? 48 : 168);
+      const weak   = !fresh && !valid2;
+      // Only kill if extremely stale (1 week+) AND volume faded
+      if (ageH > 168 && volFaded) { killed.STALE++; continue; }
       const tsStatus = fresh ? 'FRESH ⚡' : valid2 ? 'VALID ✓' : 'WEAK ⚠️';
       const ec = entryConf(ch24, lw, body, rp, vol);
       const entLo = Math.max(price*0.97, coin.low*0.99);
