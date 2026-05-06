@@ -21,6 +21,12 @@
     },
     "api/accumulation.js": {
       "maxDuration": 25
+    },
+    "api/member.js": {
+      "maxDuration": 10
+    },
+    "api/memes.js": {
+      "maxDuration": 20
     }
   },
   "headers": [
