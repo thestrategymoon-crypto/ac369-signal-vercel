@@ -354,7 +354,14 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
       <option value="65">⚡ AGGRESSIVE (A≥65)</option>
     </select>
     <button onclick="doAccScan()" id="acc-btn" style="background:linear-gradient(135deg,var(--purple),#7c3aed);color:#fff;border:none;padding:9px 22px;border-radius:9px;font-family:var(--m);font-size:13px;font-weight:700;cursor:pointer">🧠 Smart Money Scan</button>
-    <span style="font-size:11px;color:var(--muted)" id="acc-st">7-Layer: SM Accumulation + Liquidity + Structure + Volume</span>
+    <span style="font-size:11px;color:var(--muted)" id="acc-st">v13: ICT/SMC · Scalp · Day Trade · Swing · Entry Tepat</span>
+  </div>
+  <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px;margin-bottom:8px">
+    <button onclick="showAccTab('all',this)" class="acc-tab on" style="background:rgba(168,85,247,.15);border:1px solid rgba(168,85,247,.3);color:var(--purple);padding:4px 12px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--m)">📊 ALL</button>
+    <button onclick="showAccTab('scalp',this)" class="acc-tab" style="background:rgba(255,255,255,.04);border:1px solid var(--brd);color:var(--muted);padding:4px 12px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--m)">⚡ SCALP</button>
+    <button onclick="showAccTab('daytrade',this)" class="acc-tab" style="background:rgba(255,255,255,.04);border:1px solid var(--brd);color:var(--muted);padding:4px 12px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--m)">📈 DAY TRADE</button>
+    <button onclick="showAccTab('swing',this)" class="acc-tab" style="background:rgba(255,255,255,.04);border:1px solid var(--brd);color:var(--muted);padding:4px 12px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--m)">🌊 SWING</button>
+    <button onclick="showAccTab('elite',this)" class="acc-tab" style="background:rgba(255,179,0,.06);border:1px solid rgba(255,179,0,.2);color:var(--amber);padding:4px 12px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--m)">🏆 ELITE</button>
   </div>
   <div id="acc-prog" style="height:3px;background:rgba(168,85,247,.3);border-radius:2px;width:0%;transition:width .4s;margin-bottom:10px"></div>
   <div id="acc-ctx" class="mkt-ctx" style="display:none"></div>
@@ -362,15 +369,7 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 </section>
 
 <!-- SETUP WATCHLIST v12.2 -->
-<section class="sec">
-  <h2>🔒 Setup Watchlist <span id="wl-count" style="font-size:12px;color:var(--muted);font-weight:400">0 active</span></h2>
-  <div style="background:rgba(0,255,208,.04);border:1px solid rgba(0,255,204,.12);border-radius:10px;padding:8px 13px;margin-bottom:10px;font-size:11px;color:var(--muted);line-height:1.7">
-    🔒 <strong style="color:var(--g)">Setup Watchlist</strong> — Entry/SL/TP dikunci saat pertama kali valid. Setup tetap tampil sampai <strong>TP2 tercapai</strong> atau <strong>SL kena</strong>. Tidak hilang karena scan ulang.
-  </div>
-  <div id="wl-container">
-    <div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">Jalankan Smart Money Scan untuk mengisi watchlist...</div>
-  </div>
-</section>
+
 
 <div class="footer" id="footer">AC369 FUSION v12.2 · @Alphacrypto_id · SMC+EW+OI+LiqMap</div>
 
@@ -1038,186 +1037,114 @@ async function refreshAll(){
 refreshAll();
 setInterval(refreshAll,120000);
 
-// ── WATCHLIST STORAGE ────────────────────────────────────────
-const WL_KEY='ac369_wl_v12';
-function wlSave(w){try{localStorage.setItem(WL_KEY,JSON.stringify(w));}catch(e){}}
-function wlLoad(){try{return JSON.parse(localStorage.getItem(WL_KEY)||'[]');}catch(e){return[];}}
-function wlMerge(srv){const stored=wlLoad();const merged=srv.slice();stored.forEach(function(s){if(!merged.find(function(m){return m.symbol===s.symbol;})&&!['COMPLETED','INVALID'].includes(s.status))merged.push(s);});wlSave(merged);return merged;}
-
-// ── WATCHLIST RENDERER ───────────────────────────────────────
-function renderWatchlist(wl){
-  const el=document.getElementById('wl-container'),cnt=document.getElementById('wl-count');
-  if(!el)return;
-  const active=wl.filter(w=>!['COMPLETED','INVALID'].includes(w.status));
-  const done=wl.filter(w=>['COMPLETED','INVALID'].includes(w.status));
-  if(cnt)cnt.textContent=active.length+' active'+(done.length?' · '+done.length+' done':'');
-  if(!wl.length){el.innerHTML='<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">Jalankan Smart Money Scan untuk mengisi watchlist...</div>';return;}
-  let h='';
-  const emj={WATCHING:'👀',TRIGGERED:'⚡',TP1_HIT:'🎯',ACTIVE:'🟢',COMPLETED:'✅',INVALID:'❌'};
-  const clr={WATCHING:'var(--muted)',TRIGGERED:'#ff6b35',TP1_HIT:'var(--g)',ACTIVE:'var(--g)',COMPLETED:'#44ff88',INVALID:'var(--red)'};
-  if(active.length){
-    h+='<div style="font-size:10px;font-weight:700;color:var(--g);letter-spacing:1.5px;margin-bottom:8px">🔒 LOCKED SETUPS ('+active.length+'/10)</div>';
-    active.forEach(w=>{
-      const st=w.status||'WATCHING',cp=w.currentPrice||w.entryPrice||0;
-      const pnl=w.entryPrice>0?+((cp-w.entryPrice)/w.entryPrice*100).toFixed(2):0;
-      const pnlC=pnl>=0?'var(--g)':'var(--red)';
-      const inZone=cp>0&&w.entryLo>0&&cp>=w.entryLo*0.999&&cp<=w.entryHi*1.001;
-      const isTrig=['TRIGGERED','TP1_HIT','ACTIVE'].includes(st);
-      const bdr=st==='TRIGGERED'?'rgba(255,107,53,.5)':isTrig?'rgba(0,255,208,.4)':'rgba(255,255,255,.07)';
-      h+='<div style="border:1.5px solid '+bdr+';border-radius:11px;padding:12px 14px;margin-bottom:8px">';
-      h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:7px">';
-      h+='<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">';
-      h+='<span style="font-weight:900;font-family:var(--m);font-size:15px;cursor:pointer;border-bottom:1px solid rgba(0,255,208,.3)" onclick="clickCoin('+w.symbol+')" title="Analisa '+w.symbol+'">'+w.symbol+'</span>';
-      h+='<span style="font-size:10px;font-weight:700;color:'+clr[st]+'">'+emj[st]+' '+st+'</span>';
-      if(w.isMeme)h+='<span style="background:rgba(255,100,100,.1);color:#ff9999;border-radius:5px;padding:1px 5px;font-size:9px">MEME</span>';
-      h+='</div><div style="text-align:right">';
-      h+='<div style="font-family:var(--m);font-size:14px;font-weight:700">$'+fmtPrice(cp)+'</div>';
-      if(isTrig&&w.entryPrice>0)h+='<div style="font-size:12px;font-weight:800;color:'+pnlC+'">'+(pnl>=0?'+':'')+pnl.toFixed(2)+'%</div>';
-      else h+='<div style="font-size:10px;color:'+(inZone?'var(--g)':'var(--muted)')+'">'+(inZone?'⚡ IN ZONE':'Menunggu entry zone')+'</div>';
-      h+='</div></div>';
-      h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6px">';
-      h+='<div style="background:rgba(0,255,204,.04);border:1px solid rgba(0,255,204,.12);border-radius:6px;padding:5px;text-align:center"><div style="font-size:8px;color:var(--muted)">ENTRY</div><div style="font-family:var(--m);font-size:9px;color:var(--g);font-weight:700">$'+fmtPrice(w.entryLo)+'</div></div>';
-      h+='<div style="background:rgba(255,68,102,.04);border:1px solid rgba(255,68,102,.12);border-radius:6px;padding:5px;text-align:center"><div style="font-size:8px;color:var(--red)">SL -'+w.slPct+'%</div><div style="font-family:var(--m);font-size:9px;color:var(--red);font-weight:700">$'+fmtPrice(w.sl)+'</div></div>';
-      h+='<div style="background:rgba(0,255,204,.05);border:1px solid rgba(0,255,204,.15);border-radius:6px;padding:5px;text-align:center"><div style="font-size:8px;color:var(--g)">TP1 +'+w.tp1Pct+'%</div><div style="font-family:var(--m);font-size:9px;color:var(--g);font-weight:700">$'+fmtPrice(w.tp1)+'</div></div>';
-      h+='<div style="background:rgba(255,179,0,.04);border:1px solid rgba(255,179,0,.12);border-radius:6px;padding:5px;text-align:center"><div style="font-size:8px;color:var(--amber)">TP2 +'+w.tp2Pct+'%</div><div style="font-family:var(--m);font-size:9px;color:var(--amber);font-weight:700">$'+fmtPrice(w.tp2)+'</div></div>';
-      h+='</div>';
-      if(isTrig)h+='<div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#ff6b35;font-weight:700;background:rgba(255,107,53,.06);border-radius:6px;padding:5px 8px"><div style="width:7px;height:7px;border-radius:50%;background:#ff6b35;animation:pulse 1.2s infinite"></div>KONFIRMASI ENTRY SEKARANG</div>';
-      h+='<div style="font-size:9px;color:var(--dim);margin-top:5px">Locked: '+(w.lockedAtStr||'—')+'</div>';
-      h+='</div>';
-    });
-  }
-  if(done.length){
-    h+='<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1.5px;margin:10px 0 7px">HISTORY ('+done.length+')</div>';
-    done.slice(0,6).forEach(w=>{
-      const won=w.status==='COMPLETED';
-      h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border:1px solid rgba(255,255,255,.04);border-radius:7px;margin-bottom:4px;opacity:.75">';
-      h+='<div style="display:flex;align-items:center;gap:6px"><span style="font-family:var(--m);font-weight:700;font-size:13px;cursor:pointer" onclick="clickCoin('+w.symbol+')">'+w.symbol+'</span><span style="font-size:9px;padding:1px 6px;border-radius:4px;background:'+(won?'rgba(0,255,208,.1)':'rgba(255,68,102,.1)')+';color:'+(won?'var(--g)':'var(--red)')+'">'+w.status+'</span></div>';
-      h+='<span style="font-family:var(--m);font-weight:800;color:'+(won?'var(--g)':'var(--red)')+'">'+(w.pnl!=null?(w.pnl>=0?'+':'')+w.pnl.toFixed(2)+'%':'—')+'</span>';
-      h+='</div>';
-    });
-  }
-  el.innerHTML=h;
-}
-
-// ── SMART MONEY SCAN ─────────────────────────────────────────
 async function doAccScan(){
   const btn=document.getElementById('acc-btn'),st=document.getElementById('acc-st');
-  const prog=document.getElementById('acc-prog'),ctx=document.getElementById('acc-ctx'),tiers=document.getElementById('acc-tiers');
+  const prog=document.getElementById('acc-prog'),tiers=document.getElementById('acc-tiers');
+  const ctx=document.getElementById('acc-ctx');
   if(!btn)return;
   btn.disabled=true;btn.textContent='⏳ Scanning...';
-  if(st)st.textContent='v12.2 — SM Accumulation · Halving Cycle · Moon Phase · 7-Layer PI...';
-  if(prog)prog.style.width='8%';
-  if(ctx)ctx.style.display='none';
+  if(st)st.textContent='Scanning '+new Date().toLocaleTimeString('id-ID')+' ...';
+  if(prog){prog.style.width='15%';}
   if(tiers)tiers.innerHTML='';
-
-  // Sync watchlist to server
-  const storedWL=wlLoad();
-  if(storedWL.length){
-    try{await fetch('/api/accumulation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'syncWatchlist',watchlist:storedWL})});}catch(e){}
-  }
 
   try{
     const ctrl=new AbortController();
     const timer=setTimeout(()=>ctrl.abort(),28000);
     const res=await fetch('/api/accumulation',{signal:ctrl.signal});
     clearTimeout(timer);
+    if(!res.ok)throw new Error('API '+res.status);
     const data=await res.json();
+    if(data.error)throw new Error(data.error);
     if(prog)prog.style.width='90%';
 
-    const reg=data.regime||{},sys=data.systemStatus||{},kb=data.killedBreakdown||{};
-    const cosmic=data.cosmic||{};
-
-    // Merge watchlist
-    const mergedWL=wlMerge(data.watchlist||[]);
-    renderWatchlist(mergedWL);
+    // Store all setups for tab switching
+    window._accData=data;
+    renderAccTab('all');
 
     // Context bar
+    const reg=data.regime||{},sys=data.systemStatus||{},cosmic=data.cosmic||{};
     if(ctx){
       ctx.style.display='flex';
       const rc=reg.color||'#FFB300';
       ctx.innerHTML=
-        '<div class="ctx-item" style="border:1px solid '+rc+';color:'+rc+';font-weight:800">'+reg.r+'</div>'+
+        '<div class="ctx-item" style="border:1px solid '+rc+';color:'+rc+';font-weight:800">'+(reg.r||'')+'</div>'+
         '<div class="ctx-item"><span style="color:var(--muted)">F&G </span><span style="color:'+(sys.fgValue<=35?'var(--g)':sys.fgValue>=75?'var(--red)':'var(--amber)')+'">'+sys.fgValue+'</span></div>'+
-        '<div class="ctx-item"><span style="color:var(--muted)">BTC 7d </span><span style="color:'+(sys.btcCh7>=0?'var(--g)':'var(--red)')+'">'+sys.btcCh7+'%</span></div>'+
+        '<div class="ctx-item"><span style="color:var(--muted)">BTC </span><span style="color:'+(sys.btcTrend==='BULLISH'?'var(--g)':'var(--red)')+'">'+sys.btcTrend+'</span></div>'+
         '<div class="ctx-item"><span style="color:var(--amber)">ELITE </span><strong>'+(data.eliteCount||0)+'</strong></div>'+
-        '<div class="ctx-item"><span style="color:var(--g)">Valid </span><strong>'+data.totalQualified+'</strong></div>'+
-        '<div class="ctx-item"><span style="color:var(--red)">Killed </span><strong>'+data.totalKilled+'</strong></div>'+
-        '<div class="ctx-item"><span style="color:var(--purple)">WL </span><strong>'+(data.wlActive||0)+'</strong></div>'+
-        (cosmic.halving?'<div class="ctx-item">'+cosmic.halving.emoji+' <span style="font-size:9px">'+cosmic.halving.phase+'</span></div>':'')+
-        (cosmic.moon?'<div class="ctx-item">'+cosmic.moon.emoji+' <span style="font-size:9px">'+cosmic.moon.phase+'</span></div>':'')+
-        '<div class="ctx-item" style="font-size:9px;color:var(--dim)">M:'+(sys.majorActive||0)+'/'+(sys.majorMax||3)+' Mm:'+(sys.memeActive||0)+'/'+(sys.memeMax||2)+'</div>';
+        '<div class="ctx-item"><span style="color:var(--g)">Total </span><strong>'+data.totalQualified+'</strong></div>'+
+        '<div class="ctx-item"><span style="color:var(--dim)">Scan </span><strong>'+data.totalScanned+'</strong></div>'+
+        (cosmic.halving?'<div class="ctx-item">'+cosmic.halving.emoji+' '+cosmic.halving.phase+'</div>':'')+
+        '<div class="ctx-item" style="font-size:9px;color:var(--dim)">'+data.scanTime+'s</div>';
     }
-
-    // Render setups
-    const regular=data.regularSetups||[];
-    const meme=data.memeSetups||[];
-    const acts=data.activeSetups||[];
-    let h='';
-
-    // Regime box
-    h+='<div style="background:rgba(255,255,255,.03);border-left:4px solid '+(reg.color||'#FFB300')+';border-radius:0 9px 9px 0;padding:10px 13px;margin-bottom:12px">';
-    h+='<div style="font-size:10px;color:var(--dim);letter-spacing:1.5px;margin-bottom:2px">MARKET REGIME v12.2</div>';
-    h+='<div style="font-size:15px;font-weight:900;color:'+(reg.color||'#FFB300')+'">'+(reg.r||'RANGE')+'</div>';
-    h+='<div style="font-size:11px;color:var(--muted);margin-top:2px">'+(reg.focus||'')+'</div></div>';
-
-    if(reg.kill){
-      h+='<div style="background:rgba(255,68,102,.08);border:2px solid var(--red);border-radius:12px;padding:24px;text-align:center"><div style="font-size:44px;margin-bottom:10px">🚫</div><div style="font-size:20px;font-weight:900;color:var(--red)">KILL SWITCH — NO TRADE</div></div>';
-    }
-
-    // Active locked
-    if(acts.length){
-      h+='<div style="background:rgba(0,255,204,.03);border:2px solid rgba(0,255,204,.25);border-radius:12px;padding:12px;margin-bottom:12px">';
-      h+='<div style="font-size:10px;font-weight:800;letter-spacing:2px;color:var(--g);margin-bottom:8px">🔐 ACTIVE — LOCKED</div>';
-      acts.forEach(c=>{
-        h+='<div style="background:rgba(255,255,255,.03);border-radius:8px;padding:9px 11px;margin-bottom:6px">';
-        h+='<div style="display:flex;justify-content:space-between;margin-bottom:5px">';
-        h+='<div style="display:flex;align-items:center;gap:7px"><span style="font-weight:900;font-family:var(--m);font-size:15px;cursor:pointer;border-bottom:1px solid rgba(0,255,208,.3)" onclick="clickCoin('+c.symbol+')">'+c.symbol+'</span><span style="font-size:10px;color:var(--muted)">'+c.tag+'</span></div>';
-        h+='<span style="font-size:13px;font-weight:700;color:'+(c.pnl>=0?'var(--g)':'var(--red)')+'">'+(c.pnl>=0?'+':'')+c.pnl.toFixed(2)+'%</span></div>';
-        h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px">';
-        h+='<div style="background:rgba(255,255,255,.03);border-radius:5px;padding:4px;text-align:center"><div style="font-size:8px;color:var(--dim)">ENTRY</div><div style="font-family:var(--m);font-size:10px;font-weight:700">$'+fmtPrice(c.ep)+'</div></div>';
-        h+='<div style="background:rgba(255,68,102,.05);border-radius:5px;padding:4px;text-align:center"><div style="font-size:8px;color:var(--red)">SL</div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--red)">$'+fmtPrice(c.sl)+'</div></div>';
-        h+='<div style="background:rgba(0,255,204,.05);border-radius:5px;padding:4px;text-align:center"><div style="font-size:8px;color:var(--g)">TP1</div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--g)">$'+fmtPrice(c.tp1)+'</div></div>';
-        h+='</div></div>';
-      });
-      h+='</div>';
-    }
-
-    // Setups
-    if(!regular.length&&!meme.length&&!acts.length&&!reg.kill){
-      h+='<div style="text-align:center;padding:44px"><div style="font-size:48px;margin-bottom:12px">🛡️</div><div style="font-size:18px;font-weight:900;color:var(--amber)">Engine Disciplined — Zero Valid Setups</div><div style="font-size:11px;color:var(--muted);margin-top:8px">'+data.totalKilled+' setups killed: PI:'+(kb.PI||0)+' SM:'+(kb.SM||0)+' Score:'+(kb.SCORE||0)+'</div></div>';
-    }
-    if(regular.length){
-      h+='<div style="font-size:12px;font-weight:800;color:var(--g);margin:14px 0 8px">📊 INSTITUTIONAL SETUPS <span style="font-size:10px;color:var(--muted);font-weight:400">'+regular.length+' qualified</span></div>';
-      regular.forEach(c=>{h+=buildSetupCard(c);});
-    }
-    if(meme.length){
-      h+='<div style="font-size:12px;font-weight:800;color:#ff9999;margin:14px 0 8px">🎭 MEME SETUPS <span style="font-size:10px;color:var(--muted);font-weight:400">'+meme.length+' qualified · High Risk</span></div>';
-      meme.forEach(c=>{h+=buildSetupCard(c);});
-    }
-
-    // ── Engine Disciplined / Zero results message ────────────────
-    if(!regular.length && !meme.length && !acts.length && !reg.kill) {
-      h += '<div style="text-align:center;padding:44px 20px">' +
-        '<div style="font-size:44px;margin-bottom:12px">🛡️</div>' +
-        '<div style="font-size:16px;font-weight:900;color:var(--amber);font-family:var(--m)">Engine Disciplined</div>' +
-        '<div style="font-size:12px;color:var(--muted);margin-top:6px">Zero Valid Setups saat ini</div>' +
-        '<div style="font-size:10px;color:var(--dim);margin-top:8px;line-height:1.6">' +
-        'Scanned: ' + data.totalScanned + ' koin | Killed: ' + data.totalKilled + '<br>' +
-        'PI: ' + (kb.PI||0) + ' · SM: ' + (kb.SM||0) + ' · Score: ' + (kb.SCORE||0) + ' · Conflict: ' + (kb.CONFLICT||0) + '<br>' +
-        '<span style="color:var(--g)">Engine menolak semua karena tidak memenuhi 7-layer minimum threshold</span></div>' +
-        '</div>';
-    }
-    if(tiers){tiers.innerHTML=h;}
-    if(prog){prog.style.width='100%';setTimeout(()=>{prog.style.width='0';},2000);}
-    if(st)st.textContent='v12.2: '+data.totalQualified+' valid · '+(data.eliteCount||0)+' ELITE · '+acts.length+' active · WL:'+(data.wlActive||0)+' · '+data.scanTime+'s';
+    if(prog){prog.style.width='100%';setTimeout(()=>{prog.style.width='0';},1500);}
+    if(st)st.textContent='v13: '+data.totalQualified+' setups · '+( data.eliteCount||0)+' ELITE · '+data.totalScanned+' scanned · '+data.scanTime+'s';
   }catch(e){
     if(st)st.textContent='❌ '+e.message;
     if(prog)prog.style.width='0';
-    if(tiers)tiers.innerHTML='<div style="text-align:center;padding:30px;color:var(--red);font-size:11px">❌ Error: '+e.message+'<br><span style="font-size:10px;color:var(--muted)">Coba klik Scan lagi</span></div>';
+    if(tiers)tiers.innerHTML='<div style="text-align:center;padding:30px;color:var(--red);font-size:11px">❌ Error: '+e.message+'<br><span style="color:var(--muted);font-size:10px">Pastikan api/accumulation.js v13 sudah di-deploy</span><br><br><button onclick="doAccScan()" style="background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.3);color:var(--purple);padding:6px 14px;border-radius:6px;font-size:10px;cursor:pointer">⟳ Coba Lagi</button></div>';
   }finally{
     btn.disabled=false;btn.textContent='🧠 Smart Money Scan';
   }
 }
+
+var _accCurTab='all';
+function showAccTab(tab,el){
+  _accCurTab=tab;
+  document.querySelectorAll('.acc-tab').forEach(function(b){
+    b.style.background='rgba(255,255,255,.04)';b.style.color='var(--muted)';
+    b.style.borderColor='var(--brd)';
+  });
+  if(el){
+    el.style.background='rgba(168,85,247,.15)';el.style.color='var(--purple)';
+    el.style.borderColor='rgba(168,85,247,.3)';
+  }
+  renderAccTab(tab);
+}
+
+function renderAccTab(tab){
+  var data=window._accData;
+  if(!data)return;
+  var tiers=document.getElementById('acc-tiers');
+  if(!tiers)return;
+
+  var sets;
+  if(tab==='scalp')        sets=data.scalpSetups||[];
+  else if(tab==='daytrade')sets=data.dayTradeSetups||[];
+  else if(tab==='swing')   sets=data.swingSetups||[];
+  else if(tab==='elite')   sets=data.eliteSetups||[];
+  else                     sets=data.regularSetups||[];
+
+  var reg=data.regime||{};
+  var h='';
+
+  // Regime header
+  h+='<div style="background:rgba(255,255,255,.02);border-left:4px solid '+(reg.color||'#FFB300')+';border-radius:0 8px 8px 0;padding:9px 12px;margin-bottom:10px">';
+  h+='<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:2px">MARKET CONTEXT</div>';
+  h+='<div style="font-size:13px;font-weight:800;color:'+(reg.color||'#FFB300')+'">'+(reg.r||'')+'</div>';
+  h+='<div style="font-size:10px;color:var(--muted);margin-top:2px">'+(reg.focus||'')+'</div>';
+  h+='</div>';
+
+  if(!sets.length){
+    // No setups for this specific tab - show message + redirect to all
+    h+='<div style="text-align:center;padding:30px 20px">';
+    h+='<div style="font-size:28px;margin-bottom:8px">🔍</div>';
+    h+='<div style="font-size:13px;font-weight:700;color:var(--amber)">Tidak ada setup '+tab.toUpperCase()+' saat ini</div>';
+    if(data.regularSetups&&data.regularSetups.length){
+      h+='<div style="font-size:10px;color:var(--muted);margin-top:6px">'+data.regularSetups.length+' setup tersedia di tab ALL</div>';
+    }
+    h+='</div>';
+    tiers.innerHTML=h;
+    return;
+  }
+
+  // Section label
+  var tabLabel={all:'📊 ALL SETUPS',scalp:'⚡ SCALP SETUPS',daytrade:'📈 DAY TRADE SETUPS',swing:'🌊 SWING SETUPS',elite:'🏆 ELITE SETUPS'}[tab]||'SETUPS';
+  h+='<div style="font-size:11px;font-weight:800;color:var(--g);margin:0 0 10px">'+tabLabel+' <span style="font-size:9px;color:var(--muted);font-weight:400">'+sets.length+' qualified</span></div>';
+
+  sets.forEach(function(c){h+=buildSetupCard(c);});
+  tiers.innerHTML=h;
+}
+
 
 function buildSetupCard(c){
   var iS=c.tier==='S',iM=c.isMeme||false;
@@ -1402,7 +1329,6 @@ function fmtPrice(p){
 
 // Init on load
 window.addEventListener('DOMContentLoaded',function(){
-  renderWatchlist(wlLoad());
   refreshAll();
 });
 </script>
