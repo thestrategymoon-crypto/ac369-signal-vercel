@@ -24,6 +24,9 @@
     },
     "api/memes.js": {
       "maxDuration": 20
+    },
+    "api/daytrade.js": {
+      "maxDuration": 25
     }
   },
   "headers": [
