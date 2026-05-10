@@ -558,29 +558,43 @@ export default async function handler(req, res) {
     const t0 = Date.now();
 
     // Fetch all base data in parallel
+    // ── 5-SOURCE FALLBACK ─────────────────────────────────────────
     const [binR, fngR, cgR] = await Promise.allSettled([
-      sf('https://api.binance.com/api/v3/ticker/24hr', 8000)
-        .then(d => Array.isArray(d) && d.length > 100 ? d :
-          sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=meme-token&order=volume_desc&per_page=50&page=1&sparkline=false&price_change_percentage=24h,7d', 8000)
-            .then(cg => Array.isArray(cg) ? cg.map(c => ({
-              symbol: c.symbol.toUpperCase() + 'USDT',
-              lastPrice: String(c.current_price || 0),
-              priceChangePercent: String(c.price_change_percentage_24h || 0),
-              quoteVolume: String(c.total_volume || 0),
-              highPrice: String((c.current_price || 0) * 1.04),
-              lowPrice:  String((c.current_price || 0) * 0.96),
-              openPrice: String((c.current_price || 0) / (1 + (c.price_change_percentage_24h || 0) / 100)),
-              _mcap: c.market_cap || 0,
-              _7d: c.price_change_percentage_7d_in_currency || 0,
-            })) : null)
-        ),
+      (async () => {
+        const b1 = await sf('https://api.binance.com/api/v3/ticker/24hr', 8000);
+        if (Array.isArray(b1) && b1.length > 100) return b1;
+        const b2 = await sf('https://fapi.binance.com/fapi/v1/ticker/24hr', 6000);
+        if (Array.isArray(b2) && b2.length > 50) return b2;
+        const by = await sf('https://api.bybit.com/v5/market/tickers?category=spot', 6000);
+        if (by?.result?.list?.length > 50) {
+          return by.result.list.map(t => ({
+            symbol: t.symbol || '',
+            lastPrice: t.lastPrice || '0',
+            priceChangePercent: t.price24hPcnt ? (parseFloat(t.price24hPcnt) * 100).toFixed(4) : '0',
+            quoteVolume: t.turnover24h || '0',
+            highPrice: t.highPrice24h || t.lastPrice || '0',
+            lowPrice: t.lowPrice24h || t.lastPrice || '0',
+            openPrice: t.prevPrice24h || t.lastPrice || '0',
+          }));
+        }
+        const mx = await sf('https://api.mexc.com/api/v3/ticker/24hr', 6000);
+        if (Array.isArray(mx) && mx.length > 50) return mx;
+        const cg = await sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=meme-token&order=volume_desc&per_page=50&page=1&sparkline=false&price_change_percentage=24h,7d', 8000);
+        if (Array.isArray(cg)) return cg.map(c => ({
+          symbol: c.symbol.toUpperCase() + 'USDT',
+          lastPrice: String(c.current_price || 0),
+          priceChangePercent: String(c.price_change_percentage_24h || 0),
+          quoteVolume: String(c.total_volume || 0),
+          highPrice: String((c.current_price || 0) * 1.05),
+          lowPrice:  String((c.current_price || 0) * 0.95),
+          openPrice: String((c.current_price || 0) / (1 + (c.price_change_percentage_24h || 0) / 100)),
+          _mcap: c.market_cap || 0, _7d: c.price_change_percentage_7d_in_currency || 0,
+        }));
+        return [];
+      })(),
       sf('https://api.alternative.me/fng/?limit=1&format=json', 5000),
       sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=dogecoin,shiba-inu,pepe,bonk,dogwifcoin,floki,brett,mog-coin,neiro,goatseus-maximus,peanut-the-squirrel,act-i-the-ai-prophecy,turbo,meme,popcat,not-coin&order=volume_desc&sparkline=false&price_change_percentage=7d', 6000),
     ]);
-
-    const allTickers = binR.status === 'fulfilled' && Array.isArray(binR.value) ? binR.value : [];
-    const fg = fngR.status === 'fulfilled' ? parseInt(fngR.value?.data?.[0]?.value || 50) : 50;
-    const cgCoins = cgR.status === 'fulfilled' && Array.isArray(cgR.value) ? cgR.value : [];
 
     if (!allTickers.length) {
       return res.status(200).json({ error: null, version: 'v2.0', memes: [], all: [], totalScanned: 0, fg, timestamp: Date.now() });
