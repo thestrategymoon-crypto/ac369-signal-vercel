@@ -21,10 +21,10 @@ export default async function handler(req, res) {
   // ── BTC DAILY KLINES (for MVRV) ──────────────────────────────
   async function fetchBTCDaily() {
     const [ccR, fapiR, spotR, cgR] = await Promise.allSettled([
-      sf('https://min-api.cryptocompare.com/data/v2/histoday?fsym=BTC&tsym=USD&limit=200', 5000),
-      sf('https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1d&limit=200', 5000),
-      sf('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=200', 5000),
-      sf('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=90&interval=daily', 5000),
+      sf('https://min-api.cryptocompare.com/data/v2/histoday?fsym=BTC&tsym=USD&limit=90', 4000),
+      sf('https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1d&limit=90', 4000),
+      sf('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=90', 4000),
+      sf('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=60&interval=daily', 4000),
     ]);
     const cc=ccR.value, fapi=fapiR.value, spot=spotR.value, cg=cgR.value;
     if (cc?.Response === 'Success' && cc.Data?.Data?.length >= 60) return { data: cc.Data.Data.map(d => d.close).filter(v => v > 0), src: 'cryptocompare' };
@@ -36,7 +36,7 @@ export default async function handler(req, res) {
 
   try {
     const [fngRes, globalRes, btcKlinesRes, tickerRes] = await Promise.allSettled([
-      sf('https://api.alternative.me/fng/?limit=30&format=json'),
+      sf('https://api.alternative.me/fng/?limit=14&format=json'),
       sf('https://api.coingecko.com/api/v3/global'),
       fetchBTCDaily(),
       sf('https://api.binance.com/api/v3/ticker/24hr')
@@ -206,6 +206,18 @@ export default async function handler(req, res) {
       topGainers, topLosers, volumeBreakout,
     });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    // Never return 500 - return fallback data so frontend doesn't crash
+    return res.status(200).json({
+      timestamp: Date.now(),
+      error: e.message,
+      fearGreed: { value: 50, classification: 'Neutral', trend: 'Neutral' },
+      fgHistory: [],
+      btcDominance: 58,
+      mvrvZScore: { value: 1.5, signal: 'Fair Value', color: '#FFB300' },
+      altcoinSeason: { value: 50, signal: 'Neutral', color: '#FFB300' },
+      cycleSummary: 'Data sementara tidak tersedia — coba refresh.',
+      dominance: { btc: 58, eth: 16 },
+      mvrv: { value: 1.5, signal: 'Fair Value', color: '#FFB300' },
+    });
   }
 }
