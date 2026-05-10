@@ -1101,515 +1101,270 @@ async function fetchOnchain() {
 
 
 // ══════════════════════════════════════════════════════════════════
-// MEME COIN INTELLIGENCE — v1.0
+// MEME COIN INTELLIGENCE v3.0 — Institutional Grade
+// 5 Engines: Structure · OB · Whale · Derivatives · Momentum
 // ══════════════════════════════════════════════════════════════════
 var _memeData = null;
-
-async function doMemeScan() {
-  var btn = document.getElementById('meme-btn');
-  var st  = document.getElementById('meme-st');
-  var body = document.getElementById('meme-body');
-  var tabs = document.getElementById('meme-tabs');
-  var mkt  = document.getElementById('meme-market');
-  if (!btn) return;
-  btn.disabled = true; btn.textContent = '⏳ Scanning...';
-  if (st) st.textContent = 'Fetching ' + new Date().toLocaleTimeString('id-ID') + '...';
-  if (body) body.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center"><span class="spin" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px"></span>Memuat data meme coins...</div>';
-
-  try {
-    const ctrl = new AbortController();
-    setTimeout(() => ctrl.abort(), 20000);
-    const res = await fetch('/api/memes', { signal: ctrl.signal });
-    if (!res.ok) throw new Error('API ' + res.status);
-    const data = await res.json();
-    if (data.error && !data.totalScanned) throw new Error(data.error);
-
-    _memeData = data;
-
-    // Show tabs + market bar
-    if (tabs) tabs.style.display = 'flex';
-    if (mkt) { mkt.style.display = 'block'; renderMemeMarket(data); }
-
-    // Render default tab
+async function doMemeScan(){
+  var btn=document.getElementById('meme-btn'),st=document.getElementById('meme-st');
+  var body=document.getElementById('meme-body'),tabs=document.getElementById('meme-tabs');
+  var mkt=document.getElementById('meme-market');
+  if(!btn)return;
+  btn.disabled=true;btn.textContent='⏳ Scanning...';
+  if(st)st.textContent='5-engine analysis: Structure+OB+Whale+Derivatives+Momentum...';
+  if(body)body.innerHTML='<div style="color:var(--muted);padding:20px;text-align:center"><span class="spin" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px"></span>Analyzing...</div>';
+  try{
+    const ctrl=new AbortController();
+    setTimeout(()=>ctrl.abort(),25000);
+    const r=await fetch('/api/memes',{signal:ctrl.signal});
+    if(!r.ok)throw new Error('API '+r.status);
+    const data=await r.json();
+    _memeData=data;
+    if(tabs)tabs.style.display='flex';
+    if(mkt){mkt.style.display='block';renderMemeMarket(data);}
     renderMemeTab('all');
-
-    var s = data.stats || {};
-    var sentColor = s.memeMarketSentiment === 'BULL' ? 'var(--g)' : s.memeMarketSentiment === 'BEAR' ? 'var(--red)' : 'var(--amber)';
-    if (st) st.textContent = 'v1.0: ' + data.totalScanned + ' coins · Avg ' + (s.avg24h >= 0 ? '+' : '') + s.avg24h + '% · ' + s.pumping + ' pumping · ' + data.scanTime + 's';
-
-  } catch (e) {
-    if (body) body.innerHTML = '<div style="text-align:center;padding:30px;color:var(--red);font-size:11px">❌ Error: ' + e.message + '<br><br><button onclick="doMemeScan()" style="background:rgba(255,68,100,.1);border:1px solid rgba(255,68,100,.3);color:var(--red);padding:6px 14px;border-radius:6px;font-size:10px;cursor:pointer">⟳ Coba Lagi</button></div>';
-    if (st) st.textContent = '❌ ' + e.message;
+    var s=data.stats||{};
+    if(st)st.textContent='v3.0 · '+data.totalScanned+' scanned · '+data.deepScanned+' deep · '+(s.validSetups||0)+' valid setups · '+data.scanTime+'s';
+  }catch(e){
+    if(body)body.innerHTML='<div style="text-align:center;padding:30px;color:var(--red);font-size:11px">❌ '+e.message+'<br><br><button onclick="doMemeScan()" style="background:rgba(255,68,100,.08);border:1px solid rgba(255,68,100,.25);color:var(--red);padding:6px 14px;border-radius:6px;font-size:10px;cursor:pointer">⟳ Retry</button></div>';
+    if(st)st.textContent='❌ '+e.message;
   }
-  btn.disabled = false; btn.textContent = '🎭 Scan Meme Coins';
+  btn.disabled=false;btn.textContent='🎭 Scan Meme Coins';
 }
-
-function showMemeTab(tab, el) {
-  document.querySelectorAll('.meme-tab').forEach(function(b) {
-    b.classList.remove('on');
-    b.style.background = 'rgba(255,255,255,.04)';
-    b.style.borderColor = 'var(--brd)';
-    b.style.color = 'var(--muted)';
-  });
-  if (el) { el.classList.add('on'); }
-  renderMemeTab(tab);
-}
-
-function renderMemeMarket(data) {
-  var mkt = document.getElementById('meme-market');
-  if (!mkt || !data.stats) return;
-  var s = data.stats;
-  var fg = data.fg || 50;
-  var fgC = fg <= 25 ? 'var(--g)' : fg <= 45 ? 'var(--amber)' : fg >= 75 ? 'var(--red)' : 'var(--txt)';
-  var sentC = s.memeMarketSentiment === 'BULL' ? 'var(--g)' : s.memeMarketSentiment === 'BEAR' ? 'var(--red)' : 'var(--amber)';
-  var totalVolB = s.totalVol ? (s.totalVol / 1e9).toFixed(1) : '—';
-  mkt.innerHTML =
-    '<div class="meme-stats-bar">' +
-    '<div class="meme-stat"><div class="meme-stat-val" style="color:' + sentC + '">' + (s.memeMarketSentiment || '—') + '</div><div class="meme-stat-lbl">MEME MARKET</div></div>' +
-    '<div class="meme-stat"><div class="meme-stat-val" style="color:' + (s.avg24h >= 0 ? 'var(--g2)' : 'var(--red)') + '">' + (s.avg24h >= 0 ? '+' : '') + s.avg24h + '%</div><div class="meme-stat-lbl">AVG 24H</div></div>' +
-    '<div class="meme-stat"><div class="meme-stat-val" style="color:var(--g2)">' + (s.pumping || 0) + '</div><div class="meme-stat-lbl">PUMPING</div></div>' +
-    '<div class="meme-stat"><div class="meme-stat-val" style="color:var(--red)">' + (s.dumping || 0) + '</div><div class="meme-stat-lbl">DUMPING</div></div>' +
-    '<div class="meme-stat"><div class="meme-stat-val">$' + totalVolB + 'B</div><div class="meme-stat-lbl">TOTAL VOL</div></div>' +
-    '<div class="meme-stat"><div class="meme-stat-val" style="color:' + fgC + '">' + fg + '</div><div class="meme-stat-lbl">FEAR&GREED</div></div>' +
+function showMemeTab(tab,el){document.querySelectorAll('.meme-tab').forEach(function(b){b.classList.remove('on');});if(el)el.classList.add('on');renderMemeTab(tab);}
+function renderMemeMarket(data){
+  var mkt=document.getElementById('meme-market');if(!mkt||!data.stats)return;
+  var s=data.stats,fg=data.fg||50;
+  var fgC=fg<=25?'var(--g)':fg<=45?'var(--amber)':fg>=75?'var(--red)':'var(--txt)';
+  var sentC=s.memeSignal==='BULL'?'var(--g)':s.memeSignal==='BEAR'?'var(--red)':'var(--amber)';
+  mkt.innerHTML='<div class="meme-stats-bar">'+
+    '<div class="meme-stat"><div class="meme-stat-val" style="color:'+sentC+'">'+(s.memeSignal||'—')+'</div><div class="meme-stat-lbl">MARKET</div></div>'+
+    '<div class="meme-stat"><div class="meme-stat-val" style="color:'+(s.avg24h>=0?'var(--g2)':'var(--red)')+'">'+(s.avg24h>=0?'+':'')+s.avg24h+'%</div><div class="meme-stat-lbl">AVG 24H</div></div>'+
+    '<div class="meme-stat"><div class="meme-stat-val" style="color:var(--g)">'+(s.validSetups||0)+'</div><div class="meme-stat-lbl">VALID</div></div>'+
+    '<div class="meme-stat"><div class="meme-stat-val" style="color:var(--g2)">'+(s.pumping||0)+'</div><div class="meme-stat-lbl">PUMP</div></div>'+
+    '<div class="meme-stat"><div class="meme-stat-val" style="color:'+fgC+'">'+fg+'</div><div class="meme-stat-lbl">F&G</div></div>'+
     '</div>';
 }
-
-function renderMemeTab(tab) {
-  var data = _memeData;
-  if (!data) return;
-  var body = document.getElementById('meme-body');
-  if (!body) return;
-
+function renderMemeTab(tab){
+  var data=_memeData,body=document.getElementById('meme-body');if(!data||!body)return;
   var coins;
-  var tabName;
-  if      (tab === 'elite')     { coins = data.elite     || []; tabName = '🏆 ELITE — Score Tertinggi'; }
-  else if (tab === 'anomalies') { coins = data.anomalies || []; tabName = '🔬 ANOMALI TERDETEKSI'; }
-  else if (tab === 'wave3')     { coins = data.wave3     || []; tabName = '🌊 WAVE 3 — Fase Terbaik ICT'; }
-  else if (tab === 'patterns')  { coins = data.patterns  || []; tabName = '📐 CHART PATTERN CONFIRMED'; }
-  else if (tab === 'trending')  { coins = data.trending  || []; tabName = '🔥 TRENDING — Momentum Aktif'; }
-  else if (tab === 'dips')      { coins = data.dips      || []; tabName = '💎 DIP BUY — Potensi Reversal'; }
-  else                          { coins = data.all       || []; tabName = '📊 ALL MEME COINS'; }
-
-  var h = '';
-
-  // Tab header
-  h += '<div style="font-size:11px;font-weight:800;color:#ff9999;margin-bottom:8px">' + tabName +
-       ' <span style="font-size:9px;color:var(--muted);font-weight:400">' + coins.length + ' coins</span></div>';
-
-  if (!coins.length) {
-    h += '<div style="text-align:center;padding:24px;color:var(--muted);font-size:11px">Tidak ada signal untuk tab ini — coba tab lain</div>';
-    body.innerHTML = h; return;
-  }
-
-  coins.forEach(function(c, i) { h += buildMemeCard(c, i); });
-  body.innerHTML = h;
+  if(tab==='elite')    coins=data.elite||[];
+  else if(tab==='whale')coins=data.whaleAccum||[];
+  else if(tab==='oversold')coins=data.oversold||[];
+  else if(tab==='trending')coins=data.trending||[];
+  else if(tab==='dips')coins=data.dips||[];
+  else                 coins=data.all||[];
+  if(!coins.length){body.innerHTML='<div style="text-align:center;padding:24px;color:var(--muted);font-size:11px">Tidak ada signal</div>';return;}
+  var h='<div style="font-size:11px;font-weight:800;color:#ff9999;margin-bottom:8px">'+
+    (tab==='elite'?'🏆 VALID SETUPS (Confidence ≥65)':tab==='whale'?'🐳 WHALE ACCUMULATION':tab==='oversold'?'⚡ OVERSOLD RSI':tab==='trending'?'🔥 TRENDING':'📊 '+tab.toUpperCase())+
+    ' <span style="font-size:9px;color:var(--muted);font-weight:400">'+coins.length+' coins</span></div>';
+  coins.forEach(function(c,i){h+=buildMemeCardV3(c,i);});
+  body.innerHTML=h;
 }
-
-function fmtMeme(p) {
-  if (!p || p <= 0) return '—';
-  if (p >= 10000) return p.toLocaleString('en-US', {maximumFractionDigits:0});
-  if (p >= 1)     return p.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:4});
-  if (p >= 0.001) return p.toFixed(6);
-  if (p >= 1e-7)  return p.toFixed(9);
-  return p.toExponential(3);
-}
-
-function buildMemeCard(c, rank) {
-  var score = c.score || 0;
-  var scoreC = score >= 75 ? 'var(--g)' : score >= 55 ? '#ff9999' : score >= 35 ? 'var(--amber)' : 'var(--muted)';
-  var ch24 = c.ch24 || 0, ch7 = c.ch7 || 0;
-  var trade = c.trade || {};
-  var ew = c.elliott || {};
-  var pat = c.pattern || {};
-  var anom = c.anomaly || {};
-  var riskC = (c.riskScore||5) >= 5 ? 'var(--red)' : (c.riskScore||5) >= 4 ? 'var(--amber)' : 'var(--g2)';
-
-  // Wave color
-  var waveC = (ew.wave||'').includes('3') ? 'var(--g)' :
-              (ew.wave||'').includes('A') || (ew.wave||'').includes('C') ? 'var(--red)' : 'var(--amber)';
-  var waveLabel = ew.wave || '—';
-
-  var tierC = c.tier === 'S' ? '#ff6b35' : c.tier === 'A' ? 'var(--g)' : c.tier === 'B' ? 'var(--amber)' : 'var(--muted)';
-
-  var card = '<div class="meme-card ' + (c.tier==='S'?'tier-s':c.tier==='A'?'tier-a':'') + '" style="position:relative">';
-
-  // ── RANK badge ──
-  if (rank < 3) card += '<div style="position:absolute;top:8px;right:8px;background:rgba(255,179,0,.15);color:var(--amber);font-size:8px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,179,0,.2)">#' + (rank+1) + '</div>';
-
-  // ── HEADER ──
-  card += '<div class="meme-header">';
-  card += '<div>';
-  card += '<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:3px">';
-  card += '<span class="meme-sym" style="color:#ff9999;font-size:17px" onclick="clickCoin(\'' + c.symbol + '\')" title="Analisa ' + c.symbol + '">' + c.symbol + '</span>';
-  card += '<span style="font-size:9px;padding:1px 6px;border-radius:4px;font-weight:800;color:' + tierC + ';border:1px solid ' + tierC + ';opacity:.8">' + (c.tier||'B') + '</span>';
-  if (c.isNew) card += '<span style="background:rgba(255,179,0,.12);color:var(--amber);border-radius:4px;padding:1px 5px;font-size:8px;font-weight:700">🆕</span>';
-  // Elliott Wave badge
-  if (ew.wave && ew.wave !== 'UNKNOWN') {
-    card += '<span style="background:rgba(0,255,136,.08);color:' + waveC + ';border:1px solid ' + waveC.replace(')',',0.25)').replace('var(','rgba(0,') + ';border-radius:4px;padding:1px 6px;font-size:8px;font-weight:700">🌊 ' + waveLabel + '</span>';
-  }
-  // Chart pattern badge
-  if (pat.topPattern) {
-    card += '<span style="background:rgba(168,85,247,.1);color:var(--purple);border:1px solid rgba(168,85,247,.2);border-radius:4px;padding:1px 6px;font-size:8px;font-weight:700">📐 ' + (pat.topPattern.name||'').replace(/ [^\w]/g,'') + '</span>';
-  }
-  // Anomaly badge
-  if (anom.anomalies && anom.anomalies.length) {
-    card += '<span style="background:rgba(255,68,100,.1);color:var(--red);border:1px solid rgba(255,68,100,.2);border-radius:4px;padding:1px 6px;font-size:8px;font-weight:700">🔬 ANOMALI</span>';
-  }
-  card += '</div>';
-  card += '<div class="meme-cat">' + (c.category||'Meme') + ' · ' + (c.tradeStyle||'SCALP') + '</div>';
-  card += '</div>';
-  card += '<div style="text-align:right">';
-  card += '<div class="meme-score-num" style="color:' + scoreC + ';font-size:22px;font-family:var(--m);font-weight:900">' + score + '</div>';
-  card += '<div style="font-size:8px;color:var(--dim)">SCORE</div>';
-  if (c.probScore) card += '<div style="font-size:10px;font-weight:700;color:' + (c.probScore>=7?'var(--g)':c.probScore>=5?'var(--amber)':'var(--muted)') + '">' + c.probScore + '/10</div>';
-  card += '</div></div>';
-
-  // ── PRICE ROW ──
-  card += '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:6px">';
-  card += '<span style="font-family:var(--m);font-size:14px;font-weight:700;color:var(--g)">$' + fmtMeme(c.price) + '</span>';
-  card += '<span class="meme-chg ' + (ch24>=0?'up':'dn') + '">' + (ch24>=0?'+':'') + ch24.toFixed(2) + '% 24H</span>';
-  if (ch7) card += '<span class="meme-chg ' + (ch7>=0?'up':ch7<-15?'dn':'nt') + '">' + (ch7>=0?'+':'') + ch7.toFixed(1) + '% 7D</span>';
-  card += '<span class="meme-chg nt">$' + (c.volM>=1?c.volM.toFixed(0)+'M':(c.vol/1e3).toFixed(0)+'K') + ' vol</span>';
-  if (c.athPct) card += '<span class="meme-chg nt">' + c.athPct.toFixed(0) + '% ATH</span>';
-  card += '</div>';
-
-  // ── ELLIOTT WAVE SECTION ──
-  if (ew.wave && ew.wave !== 'UNKNOWN') {
-    var ewBg = (ew.wave||'').includes('3') ? 'rgba(0,255,136,.05)' : 'rgba(255,255,255,.02)';
-    var ewBrd = (ew.wave||'').includes('3') ? 'rgba(0,255,136,.15)' : 'var(--brd)';
-    card += '<div style="background:' + ewBg + ';border:1px solid ' + ewBrd + ';border-radius:7px;padding:7px 10px;margin-bottom:6px">';
-    card += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">';
-    card += '<span style="font-size:8px;color:var(--dim);letter-spacing:1.5px">ELLIOTT WAVE</span>';
-    card += '<span style="font-size:11px;font-weight:800;color:' + waveC + '">' + waveLabel + '</span>';
-    card += '</div>';
-    if (ew.note) card += '<div style="font-size:9px;color:var(--muted);line-height:1.4">' + ew.note + '</div>';
-    if (ew.confidence) card += '<div style="font-size:8px;color:var(--dim);margin-top:2px">Confidence: ' + ew.confidence + '</div>';
-    card += '</div>';
-  }
-
-  // ── CHART PATTERN SECTION ──
-  if (pat.topPattern) {
-    card += '<div style="display:flex;align-items:center;gap:7px;background:rgba(168,85,247,.04);border:1px solid rgba(168,85,247,.12);border-radius:7px;padding:6px 10px;margin-bottom:6px">';
-    card += '<span style="font-size:13px">📐</span>';
-    card += '<div><div style="font-size:10px;font-weight:700;color:var(--purple)">' + (pat.topPattern.name||'') + '</div>';
-    card += '<div style="font-size:9px;color:var(--muted)">' + (pat.topPattern.note||pat.topPattern.type||'') + '</div></div>';
-    card += '</div>';
-  }
-
-  // ── ANOMALY SECTION ──
-  if (anom.anomalies && anom.anomalies.length) {
-    card += '<div style="background:rgba(255,68,100,.04);border:1px solid rgba(255,68,100,.15);border-radius:7px;padding:7px 10px;margin-bottom:6px">';
-    card += '<div style="font-size:8px;color:var(--red);letter-spacing:1.5px;margin-bottom:4px">🔬 ANOMALI TERDETEKSI</div>';
-    anom.anomalies.slice(0,3).forEach(function(a) {
-      card += '<div style="font-size:9px;color:var(--muted);padding:2px 0;border-bottom:1px solid rgba(255,255,255,.03)">' +
-              '<span style="color:var(--red);margin-right:4px">⚡</span>' + (a.note||a.type||'') + '</div>';
+function buildMemeCardV3(c,rank){
+  var fmt=function(p){if(!p||p<=0)return'—';if(p>=10000)return p.toLocaleString('en-US',{maximumFractionDigits:0});if(p>=1000)return p.toLocaleString('en-US',{maximumFractionDigits:2});if(p>=1)return p.toFixed(4);if(p>=0.001)return p.toFixed(6);if(p>=1e-7)return p.toFixed(9);return p.toExponential(3);};
+  var fmtU=function(n){if(!n)return'—';if(Math.abs(n)>=1e6)return(n<0?'-':'')+'$'+Math.abs(n/1e6).toFixed(1)+'M';if(Math.abs(n)>=1e3)return(n<0?'-':'')+'$'+Math.abs(n/1e3).toFixed(0)+'K';return'$'+Math.abs(n);};
+  var conf=c.confidence||0,confC=conf>=65?'var(--g)':conf>=50?'var(--amber)':'var(--muted)';
+  var ch24=c.ch24||0,trade=c.trade||{},struct=c.structure||{},ob=c.orderBook||{},whale=c.whale||{},deriv=c.derivatives||{},mom=c.momentum||{};
+  var verdictC=c.verdictColor||'var(--muted)';
+  var card='<div class="meme-card" style="border-color:'+(conf>=65?'rgba(0,255,136,.25)':conf>=50?'rgba(255,179,0,.2)':'var(--brd)')+'">';
+  // Header
+  card+='<div class="meme-header"><div>';
+  card+='<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:2px">';
+  card+='<span class="meme-sym" style="color:#ff9999" onclick="clickCoin(\'' + c.symbol + '\')" title="Analisa">'+c.symbol+'</span>';
+  card+='<span style="font-size:9px;padding:1px 6px;border-radius:4px;border:1px solid '+confC+';color:'+confC+';font-weight:700">'+c.confidenceLabel+'</span>';
+  if(c.hasKlines)card+='<span style="font-size:7px;padding:1px 4px;background:rgba(0,255,136,.08);color:var(--g);border-radius:3px">KLINES</span>';
+  if(c.hasWhaleData)card+='<span style="font-size:7px;padding:1px 4px;background:rgba(255,179,0,.08);color:var(--amber);border-radius:3px">WHALE</span>';
+  card+='</div><div style="font-size:9px;color:var(--muted)">'+(c.category||'Meme')+(c.chain?' · '+c.chain:'')+'</div>';
+  card+='</div><div style="text-align:right"><div style="font-family:var(--m);font-size:22px;font-weight:900;color:'+confC+'">'+conf+'</div><div style="font-size:8px;color:var(--dim)">CONFIDENCE</div></div></div>';
+  // Price
+  card+='<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:7px">';
+  card+='<span style="font-family:var(--m);font-size:13px;font-weight:700;color:var(--g)">$'+fmt(c.price)+'</span>';
+  card+='<span class="meme-chg '+(ch24>=0?'up':'dn')+'">'+(ch24>=0?'+':'')+ch24.toFixed(2)+'% 24H</span>';
+  card+='<span class="meme-chg nt">$'+((c.vol||0)/1e6).toFixed(0)+'M</span>';
+  if(c.fundingRate!==null&&c.fundingRate!==undefined)card+='<span style="font-size:8px;padding:1px 5px;background:rgba(255,255,255,.04);color:'+(c.fundingRate<0?'var(--g)':c.fundingRate>3?'var(--red)':'var(--amber)')+'">FR '+(c.fundingRate).toFixed(4)+'%</span>';
+  card+='</div>';
+  // Verdict
+  card+='<div style="background:rgba(0,0,0,.2);border-left:3px solid '+verdictC+';border-radius:0 7px 7px 0;padding:6px 10px;margin-bottom:7px">';
+  card+='<div style="font-size:8px;color:var(--dim);letter-spacing:1.5px;margin-bottom:2px">FINAL VERDICT</div>';
+  card+='<div style="font-size:13px;font-weight:800;color:'+verdictC+'">'+(c.verdict||'NO TRADE / NO CLEAR EDGE')+'</div>';
+  if(c.trade&&c.trade.risk)card+='<div style="font-size:9px;color:var(--muted);margin-top:2px">Risk Level: '+c.trade.risk+'</div>';
+  card+='</div>';
+  // 5 engines mini
+  card+='<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">';
+  [{lbl:'STRUCTURE',v:struct.htfTrend||'?',c:struct.htfTrend==='BULLISH'?'var(--g)':struct.htfTrend==='BEARISH'?'var(--red)':'var(--amber)'},
+   {lbl:'ORDER BOOK',v:(ob.signal||'NO DATA').substring(0,12),c:ob.score>=12?'var(--g)':ob.score<0?'var(--red)':'var(--amber)'},
+   {lbl:'WHALE',v:whale.whales&&whale.whales.length?'ACTIVE':'NO DATA',c:whale.score>=12?'var(--g)':whale.score<0?'var(--red)':'var(--muted)'},
+   {lbl:'FUNDING',v:deriv.fundingPct!==null?deriv.fundingPct+'%':'NO DATA',c:deriv.score>=12?'var(--g)':deriv.score<0?'var(--red)':'var(--amber)'},
+   {lbl:'RSI',v:mom.rsi?mom.rsi:'—',c:mom.rsi&&mom.rsi<35?'var(--g)':mom.rsi&&mom.rsi>70?'var(--red)':'var(--muted)'},
+  ].forEach(function(e){
+    card+='<div style="flex:1;min-width:70px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:5px;padding:4px 7px">';
+    card+='<div style="font-size:7px;color:var(--dim)">'+e.lbl+'</div>';
+    card+='<div style="font-size:9px;font-weight:700;color:'+e.c+'">'+e.v+'</div>';
+    card+='</div>';
+  });
+  card+='</div>';
+  // Whale feed
+  if(whale.whales&&whale.whales.length){
+    card+='<div class="dt-whale-feed">';
+    card+='<div style="font-size:8px;color:var(--amber);letter-spacing:1.5px;margin-bottom:3px">🐳 WHALE ACTIVITY</div>';
+    whale.whales.slice(0,3).forEach(function(w){
+      var wc=w.side==='BUY'?'var(--g2)':'var(--red)';
+      card+='<div class="dt-whale-item"><span style="color:'+wc+';font-weight:700">'+w.side+'</span><span>'+fmtU(w.usd)+'</span><span style="color:var(--dim)">'+w.tier+'</span><span style="color:var(--dim)">'+w.ago+'m</span></div>';
     });
-    card += '</div>';
+    card+='<div style="text-align:right;font-size:9px;color:'+(whale.netWhaleUSD>=0?'var(--g2)':'var(--red)')+';padding-top:2px;font-weight:700">Net: '+fmtU(whale.netWhaleUSD)+'</div>';
+    card+='</div>';
   }
-
-  // ── SIGNALS ROW ──
-  if (c.signals && c.signals.length) {
-    card += '<div class="meme-signals">';
-    c.signals.slice(0,5).forEach(function(sig) {
-      card += '<span class="meme-sig">' + sig + '</span>';
-    });
-    card += '<span class="meme-sig" style="color:' + riskC + '">' + (c.risk||'') + '</span>';
-    card += '</div>';
+  // Notes
+  var notes=[];
+  if(struct.notes)struct.notes.slice(0,2).forEach(function(n){notes.push(n);});
+  if(ob.notes)ob.notes.slice(0,1).forEach(function(n){notes.push(n);});
+  if(whale.notes)whale.notes.slice(0,1).forEach(function(n){notes.push(n);});
+  if(deriv.notes)deriv.notes.slice(0,1).forEach(function(n){notes.push(n);});
+  if(notes.length){
+    card+='<div style="background:rgba(0,255,204,.02);border-left:3px solid rgba(0,255,204,.15);border-radius:0 6px 6px 0;padding:5px 9px;margin-bottom:6px">';
+    notes.slice(0,4).forEach(function(n){card+='<div style="font-size:9px;color:var(--muted);padding:1px 0">→ '+n+'</div>';});
+    card+='</div>';
   }
-
-  // ── TRADE LEVELS ──
-  card += '<div class="meme-levels">';
-  card += '<div class="meme-lvl" style="border:1px solid rgba(255,68,100,.2)">' +
-          '<div class="meme-lvl-label" style="color:var(--red)">STOP</div>' +
-          '<div class="meme-lvl-val" style="color:var(--red)">$' + fmtMeme(trade.sl) + '</div>' +
-          '<div style="font-size:7px;color:var(--dim)">-' + (trade.slPct||'') + '%</div></div>';
-  card += '<div class="meme-lvl" style="border:1px solid rgba(0,255,136,.15)">' +
-          '<div class="meme-lvl-label" style="color:var(--g2)">TP1 1:2</div>' +
-          '<div class="meme-lvl-val" style="color:var(--g2)">$' + fmtMeme(trade.tp1) + '</div>' +
-          '<div style="font-size:7px;color:var(--dim)">+' + (trade.tp1Pct||'') + '%</div></div>';
-  card += '<div class="meme-lvl" style="border:1px solid rgba(0,255,136,.2)">' +
-          '<div class="meme-lvl-label" style="color:var(--g2)">TP2 1:3</div>' +
-          '<div class="meme-lvl-val" style="color:var(--g2)">$' + fmtMeme(trade.tp2) + '</div>' +
-          '<div style="font-size:7px;color:var(--dim)">+' + (trade.tp2Pct||'') + '%</div></div>';
-  card += '<div class="meme-lvl" style="border:1px solid rgba(255,179,0,.2)">' +
-          '<div class="meme-lvl-label" style="color:var(--amber)">TP3 🌙</div>' +
-          '<div class="meme-lvl-val" style="color:var(--amber)">$' + fmtMeme(trade.tp3) + '</div>' +
-          '<div style="font-size:7px;color:var(--dim)">+' + (trade.tp3Pct||'') + '%</div></div>';
-  card += '</div>';
-
-  // ── REASON / ENTRY ZONE ──
-  if (c.reasons && c.reasons.length) {
-    card += '<div style="background:rgba(255,255,255,.015);border-left:3px solid #ff9999;border-radius:0 7px 7px 0;padding:6px 10px;margin-bottom:5px">';
-    card += '<div style="font-size:8px;color:var(--dim);letter-spacing:1.5px;margin-bottom:3px">REASON FOR ENTRY</div>';
-    c.reasons.slice(0,3).forEach(function(r) {
-      card += '<div style="font-size:9px;color:var(--muted)">✓ ' + r + '</div>';
-    });
-    card += '</div>';
-  }
-
-  // ── FOOTER ──
-  card += '<div class="meme-footer">';
-  card += '<span>Entry: $' + fmtMeme(trade.entryLo) + ' – $' + fmtMeme(trade.entryHi) + '</span>';
-  card += '<span style="color:var(--amber)">R: ' + (trade.rr||'1:2/1:3/1:5') + '</span>';
-  if (c.mcap > 0) card += '<span>MCap: $' + (c.mcap >= 1e9 ? (c.mcap/1e9).toFixed(1)+'B' : (c.mcap/1e6).toFixed(0)+'M') + '</span>';
-  card += '</div>';
-
-  card += '</div>';
+  // Trade levels
+  card+='<div class="meme-levels">';
+  card+='<div class="meme-lvl" style="border-color:rgba(255,68,100,.2)"><div class="meme-lvl-label" style="color:var(--red)">STOP</div><div class="meme-lvl-val" style="color:var(--red)">$'+fmt(trade.sl)+'</div><div style="font-size:7px;color:var(--dim)">-'+(trade.slPct||'')+'%</div></div>';
+  card+='<div class="meme-lvl" style="border-color:rgba(0,255,136,.15)"><div class="meme-lvl-label" style="color:var(--g2)">TP1</div><div class="meme-lvl-val" style="color:var(--g2)">$'+fmt(trade.tp1)+'</div><div style="font-size:7px;color:var(--g2)">+'+( trade.tp1Pct||'')+'%</div></div>';
+  card+='<div class="meme-lvl" style="border-color:rgba(0,255,136,.2)"><div class="meme-lvl-label" style="color:var(--g2)">TP2</div><div class="meme-lvl-val" style="color:var(--g2)">$'+fmt(trade.tp2)+'</div><div style="font-size:7px;color:var(--g2)">+'+( trade.tp2Pct||'')+'%</div></div>';
+  card+='<div class="meme-lvl" style="border-color:rgba(255,179,0,.15)"><div class="meme-lvl-label" style="color:var(--amber)">TP3</div><div class="meme-lvl-val" style="color:var(--amber)">$'+fmt(trade.tp3)+'</div><div style="font-size:7px;color:var(--amber)">+'+( trade.tp3Pct||'')+'%</div></div>';
+  card+='</div>';
+  if(trade.slNote)card+='<div style="font-size:8px;color:var(--dim);margin-top:4px">📍 '+trade.slNote+'</div>';
+  card+='</div>';
   return card;
 }
 
-
-
 // ══════════════════════════════════════════════════════════════════
-// DAY TRADE INTELLIGENCE — v1.0
-// OrderBook + Whale Detector + Structural Levels
+// DAY TRADE INTELLIGENCE v2.0 — Institutional Format
+// 6 Engines: Structure · Liquidity · OB · Whale · Derivatives · Momentum
 // ══════════════════════════════════════════════════════════════════
 var _dtData = null;
-
-async function doDTScan() {
-  var btn = document.getElementById('dt-btn');
-  var st  = document.getElementById('dt-st');
-  var body = document.getElementById('dt-body');
-  var tabs = document.getElementById('dt-tabs');
-  var sum  = document.getElementById('dt-summary');
-  if (!btn) return;
-  btn.disabled = true; btn.textContent = '⏳ Scanning...';
-  if (st) st.textContent = 'Fetching order books + whale trades + structure...';
-  if (body) body.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center"><span class="spin" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px"></span>Reading order books & whale activity...</div>';
-
-  try {
-    const ctrl = new AbortController();
-    setTimeout(() => ctrl.abort(), 25000);
-    const res = await fetch('/api/daytrade', { signal: ctrl.signal });
-    if (!res.ok) throw new Error('API ' + res.status);
-    const data = await res.json();
-    if (data.error && !data.results?.length) throw new Error(data.error);
-
-    _dtData = data;
-    if (tabs) tabs.style.display = 'flex';
-    if (sum) { sum.style.display = 'block'; renderDTSummary(data); }
+async function doDTScan(){
+  var btn=document.getElementById('dt-btn'),st=document.getElementById('dt-st');
+  var body=document.getElementById('dt-body'),tabs=document.getElementById('dt-tabs');
+  var sum=document.getElementById('dt-summary');
+  if(!btn)return;
+  btn.disabled=true;btn.textContent='⏳ Scanning...';
+  if(st)st.textContent='6-engine institutional analysis running...';
+  if(body)body.innerHTML='<div style="color:var(--muted);padding:20px;text-align:center"><span class="spin" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px"></span>Market Structure · OB · Whale · Derivatives · Momentum</div>';
+  try{
+    const ctrl=new AbortController();
+    setTimeout(()=>ctrl.abort(),26000);
+    const r=await fetch('/api/daytrade',{signal:ctrl.signal});
+    if(!r.ok)throw new Error('API '+r.status);
+    const data=await r.json();
+    _dtData=data;
+    if(tabs)tabs.style.display='flex';
+    if(sum){sum.style.display='block';renderDTSummary(data);}
     renderDTTab('all');
-
-    var s = data.summary || {};
-    if (st) st.textContent = 'v1.0 · ' + data.totalScanned + ' coins · ' + s.strongBuy + ' strong buy · ' + s.sell + ' sell · F&G ' + data.fg + ' · ' + data.scanTime + 's';
-  } catch(e) {
-    if (body) body.innerHTML = '<div style="text-align:center;padding:30px;color:var(--red);font-size:11px">❌ ' + e.message + '<br><br><button onclick="doDTScan()" style="background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.2);color:var(--g);padding:6px 14px;border-radius:6px;font-size:10px;cursor:pointer">⟳ Coba Lagi</button></div>';
-    if (st) st.textContent = '❌ ' + e.message;
+    var s=data.summary||{};
+    if(st)st.textContent='v2.0 · '+data.totalScanned+' coins · '+(s.highProb||0)+' high-prob (≥75) · F&G '+data.fg+' · '+data.scanTime+'s';
+  }catch(e){
+    if(body)body.innerHTML='<div style="text-align:center;padding:30px;color:var(--red);font-size:11px">❌ '+e.message+'<br><br><button onclick="doDTScan()" style="background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.2);color:var(--g);padding:6px 14px;border-radius:6px;font-size:10px;cursor:pointer">⟳ Coba Lagi</button></div>';
+    if(st)st.textContent='❌ '+e.message;
   }
-  btn.disabled = false; btn.textContent = '📊 Day Trade Scan';
+  btn.disabled=false;btn.textContent='📊 Day Trade Scan';
 }
-
-function showDTTab(tab, el) {
-  document.querySelectorAll('.dt-tab').forEach(function(b) { b.classList.remove('on'); });
-  if (el) el.classList.add('on');
-  renderDTTab(tab);
-}
-
-function renderDTSummary(data) {
-  var sum = document.getElementById('dt-summary');
-  if (!sum) return;
-  var s = data.summary || {};
-  var fg = data.fg || 50;
-  var fgC = fg <= 25 ? 'var(--g)' : fg <= 45 ? 'var(--amber)' : fg >= 75 ? 'var(--red)' : 'var(--txt)';
-  sum.innerHTML = '<div class="dt-summary-bar">' +
-    '<div class="dt-sum-item"><div class="dt-sum-val" style="color:var(--g2)">' + (s.strongBuy||0) + '</div><div class="dt-sum-lbl">🔥 STRONG BUY</div></div>' +
-    '<div class="dt-sum-item"><div class="dt-sum-val" style="color:var(--g)">' + (s.buy||0) + '</div><div class="dt-sum-lbl">✅ BUY</div></div>' +
-    '<div class="dt-sum-item"><div class="dt-sum-val" style="color:var(--muted)">' + (s.neutral||0) + '</div><div class="dt-sum-lbl">⚖️ NEUTRAL</div></div>' +
-    '<div class="dt-sum-item"><div class="dt-sum-val" style="color:var(--red)">' + (s.sell||0) + '</div><div class="dt-sum-lbl">🔴 AVOID</div></div>' +
-    '<div class="dt-sum-item"><div class="dt-sum-val" style="color:' + fgC + '">' + fg + '</div><div class="dt-sum-lbl">FEAR&GREED</div></div>' +
+function showDTTab(tab,el){document.querySelectorAll('.dt-tab').forEach(function(b){b.classList.remove('on');});if(el)el.classList.add('on');renderDTTab(tab);}
+function renderDTSummary(data){
+  var sum=document.getElementById('dt-summary');if(!sum)return;
+  var s=data.summary||{},fg=data.fg||50;
+  var fgC=fg<=25?'var(--g)':fg<=45?'var(--amber)':fg>=75?'var(--red)':'var(--txt)';
+  sum.innerHTML='<div class="dt-summary-bar">'+
+    '<div class="dt-sum-item"><div class="dt-sum-val" style="color:var(--g)">'+(s.highProb||0)+'</div><div class="dt-sum-lbl">🎯 HIGH PROB</div></div>'+
+    '<div class="dt-sum-item"><div class="dt-sum-val" style="color:var(--muted)">'+(s.neutral||0)+'</div><div class="dt-sum-lbl">⚖️ WATCH</div></div>'+
+    '<div class="dt-sum-item"><div class="dt-sum-val" style="color:var(--red)">'+(s.noTrade||0)+'</div><div class="dt-sum-lbl">🚫 NO TRADE</div></div>'+
+    '<div class="dt-sum-item"><div class="dt-sum-val" style="color:'+fgC+'">'+fg+'</div><div class="dt-sum-lbl">F&G</div></div>'+
+    (s.btcFunding!==null&&s.btcFunding!==undefined?'<div class="dt-sum-item"><div class="dt-sum-val" style="color:'+(s.btcFunding<0?'var(--g)':s.btcFunding>3?'var(--red)':'var(--amber)')+'">'+s.btcFunding+'%</div><div class="dt-sum-lbl">BTC FR</div></div>':'')+
     '</div>';
 }
-
-function renderDTTab(tab) {
-  var data = _dtData;
-  if (!data) return;
-  var body = document.getElementById('dt-body');
-  if (!body) return;
-
-  var coins = data.results || [];
-  if (tab === 'buy')  coins = coins.filter(function(c) { return c.totalScore >= 20; });
-  if (tab === 'sell') coins = coins.filter(function(c) { return c.totalScore < -10; });
-
-  var h = '';
-  if (!coins.length) {
-    h = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:11px">Tidak ada signal untuk filter ini</div>';
-    body.innerHTML = h; return;
-  }
-  coins.forEach(function(c) { h += buildDTCard(c); });
-  body.innerHTML = h;
+function renderDTTab(tab){
+  var data=_dtData,body=document.getElementById('dt-body');if(!data||!body)return;
+  var coins=data.results||[];
+  if(tab==='buy') coins=coins.filter(function(c){return c.confidence>=75;});
+  if(tab==='sell')coins=coins.filter(function(c){return c.confidence<45;});
+  if(!coins.length){body.innerHTML='<div style="text-align:center;padding:24px;color:var(--muted);font-size:11px">Tidak ada signal untuk filter ini</div>';return;}
+  var h='';coins.forEach(function(c){h+=buildDTCardV2(c);});body.innerHTML=h;
 }
-
-function buildDTCard(c) {
-  var fmt = function(p) {
-    if (!p || p <= 0) return '—';
-    if (p >= 10000) return p.toLocaleString('en-US', {maximumFractionDigits:0});
-    if (p >= 1000)  return p.toLocaleString('en-US', {maximumFractionDigits:2});
-    if (p >= 1)     return p.toFixed(4);
-    if (p >= 0.001) return p.toFixed(6);
-    return p.toFixed(8);
-  };
-  var fmtUSD = function(n) {
-    if (!n) return '—';
-    if (n >= 1e9) return '$' + (n/1e9).toFixed(1) + 'B';
-    if (n >= 1e6) return '$' + (n/1e6).toFixed(1) + 'M';
-    if (n >= 1e3) return '$' + (n/1e3).toFixed(0) + 'K';
-    return '$' + n;
-  };
-  var sig = c.signal || {};
-  var ob = c.orderBook || {};
-  var whale = c.whale || {};
-  var struct = c.structure || {};
-  var trade = c.trade || {};
-  var ch24 = c.ch24 || 0;
-  var sigColor = sig.c || 'var(--muted)';
-  var score = c.totalScore || 0;
-
-  var cardClass = score >= 50 ? 'signal-strongbuy' : score >= 25 ? 'signal-buy' : score < -15 ? 'signal-sell' : '';
-
-  var card = '<div class="dt-card ' + cardClass + '">';
-
-  // ── HEADER ──
-  card += '<div class="dt-header">';
-  card += '<div>';
-  card += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">';
-  card += '<span class="dt-sym" onclick="clickCoin(\'' + c.symbol + '\')">' + c.symbol + '</span>';
-  if (c.dataQuality) {
-    c.dataQuality.forEach(function(d) {
-      var dc = d === 'OB' ? 'var(--g)' : d === 'WHALE' ? 'var(--amber)' : 'var(--blue)';
-      card += '<span style="font-size:7px;padding:1px 5px;border-radius:3px;background:rgba(255,255,255,.05);color:' + dc + ';border:1px solid ' + dc.replace(')', ',0.2)').replace('var(', 'rgba(0,') + '">' + d + '</span>';
-    });
+function buildDTCardV2(c){
+  var fmt=function(p){if(!p||p<=0)return'—';if(p>=10000)return p.toLocaleString('en-US',{maximumFractionDigits:0});if(p>=1000)return p.toLocaleString('en-US',{maximumFractionDigits:2});if(p>=1)return p.toFixed(4);if(p>=0.001)return p.toFixed(6);return p.toFixed(8);};
+  var fmtU=function(n){if(!n)return'—';if(Math.abs(n)>=1e6)return(n<0?'-':'')+'$'+Math.abs(n/1e6).toFixed(1)+'M';if(Math.abs(n)>=1e3)return(n<0?'-':'')+'$'+Math.abs(n/1e3).toFixed(0)+'K';return'$'+Math.abs(n);};
+  var conf=c.confidence||0,confC=conf>=75?'var(--g)':conf>=60?'var(--amber)':'var(--muted)';
+  var ch24=c.ch24||0,trade=c.trade||{},struct=c.structure||{},ob=c.orderBook||{},whale=c.whale||{},deriv=c.derivatives||{},mom=c.momentum||{};
+  var verdictC=c.verdictColor||'var(--muted)';
+  var card='<div class="dt-card" style="border-color:'+(conf>=75?'rgba(0,255,136,.3)':conf>=60?'rgba(255,179,0,.2)':'var(--brd)')+'">';
+  // Header
+  card+='<div class="dt-header"><div>';
+  card+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">';
+  card+='<span class="dt-sym" onclick="clickCoin(\'' + c.symbol + '\')" style="color:var(--txt)">'+c.symbol+'</span>';
+  if(c.hasDaily)card+='<span style="font-size:7px;padding:1px 5px;background:rgba(0,255,136,.06);color:var(--g);border-radius:3px;border:1px solid rgba(0,255,136,.12)">DAILY</span>';
+  if(c.hasOB)card+='<span style="font-size:7px;padding:1px 5px;background:rgba(168,85,247,.06);color:var(--purple);border-radius:3px;border:1px solid rgba(168,85,247,.12)">OB</span>';
+  if(c.hasWhale)card+='<span style="font-size:7px;padding:1px 5px;background:rgba(255,179,0,.06);color:var(--amber);border-radius:3px;border:1px solid rgba(255,179,0,.12)">WHALE</span>';
+  card+='</div>';
+  card+='<div style="font-size:10px;color:var(--muted)">$'+fmt(c.price)+' · <span style="color:'+(ch24>=0?'var(--g2)':'var(--red)')+'">'+(ch24>=0?'+':'')+ch24.toFixed(2)+'%</span></div>';
+  card+='</div>';
+  card+='<div style="text-align:right"><div style="font-family:var(--m);font-size:22px;font-weight:900;color:'+confC+'">'+conf+'</div><div style="font-size:8px;color:var(--dim)">'+c.confidenceLabel+'</div></div></div>';
+  // Verdict
+  card+='<div style="background:rgba(0,0,0,.2);border-left:3px solid '+verdictC+';border-radius:0 7px 7px 0;padding:7px 11px;margin-bottom:7px">';
+  card+='<div style="font-size:8px;color:var(--dim);letter-spacing:1.5px;margin-bottom:2px">FINAL VERDICT</div>';
+  card+='<div style="font-size:14px;font-weight:900;color:'+verdictC+'">'+(c.verdict||'NO TRADE / NO CLEAR EDGE')+'</div>';
+  card+='<div style="font-size:9px;color:var(--muted);margin-top:2px">Status: '+(c.statusMarket||'—')+' · Trend: '+(c.trend||'—')+' · Risk: '+(c.risk||'—')+'</div>';
+  card+='</div>';
+  // 6 engines
+  card+='<div class="dt-engines">';
+  [{lbl:'STRUCTURE',val:((struct.htfTrend||'?')+' '+( struct.aligned?'✓':'')  ).trim(),c:struct.aligned?'var(--g)':struct.htfTrend==='BEARISH'?'var(--red)':'var(--amber)',sub:struct.bos?'BOS':struct.sweep?'SWEEP':struct.choch?'CHoCH':'—'},
+   {lbl:'ORDER BOOK',val:(ob.signal||'NO DATA').substring(0,14),c:ob.score>=15?'var(--g)':ob.score<0?'var(--red)':'var(--amber)',sub:ob.imbalance?ob.imbalance+'x':'—'},
+   {lbl:'WHALE',val:whale.whales&&whale.whales.length?whale.signal.substring(0,12):'NO DATA',c:whale.score>=15?'var(--g)':whale.score<0?'var(--red)':'var(--muted)',sub:whale.whales&&whale.whales.length?whale.whales.length+' trades':'—'},
+   {lbl:'DERIVATIVES',val:(deriv.signal||'NO DATA').substring(0,14),c:deriv.score>=15?'var(--g)':deriv.score<0?'var(--red)':'var(--amber)',sub:deriv.fundingPct!==null?'FR '+deriv.fundingPct+'%':'—'},
+   {lbl:'MOMENTUM',val:mom.rsi?'RSI '+mom.rsi:'NO DATA',c:mom.rsi&&mom.rsi<35?'var(--g)':mom.rsi&&mom.rsi>75?'var(--red)':'var(--muted)',sub:mom.volRatio?'Vol '+mom.volRatio+'x':'—'},
+  ].forEach(function(e){
+    card+='<div class="dt-engine" style="border-color:rgba(255,255,255,.06)">';
+    card+='<div class="dt-engine-lbl" style="color:var(--dim)">'+e.lbl+'</div>';
+    card+='<div class="dt-engine-val" style="color:'+e.c+'">'+e.val+'</div>';
+    card+='<div style="font-size:8px;color:var(--dim)">'+e.sub+'</div>';
+    card+='</div>';
+  });
+  card+='</div>';
+  // OB visualization
+  if(ob.bidWalls&&ob.bidWalls.length&&ob.askWalls&&ob.askWalls.length){
+    card+='<div class="ob-bar-wrap">';
+    card+='<div style="font-size:8px;color:var(--dim);letter-spacing:1.5px;margin-bottom:4px">ORDER BOOK WALLS</div>';
+    var maxW=Math.max(...(ob.askWalls||[]).map(function(w){return w.usd;}),0,...(ob.bidWalls||[]).map(function(w){return w.usd;}),0)||1;
+    (ob.askWalls||[]).slice(0,2).reverse().forEach(function(w){var pct=w.usd/maxW*100;card+='<div class="ob-bar-row"><div class="ob-price" style="color:var(--red)">$'+fmt(w.p)+'</div><div class="ob-bar-bg"><div class="ob-bar-fill" style="width:'+pct.toFixed(0)+'%;background:var(--red);opacity:.5"></div></div><div class="ob-usd" style="color:var(--red)">'+fmtU(w.usd)+'</div></div>';});
+    card+='<div class="ob-bar-row"><div class="ob-price" style="color:var(--g);font-weight:700">▶ $'+fmt(c.price)+'</div><div style="flex:1;border-top:1px dashed rgba(0,255,204,.2)"></div><div class="ob-usd" style="color:var(--g)">NOW</div></div>';
+    (ob.bidWalls||[]).slice(0,2).forEach(function(w){var pct=w.usd/maxW*100;card+='<div class="ob-bar-row"><div class="ob-price" style="color:var(--g2)">$'+fmt(w.p)+'</div><div class="ob-bar-bg"><div class="ob-bar-fill" style="width:'+pct.toFixed(0)+'%;background:var(--g2);opacity:.5"></div></div><div class="ob-usd" style="color:var(--g2)">'+fmtU(w.usd)+'</div></div>';});
+    card+='</div>';
   }
-  card += '</div>';
-  card += '<div style="font-size:10px;color:var(--muted)">$' + fmt(c.price) + ' · <span style="color:' + (ch24>=0?'var(--g2)':'var(--red)') + '">' + (ch24>=0?'+':'') + ch24.toFixed(2) + '%</span></div>';
-  card += '</div>';
-  card += '<div style="text-align:right">';
-  card += '<div class="dt-signal" style="color:' + sigColor + '">' + (sig.s||'—') + '</div>';
-  card += '<div style="font-size:10px;color:var(--dim);margin-top:2px">Score: ' + score + '</div>';
-  card += '<div style="font-size:9px;color:var(--muted)">' + (sig.action||'') + '</div>';
-  card += '</div></div>';
-
-  // ── 3 ENGINE BADGES ──
-  card += '<div class="dt-engines">';
-  // Order Book engine
-  if (ob.obSignal) {
-    var obColor = ob.obScore >= 18 ? 'var(--g)' : ob.obScore >= 10 ? 'var(--amber)' : ob.obScore < 0 ? 'var(--red)' : 'var(--muted)';
-    card += '<div class="dt-engine" style="border-color:' + obColor.replace(')', ',0.25)').replace('var(--', 'rgba(0,') + ';background:' + obColor.replace(')', ',0.04)').replace('var(--', 'rgba(0,') + '">';
-    card += '<div class="dt-engine-lbl" style="color:' + obColor + '">ORDER BOOK</div>';
-    card += '<div class="dt-engine-val" style="color:' + obColor + '">' + ob.obSignal + '</div>';
-    card += '<div style="font-size:8px;color:var(--dim)">Imbalance ' + (ob.imbalance||'—') + 'x</div>';
-    card += '</div>';
+  // Whale feed
+  if(whale.whales&&whale.whales.length){
+    card+='<div class="dt-whale-feed"><div style="font-size:8px;color:var(--amber);letter-spacing:1.5px;margin-bottom:3px">🐳 WHALE TRADES</div>';
+    whale.whales.slice(0,4).forEach(function(w){var wc=w.side==='BUY'?'var(--g2)':'var(--red)';card+='<div class="dt-whale-item"><span style="color:'+wc+';font-weight:700">'+w.side+'</span><span>'+fmtU(w.usd)+'</span><span style="color:var(--dim)">'+w.tier+'</span><span style="color:var(--dim)">'+w.ago+'m</span></div>';});
+    card+='<div style="text-align:right;font-size:9px;color:'+(whale.netWhaleUSD>=0?'var(--g2)':'var(--red)')+';padding-top:3px;font-weight:700">Net: '+fmtU(whale.netWhaleUSD)+' ('+((whale.whaleRatio||0.5)*100).toFixed(0)+'% buy)</div></div>';
   }
-  // Whale engine
-  if (whale.whaleSignal) {
-    var wColor = whale.whaleScore >= 18 ? 'var(--g)' : whale.whaleScore >= 10 ? 'var(--g2)' : whale.whaleScore < -10 ? 'var(--red)' : 'var(--muted)';
-    card += '<div class="dt-engine" style="border-color:rgba(255,179,0,.2);background:rgba(255,179,0,.03)">';
-    card += '<div class="dt-engine-lbl" style="color:var(--amber)">WHALE</div>';
-    card += '<div class="dt-engine-val" style="color:' + wColor + '">' + whale.whaleSignal + '</div>';
-    card += '<div style="font-size:8px;color:var(--dim)">' + (whale.whaleCount||0) + ' trades · ' + fmtUSD(whale.netWhaleUSD) + ' net</div>';
-    card += '</div>';
-  }
-  // Structure engine
-  if (struct.trend) {
-    var sColor = struct.trend === 'UPTREND' ? 'var(--g)' : struct.trend === 'DOWNTREND' ? 'var(--red)' : 'var(--amber)';
-    card += '<div class="dt-engine" style="border-color:rgba(100,100,255,.2);background:rgba(100,100,255,.03)">';
-    card += '<div class="dt-engine-lbl" style="color:rgba(150,150,255,.8)">STRUCTURE</div>';
-    card += '<div class="dt-engine-val" style="color:' + sColor + '">' + struct.trend + '</div>';
-    card += '<div style="font-size:8px;color:var(--dim)">EMA50 ' + (struct.ema50 ? fmt(struct.ema50) : '—') + '</div>';
-    card += '</div>';
-  }
-  card += '</div>';
-
-  // ── ORDER BOOK VISUALIZATION ──
-  if (ob.bidWalls && ob.askWalls && (ob.bidWalls.length || ob.askWalls.length)) {
-    card += '<div class="ob-bar-wrap">';
-    card += '<div style="font-size:8px;color:var(--dim);letter-spacing:1.5px;margin-bottom:4px">ORDER BOOK WALLS</div>';
-    var maxWall = Math.max(
-      ...(ob.bidWalls||[]).map(w => w.usd),
-      ...(ob.askWalls||[]).map(w => w.usd),
-      ob.biggestBid?.usd || 0, ob.biggestAsk?.usd || 0
-    );
-    // Ask walls (resistance - show first, red)
-    (ob.askWalls||[]).slice(0,2).reverse().forEach(function(w) {
-      var pct = maxWall > 0 ? (w.usd / maxWall * 100) : 50;
-      card += '<div class="ob-bar-row"><div class="ob-price" style="color:var(--red)">$' + fmt(w.price) + '</div>' +
-              '<div class="ob-bar-bg"><div class="ob-bar-fill" style="width:' + pct.toFixed(0) + '%;background:var(--red);opacity:.6"></div></div>' +
-              '<div class="ob-usd" style="color:var(--red)">' + fmtUSD(w.usd) + '</div></div>';
-    });
-    // Current price marker
-    card += '<div class="ob-bar-row"><div class="ob-price" style="color:var(--g);font-weight:700">▶ $' + fmt(c.price) + '</div>' +
-            '<div style="flex:1;border-top:1px dashed rgba(0,255,204,.3)"></div>' +
-            '<div class="ob-usd" style="color:var(--g)">NOW</div></div>';
-    // Bid walls (support - green)
-    (ob.bidWalls||[]).slice(0,2).forEach(function(w) {
-      var pct = maxWall > 0 ? (w.usd / maxWall * 100) : 50;
-      card += '<div class="ob-bar-row"><div class="ob-price" style="color:var(--g2)">$' + fmt(w.price) + '</div>' +
-              '<div class="ob-bar-bg"><div class="ob-bar-fill" style="width:' + pct.toFixed(0) + '%;background:var(--g2);opacity:.6"></div></div>' +
-              '<div class="ob-usd" style="color:var(--g2)">' + fmtUSD(w.usd) + '</div></div>';
-    });
-    card += '</div>';
-  }
-
-  // ── WHALE TRADES FEED ──
-  if (whale.whaleTrades && whale.whaleTrades.length) {
-    card += '<div class="dt-whale-feed">';
-    card += '<div style="font-size:8px;color:var(--amber);letter-spacing:1.5px;margin-bottom:4px">🐳 WHALE TRADES (last 500 trades)</div>';
-    whale.whaleTrades.slice(0, 4).forEach(function(t) {
-      var tc = t.side === 'BUY' ? 'var(--g2)' : 'var(--red)';
-      card += '<div class="dt-whale-item">' +
-              '<span style="color:' + tc + ';font-weight:700">' + t.side + '</span>' +
-              '<span style="color:var(--muted)">$' + t.usd.toLocaleString() + '</span>' +
-              '<span style="color:var(--dim)">@ $' + fmt(t.price) + '</span>' +
-              '<span style="color:var(--dim)">' + (t.timeAgo <= 1 ? 'NOW' : t.timeAgo + 'min ago') + '</span>' +
-              '</div>';
-    });
-    // Net summary
-    var netC = whale.netWhaleUSD >= 0 ? 'var(--g2)' : 'var(--red)';
-    card += '<div style="text-align:right;font-size:9px;color:' + netC + ';padding-top:3px;font-weight:700">Net: ' + fmtUSD(whale.netWhaleUSD) + ' (' + (whale.whaleRatio * 100).toFixed(0) + '% buy)</div>';
-    card += '</div>';
-  }
-
-  // ── TRADE LEVELS ──
-  card += '<div class="dt-levels">';
-  var slNote = trade.slNote ? trade.slNote.substring(0, 35) + '...' : 'Structural SL';
-  card += '<div class="dt-lvl" style="border-color:rgba(255,68,100,.2)">' +
-          '<div class="dt-lvl-lbl" style="color:var(--red)">STOP</div>' +
-          '<div class="dt-lvl-val" style="color:var(--red)">$' + fmt(trade.sl) + '</div>' +
-          '<div style="font-size:7px;color:var(--dim)">-' + (trade.slPct||'') + '%</div></div>';
-  card += '<div class="dt-lvl" style="border-color:rgba(0,255,136,.15)">' +
-          '<div class="dt-lvl-lbl" style="color:var(--g2)">TP1</div>' +
-          '<div class="dt-lvl-val" style="color:var(--g2)">$' + fmt(trade.tp1) + '</div>' +
-          '<div style="font-size:7px;color:var(--g2)">+' + (trade.tp1Pct||'') + '% R:' + (trade.rr1||'—') + '</div></div>';
-  card += '<div class="dt-lvl" style="border-color:rgba(0,255,136,.2)">' +
-          '<div class="dt-lvl-lbl" style="color:var(--g2)">TP2</div>' +
-          '<div class="dt-lvl-val" style="color:var(--g2)">$' + fmt(trade.tp2) + '</div>' +
-          '<div style="font-size:7px;color:var(--g2)">+' + (trade.tp2Pct||'') + '% R:' + (trade.rr2||'—') + '</div></div>';
-  card += '<div class="dt-lvl" style="border-color:rgba(255,179,0,.15)">' +
-          '<div class="dt-lvl-lbl" style="color:var(--amber)">TP3</div>' +
-          '<div class="dt-lvl-val" style="color:var(--amber)">$' + fmt(trade.tp3) + '</div>' +
-          '<div style="font-size:7px;color:var(--amber)">+' + (trade.tp3Pct||'') + '%</div></div>';
-  card += '</div>';
-
-  // ── REASONS / WARNINGS ──
-  if (c.reasons && c.reasons.length) {
-    card += '<div class="dt-reasons">';
-    card += '<div style="font-size:8px;color:var(--dim);letter-spacing:1.5px;margin-bottom:3px">KONFIRMASI</div>';
-    c.reasons.forEach(function(r) { card += '<div class="dt-reason">✓ ' + r + '</div>'; });
-    card += '</div>';
-  }
-  if (c.warnings && c.warnings.length) {
-    c.warnings.forEach(function(w) {
-      card += '<div class="dt-warning"><span>⚠️</span><span>' + w + '</span></div>';
-    });
-  }
-
-  // ── SL NOTE ──
-  if (trade.slNote) {
-    card += '<div style="font-size:8px;color:var(--dim);margin-top:4px">SL basis: ' + trade.slNote + '</div>';
-  }
-
-  card += '</div>';
+  // Notes
+  var notes=[];
+  if(struct.notes)struct.notes.slice(0,2).forEach(function(n){notes.push(n);});
+  if(ob.notes)ob.notes.slice(0,1).forEach(function(n){notes.push(n);});
+  if(whale.notes)whale.notes.slice(0,1).forEach(function(n){notes.push(n);});
+  if(deriv.notes)deriv.notes.slice(0,1).forEach(function(n){notes.push(n);});
+  if(mom.notes)mom.notes.slice(0,1).forEach(function(n){notes.push(n);});
+  if(notes.length){card+='<div class="dt-reasons"><div style="font-size:8px;color:var(--dim);letter-spacing:1.5px;margin-bottom:3px">ANALISA INSTITUSIONAL</div>';notes.slice(0,5).forEach(function(n){card+='<div class="dt-reason">→ '+n+'</div>';});card+='</div>';}
+  // Trade levels
+  card+='<div class="dt-levels">';
+  card+='<div class="dt-lvl" style="border-color:rgba(255,68,100,.2)"><div class="dt-lvl-lbl" style="color:var(--red)">STOP</div><div class="dt-lvl-val" style="color:var(--red)">$'+fmt(trade.sl)+'</div><div style="font-size:7px;color:var(--dim)">-'+(trade.slPct||'')+'%</div></div>';
+  card+='<div class="dt-lvl" style="border-color:rgba(0,255,136,.15)"><div class="dt-lvl-lbl" style="color:var(--g2)">TP1</div><div class="dt-lvl-val" style="color:var(--g2)">$'+fmt(trade.tp1)+'</div><div style="font-size:7px;color:var(--g2)">+'+( trade.tp1Pct||'')+'% R:'+(trade.rr1||'—')+'</div></div>';
+  card+='<div class="dt-lvl" style="border-color:rgba(0,255,136,.2)"><div class="dt-lvl-lbl" style="color:var(--g2)">TP2</div><div class="dt-lvl-val" style="color:var(--g2)">$'+fmt(trade.tp2)+'</div><div style="font-size:7px;color:var(--g2)">+'+( trade.tp2Pct||'')+'% R:'+(trade.rr2||'—')+'</div></div>';
+  card+='<div class="dt-lvl" style="border-color:rgba(255,179,0,.15)"><div class="dt-lvl-lbl" style="color:var(--amber)">TP3</div><div class="dt-lvl-val" style="color:var(--amber)">$'+fmt(trade.tp3)+'</div><div style="font-size:7px;color:var(--amber)">+'+( trade.tp3Pct||'')+'%</div></div>';
+  card+='</div>';
+  if(trade.slNote)card+='<div style="font-size:8px;color:var(--dim);margin-top:4px">📍 '+trade.slNote+'</div>';
+  card+='</div>';
   return card;
 }
+
 
 async function refreshAll(){
   const btn=$('r-btn');btn.disabled=true;btn.textContent='⏳';
