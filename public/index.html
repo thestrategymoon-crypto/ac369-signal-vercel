@@ -860,7 +860,10 @@ function renderAsset(id,ticker,d){
 // ── MACRO ─────────────────────────────────────────────────────
 async function fetchMacro(){
   try{
-    const r=await fetch('/api/macro');const d=await r.json();
+    const ctrl=new AbortController();setTimeout(()=>ctrl.abort(),18000);
+    const r=await fetch('/api/macro',{signal:ctrl.signal});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
     const fg=d.fearGreed||{value:50,classification:'Neutral'};
     const fgc=fg.value<=25?'var(--red)':fg.value<=45?'var(--amber)':fg.value<=55?'var(--txt)':fg.value<=75?'#a0e040':'var(--g)';
     H('s-fg',fg.value.toString());
@@ -891,7 +894,10 @@ async function fetchMacro(){
 // ── ALTCOINS ──────────────────────────────────────────────────
 async function fetchAltcoins(){
   try{
-    const r=await fetch('/api/altcoins');const d=await r.json();
+    const ctrl=new AbortController();setTimeout(()=>ctrl.abort(),18000);
+    const r=await fetch('/api/altcoins',{signal:ctrl.signal});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
     const gRow=c=>{const chg=parseFloat(c.change24h)||0;return `<div class="ar" onclick="clickCoin('${c.symbol}')"><div><span class="asym">${c.symbol}</span> <span class="apx">${fP(c.price)}</span></div><span class="achg2 ${chg>=0?'up':'dn'}">${chg>=0?'+':''}${chg.toFixed(2)}%</span></div>`;};
     H('gain-c',`<div class="ct">🚀 Top Gainers</div>${(d.topGainers||[]).slice(0,12).map(gRow).join('')||'<div style="color:var(--muted);font-size:11px">—</div>'}`);
     H('vol-c',`<div class="ct">💥 Volume Breakout</div>${(d.volumeBreakouts||[]).slice(0,10).map(c=>{const chg=parseFloat(c.change24h)||0;return `<div class="ar" onclick="clickCoin('${c.symbol}')"><div><span class="asym">${c.symbol}</span> <span class="apx">${fV(c.volumeUSD||0)}</span></div><div style="text-align:right"><span class="achg2 ${chg>=0?'up':'dn'}">${chg>=0?'+':''}${chg.toFixed(2)}%</span><div style="font-size:9px;color:${chg>=0?'var(--g)':'var(--red)'}">${c.signal||''}</div></div></div>`;}).join('')||'<div style="color:var(--muted);font-size:11px">—</div>'}`);
