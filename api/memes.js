@@ -1,553 +1,459 @@
-// api/memes.js — AC369 FUSION MEME INTELLIGENCE v2.0
+// api/memes.js — AC369 FUSION MEME INTELLIGENCE v3.0
 // ══════════════════════════════════════════════════════════════════
-// MEME COIN TECHNICAL + ANOMALY ENGINE
+// INSTITUTIONAL-GRADE MEME COIN SCANNER
+// Following hedge fund analyst standards — no hallucination
 //
-// Engines:
-//   1. ANOMALY DETECTOR  — vol/mcap ratio, vol spike, coiling
-//   2. ELLIOTT WAVE      — Wave 1/3/5/A/B/C from 4H klines
-//   3. CHART PATTERNS    — Flag, Triangle, Cup, Double Bottom, Spring
-//   4. CONFLUENCE SCORE  — 0-100 combined signal strength
-//   5. SMART SETUP       — Entry/SL/TP1/TP2/TP3/TP4 with R:R
+// ENGINE 1: MARKET STRUCTURE     (HH/HL/LH/LL, BOS, CHoCH, Sweep)
+// ENGINE 2: ORDER BOOK           (Walls, Absorption, Imbalance)
+// ENGINE 3: WHALE DETECTOR       (>$80k/>$250k/>$1M trades)
+// ENGINE 4: DERIVATIVES          (OI, Funding, L/S, Squeeze)
+// ENGINE 5: MOMENTUM & VOLUME    (Volume Delta, CVD, Divergence)
+//
+// CONFIDENCE SCORE: 0-100 | Entry ONLY if score >= 65
+// OUTPUT: Exact Entry / SL / TP1 / TP2 / TP3 / Verdict
 // ══════════════════════════════════════════════════════════════════
 
 const MEME_SYMBOLS = [
   'DOGE','SHIB','PEPE','BONK','WIF','FLOKI','BRETT','MOG','NEIRO',
   'GOAT','PNUT','ACT','TURBO','PEOPLE','MOODENG','LUNC','BOME',
-  'MEME','HOT','DOGS','HMSTR','CATI','NOT','BABYDOGE','ELON',
-  'GIGA','CHEEMS','POPCAT','PONKE','SLERF','MYRO','AIDOGE',
+  'MEME','HOT','DOGS','HMSTR','CATI','NOT','BABYDOGE',
+  'GIGA','POPCAT','PONKE','SLERF','AIDOGE',
 ];
 
 const MEME_META = {
-  DOGE:  { cat:'OG Meme',     chain:'Multi',    gen: 1 },
-  SHIB:  { cat:'OG Meme',     chain:'ETH',      gen: 1 },
-  LUNC:  { cat:'OG Meme',     chain:'Terra',    gen: 1 },
-  PEPE:  { cat:'Frog Army',   chain:'ETH',      gen: 2 },
-  BRETT: { cat:'Frog Army',   chain:'Base',     gen: 2 },
-  MOG:   { cat:'Frog Army',   chain:'ETH',      gen: 2 },
-  BONK:  { cat:'SOL Meme',    chain:'Solana',   gen: 2 },
-  WIF:   { cat:'SOL Meme',    chain:'Solana',   gen: 2 },
-  POPCAT:{ cat:'SOL Meme',    chain:'Solana',   gen: 2 },
-  PONKE: { cat:'SOL Meme',    chain:'Solana',   gen: 2 },
-  SLERF: { cat:'SOL Meme',    chain:'Solana',   gen: 2 },
-  MYRO:  { cat:'SOL Meme',    chain:'Solana',   gen: 2 },
-  FLOKI: { cat:'Dog Meme',    chain:'Multi',    gen: 2 },
-  BABYDOGE:{ cat:'Dog Meme',  chain:'BSC',      gen: 2 },
-  ELON:  { cat:'Dog Meme',    chain:'BSC',      gen: 2 },
-  NEIRO: { cat:'Cat Meme',    chain:'ETH',      gen: 3 },
-  MOODENG:{ cat:'Animal Meme',chain:'ETH',      gen: 3 },
-  CATI:  { cat:'Cat Meme',    chain:'TON',      gen: 3 },
-  GOAT:  { cat:'AI Meme',     chain:'Solana',   gen: 3 },
-  ACT:   { cat:'AI Meme',     chain:'Solana',   gen: 3 },
-  TURBO: { cat:'AI Meme',     chain:'ETH',      gen: 3 },
-  PNUT:  { cat:'Political',   chain:'Solana',   gen: 3 },
-  PEOPLE:{ cat:'Political',   chain:'ETH',      gen: 2 },
-  BOME:  { cat:'Inscription', chain:'Solana',   gen: 3 },
-  GIGA:  { cat:'Chad Meme',   chain:'Solana',   gen: 3 },
-  CHEEMS:{ cat:'Chad Meme',   chain:'BSC',      gen: 2 },
-  MEME:  { cat:'Meta Meme',   chain:'ETH',      gen: 2 },
-  HOT:   { cat:'Utility Meme',chain:'NEAR',     gen: 1 },
-  DOGS:  { cat:'TON Meme',    chain:'TON',      gen: 3 },
-  HMSTR: { cat:'TON Meme',    chain:'TON',      gen: 3 },
-  CATI:  { cat:'TON Meme',    chain:'TON',      gen: 3 },
-  NOT:   { cat:'TON Meme',    chain:'TON',      gen: 3 },
-  AIDOGE:{ cat:'AI Meme',     chain:'ARB',      gen: 3 },
+  DOGE:{cat:'OG',gen:1,chain:'Multi'}, SHIB:{cat:'OG',gen:1,chain:'ETH'},
+  LUNC:{cat:'OG',gen:1,chain:'Terra'}, PEPE:{cat:'Frog',gen:2,chain:'ETH'},
+  BRETT:{cat:'Frog',gen:2,chain:'Base'}, MOG:{cat:'Frog',gen:2,chain:'ETH'},
+  BONK:{cat:'SOL',gen:2,chain:'Solana'}, WIF:{cat:'SOL',gen:2,chain:'Solana'},
+  POPCAT:{cat:'SOL',gen:2,chain:'Solana'}, PONKE:{cat:'SOL',gen:2,chain:'Solana'},
+  SLERF:{cat:'SOL',gen:2,chain:'Solana'}, FLOKI:{cat:'Dog',gen:2,chain:'Multi'},
+  BABYDOGE:{cat:'Dog',gen:2,chain:'BSC'}, NEIRO:{cat:'Cat',gen:3,chain:'ETH'},
+  MOODENG:{cat:'Animal',gen:3,chain:'ETH'}, CATI:{cat:'TON',gen:3,chain:'TON'},
+  GOAT:{cat:'AI Meme',gen:3,chain:'SOL'}, ACT:{cat:'AI Meme',gen:3,chain:'SOL'},
+  TURBO:{cat:'AI Meme',gen:3,chain:'ETH'}, PNUT:{cat:'Political',gen:3,chain:'SOL'},
+  PEOPLE:{cat:'Political',gen:2,chain:'ETH'}, BOME:{cat:'Inscription',gen:3,chain:'SOL'},
+  GIGA:{cat:'Chad',gen:3,chain:'SOL'}, MEME:{cat:'Meta',gen:2,chain:'ETH'},
+  HOT:{cat:'Utility',gen:1,chain:'NEAR'}, DOGS:{cat:'TON',gen:3,chain:'TON'},
+  HMSTR:{cat:'TON',gen:3,chain:'TON'}, NOT:{cat:'TON',gen:3,chain:'TON'},
+  AIDOGE:{cat:'AI',gen:3,chain:'ARB'},
 };
 
-// Memes with Binance Futures (can get funding rate)
-const MEME_FUTURES = new Set([
-  'DOGE','SHIB','PEPE','BONK','WIF','FLOKI','PEOPLE','LUNC','MEME',
-  'TURBO','NOT','DOGS','HMSTR','NEIRO','ACT','GOAT',
-]);
-
-const STABLES = new Set(['USDT','USDC','BUSD','DAI','FDUSD','TUSD','USDP']);
+const MEME_FUTURES = new Set(['DOGE','SHIB','PEPE','BONK','WIF','FLOKI','PEOPLE','LUNC','MEME','TURBO','NOT']);
+const STABLES = new Set(['USDT','USDC','BUSD','DAI','FDUSD']);
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Cache-Control', 's-maxage=30');
+  res.setHeader('Cache-Control', 's-maxage=25');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const sf = async (url, ms = 7000) => {
-    const c = new AbortController();
-    const t = setTimeout(() => c.abort(), ms);
+  const sf = async (url, ms = 6000) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
     try {
-      const r = await fetch(url, {
-        signal: c.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' },
-      });
-      clearTimeout(t);
-      if (!r.ok) return null;
-      return await r.json();
-    } catch { clearTimeout(t); return null; }
+      const r = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
+      clearTimeout(timer); if (!r.ok) return null; return await r.json();
+    } catch { clearTimeout(timer); return null; }
   };
 
   // ════════════════════════════════════════════════════════════════
-  // ENGINE 1: ANOMALY DETECTOR
-  // Meme coins behave anomalously before big moves
+  // ENGINE 1: MARKET STRUCTURE
+  // Uses 4H klines to determine trend, BOS, CHoCH, liquidity sweep
   // ════════════════════════════════════════════════════════════════
-  function detectAnomaly(price, high, low, open, ch24, vol, mcap, vt) {
-    const anomalies = [];
-    let anomalyScore = 0;
+  function analyzeStructure(klines, price) {
+    if (!klines || klines.length < 8) {
+      return { trend: 'UNKNOWN', bos: false, choch: false, sweep: false, score: 5, note: 'DATA TIDAK TERSEDIA — klines' };
+    }
+    const cls  = klines.map(k => +k[4]);
+    const high = klines.map(k => +k[2]);
+    const low  = klines.map(k => +k[3]);
+    const vol  = klines.map(k => +k[5]);
+    const n    = cls.length;
 
-    const range = high > low ? (high - low) / low : 0;
-    const volMcapRatio = mcap > 0 ? vol / mcap : 0;
-    const body = Math.abs(price - open) / Math.max(high - low, price * 0.01);
-    const lw   = (Math.min(price, open) - low) / Math.max(high - low, price * 0.01);
-
-    // ANOMALY 1: Abnormal Volume vs Market Cap
-    // Vol/MCap > 0.5 = trading more than half its market cap in 24h = extreme interest
-    if (volMcapRatio > 2.0) {
-      anomalies.push({ type: 'MEGA_VOL_ANOMALY', pts: 25, note: `Vol/MCap ${volMcapRatio.toFixed(1)}x — viral trading event` });
-      anomalyScore += 25;
-    } else if (volMcapRatio > 0.8) {
-      anomalies.push({ type: 'HIGH_VOL_ANOMALY', pts: 18, note: `Vol/MCap ${volMcapRatio.toFixed(1)}x — unusual accumulation` });
-      anomalyScore += 18;
-    } else if (volMcapRatio > 0.3) {
-      anomalies.push({ type: 'VOL_ANOMALY', pts: 10, note: `Vol/MCap ${volMcapRatio.toFixed(1)}x — elevated interest` });
-      anomalyScore += 10;
+    // Find recent pivot highs/lows (simplified swing detection)
+    const pivotH = [], pivotL = [];
+    for (let i = 2; i < n - 2; i++) {
+      if (high[i] > high[i-1] && high[i] > high[i-2] && high[i] > high[i+1] && high[i] > high[i+2]) pivotH.push({ v: high[i], i });
+      if (low[i]  < low[i-1]  && low[i]  < low[i-2]  && low[i]  < low[i+1]  && low[i]  < low[i+2])  pivotL.push({ v: low[i],  i });
     }
 
-    // ANOMALY 2: Price Compression (coiling before explosion)
-    // Tight range after a pump = energy building
-    if (range < 0.025 && vt >= 2 && Math.abs(ch24) < 3) {
-      anomalies.push({ type: 'COILING', pts: 20, note: `Range ${(range*100).toFixed(1)}% — compressed = explosive move imminent` });
-      anomalyScore += 20;
-    } else if (range < 0.05 && vt >= 1 && Math.abs(ch24) < 5) {
-      anomalies.push({ type: 'COMPRESSION', pts: 12, note: `Range ${(range*100).toFixed(1)}% — tightening` });
-      anomalyScore += 12;
+    // Trend: compare last 2 pivots
+    const lastH = pivotH.slice(-2);
+    const lastL = pivotL.slice(-2);
+    let trend = 'SIDEWAYS', trendScore = 0;
+    if (lastH.length >= 2 && lastL.length >= 2) {
+      const hhhl = lastH[1].v > lastH[0].v && lastL[1].v > lastL[0].v;
+      const lhll = lastH[1].v < lastH[0].v && lastL[1].v < lastL[0].v;
+      if (hhhl)  { trend = 'UPTREND';   trendScore = 15; }
+      else if (lhll) { trend = 'DOWNTREND'; trendScore = -10; }
+      else       { trend = 'RANGING';   trendScore = 3; }
     }
 
-    // ANOMALY 3: Liquidity Sweep (stop hunt before reversal)
-    if (lw > 0.45 && body < 0.30 && price > low * 1.003) {
-      anomalies.push({ type: 'STOP_HUNT', pts: 18, note: `Wick ${(lw*100).toFixed(0)}% — SM cleared stops, reversal signal` });
-      anomalyScore += 18;
-    }
+    // BOS: price breaks above recent pivot high
+    const recentHigh = pivotH.length ? Math.max(...pivotH.slice(-3).map(p => p.v)) : high[n-1];
+    const recentLow  = pivotL.length ? Math.min(...pivotL.slice(-3).map(p => p.v)) : low[n-1];
+    const bos = price > recentHigh * 1.001;
+    const bosBear = price < recentLow * 0.999;
 
-    // ANOMALY 4: Stealth Accumulation (flat price + rising volume)
-    if (Math.abs(ch24) < 2 && vt >= 3 && volMcapRatio > 0.2) {
-      anomalies.push({ type: 'STEALTH_ACCUM', pts: 15, note: `Flat price + $${(vol/1e6).toFixed(0)}M vol = SM accumulating quietly` });
-      anomalyScore += 15;
-    }
+    // CHoCH: after downtrend, first bullish pivot
+    const prevTrend = lastH.length >= 2 && lastH[0].v > lastH[1].v; // was bearish
+    const choch = prevTrend && cls[n-1] > cls[n-2] && cls[n-1] > cls[n-3];
 
-    // ANOMALY 5: Breakout Candle (strong body + volume)
-    if (ch24 > 8 && body > 0.55 && vt >= 2) {
-      anomalies.push({ type: 'BREAKOUT_CANDLE', pts: 15, note: `+${ch24.toFixed(1)}% strong body = institutional breakout` });
-      anomalyScore += 15;
-    }
+    // Liquidity sweep: wick below recent low then recovery
+    const lastCandle = { o: +klines[n-1][1], h: high[n-1], l: low[n-1], c: cls[n-1] };
+    const wick = lastCandle.l < recentLow && lastCandle.c > recentLow;
+    const wickSize = lastCandle.h - lastCandle.l > 0 ? (recentLow - lastCandle.l) / (lastCandle.h - lastCandle.l) : 0;
+    const sweep = wick && wickSize > 0.25;
 
-    // ANOMALY 6: Dead Cat Bounce Risk
-    if (ch24 > 15 && vt <= 1) {
-      anomalies.push({ type: 'DCB_WARNING', pts: -10, note: `+${ch24.toFixed(1)}% on low volume = potential dead cat bounce` });
-      anomalyScore -= 10;
-    }
+    // CVD proxy: sum of (close > open ? vol : -vol) for last 10 candles
+    const cvdArr = cls.slice(-10).map((c, i) => c > +klines[n-10+i][1] ? vol[n-10+i] : -vol[n-10+i]);
+    const cvd = cvdArr.reduce((a, b) => a + b, 0);
+    const cvdBull = cvd > 0;
+
+    // Volume trend
+    const avgVol = vol.slice(-10).reduce((a, b) => a + b, 0) / 10;
+    const lastVol = vol[n-1];
+    const volExpansion = lastVol > avgVol * 1.5;
+
+    let structScore = trendScore;
+    const structNotes = [];
+    if (bos && trend === 'UPTREND')   { structScore += 15; structNotes.push(`BOS: price broke ${fmtP(recentHigh)} — bullish structure`); }
+    if (choch)                         { structScore += 12; structNotes.push('CHoCH: first bullish shift after downtrend'); }
+    if (sweep)                         { structScore += 12; structNotes.push(`Liquidity Sweep: wick below ${fmtP(recentLow)} — stops cleared`); }
+    if (cvdBull)                       { structScore += 8;  structNotes.push('CVD positive: net buying pressure'); }
+    if (volExpansion)                  { structScore += 8;  structNotes.push(`Volume ${(lastVol/avgVol).toFixed(1)}x above avg`); }
+    if (bosBear && trend === 'DOWNTREND') { structScore -= 15; structNotes.push(`BOS BEARISH: broke ${fmtP(recentLow)}`); }
 
     return {
-      anomalies,
-      anomalyScore: Math.max(-15, Math.min(25, anomalyScore)),
-      volMcapRatio: +volMcapRatio.toFixed(3),
-      rangeCompression: +(range * 100).toFixed(2),
-      isCoiling: range < 0.025 && vt >= 2,
-      hasStopHunt: lw > 0.45 && body < 0.30,
-      isStealthAccum: Math.abs(ch24) < 2 && vt >= 3,
-      topAnomaly: anomalies.sort((a, b) => b.pts - a.pts)[0] || null,
+      trend, bos, bosBear, choch, sweep, cvdBull, volExpansion,
+      recentHigh: +recentHigh.toFixed(8), recentLow: +recentLow.toFixed(8),
+      score: Math.max(-20, Math.min(20, structScore)),
+      notes: structNotes,
+      premium: price > (recentHigh + recentLow) / 2,
+      discount: price < (recentHigh + recentLow) / 2,
     };
   }
 
   // ════════════════════════════════════════════════════════════════
-  // ENGINE 2: ELLIOTT WAVE DETECTOR
-  // Uses 4H klines to identify wave position
-  // For memes: Wave 3 early = BEST entry, Wave 5 = exit
+  // ENGINE 2: ORDER BOOK
   // ════════════════════════════════════════════════════════════════
-  function detectElliottWave(klines, currentPrice) {
-    if (!klines || klines.length < 10) {
-      // Fallback: estimate from price action if no klines
-      return { wave: 'UNKNOWN', phase: 'UNKNOWN', ewScore: 0, confidence: 'LOW', note: 'Insufficient data' };
+  function analyzeOrderBook(depth, price) {
+    if (!depth?.bids?.length || !depth?.asks?.length) {
+      return { signal: 'DATA TIDAK TERSEDIA', score: 0, imbalance: 1 };
+    }
+    const bids = depth.bids.slice(0, 15).map(([p, q]) => ({ p: +p, q: +q, usd: +p * +q }));
+    const asks = depth.asks.slice(0, 15).map(([p, q]) => ({ p: +p, q: +q, usd: +p * +q }));
+    const totalBid = bids.reduce((a, b) => a + b.usd, 0);
+    const totalAsk = asks.reduce((a, b) => a + b.usd, 0);
+    const imbalance = totalAsk > 0 ? totalBid / totalAsk : 1;
+
+    // Find walls (single level > 15% of side)
+    const bidWalls = bids.filter(b => b.usd > totalBid * 0.15).sort((a, b) => b.p - a.p);
+    const askWalls = asks.filter(a => a.usd > totalAsk * 0.15).sort((a, b) => a.p - b.p);
+
+    // Absorption: price moved up but big ask wall absorbed
+    const biggestBid = bids.reduce((a, b) => b.usd > a.usd ? b : a, bids[0]);
+    const biggestAsk = asks.reduce((a, b) => b.usd > a.usd ? b : a, asks[0]);
+    const wallRatio  = biggestAsk.usd > 0 ? biggestBid.usd / biggestAsk.usd : 1;
+
+    let signal = 'BALANCED', obScore = 0;
+    const notes = [];
+    if (imbalance > 2.5)       { signal = 'STRONG BUY PRESSURE'; obScore = 20; notes.push(`Bid/Ask ${imbalance.toFixed(1)}x — buyers dominating`); }
+    else if (imbalance > 1.5)  { signal = 'BUY PRESSURE';        obScore = 14; notes.push(`Bid/Ask ${imbalance.toFixed(1)}x`); }
+    else if (imbalance > 1.1)  { signal = 'MILD BUY';             obScore = 7; }
+    else if (imbalance < 0.5)  { signal = 'STRONG SELL PRESSURE'; obScore = -18; notes.push(`Ask/Bid ${(1/imbalance).toFixed(1)}x — sellers dominating`); }
+    else if (imbalance < 0.75) { signal = 'SELL PRESSURE';        obScore = -12; }
+
+    if (wallRatio > 3)  { obScore += 8; notes.push(`Whale bid wall $${fmtUSD(biggestBid.usd)} at $${fmtP(biggestBid.p)}`); }
+    if (wallRatio < 0.3){ obScore -= 8; notes.push(`Whale ask wall $${fmtUSD(biggestAsk.usd)} at $${fmtP(biggestAsk.p)}`); }
+
+    const support    = bidWalls[0]?.p || bids[0]?.p || price * 0.97;
+    const resistance = askWalls[0]?.p || asks[0]?.p || price * 1.03;
+
+    return {
+      signal, imbalance: +imbalance.toFixed(2), score: Math.max(-20, Math.min(20, obScore)),
+      totalBidUSD: +totalBid.toFixed(0), totalAskUSD: +totalAsk.toFixed(0),
+      support: +support.toFixed(8), resistance: +resistance.toFixed(8),
+      bidWalls: bidWalls.slice(0, 2).map(w => ({ p: w.p, usd: +w.usd.toFixed(0) })),
+      askWalls: askWalls.slice(0, 2).map(w => ({ p: w.p, usd: +w.usd.toFixed(0) })),
+      notes,
+    };
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // ENGINE 3: WHALE DETECTOR
+  // ════════════════════════════════════════════════════════════════
+  function analyzeWhales(trades, price) {
+    if (!trades?.length) return { signal: 'DATA TIDAK TERSEDIA', score: 0, whales: [] };
+
+    const whales = [];
+    let buyVol = 0, sellVol = 0, totalVol = 0;
+
+    for (const t of trades) {
+      const usd = +t.p * +t.q;
+      const isSell = t.m; // maker = sell
+      totalVol += usd;
+      if (isSell) sellVol += usd;
+      else buyVol += usd;
+
+      // Whale thresholds: $80k, $250k, $1M
+      if (usd >= 80000) {
+        const tier = usd >= 1000000 ? '🐳 MEGA ($1M+)' : usd >= 250000 ? '🐳 LARGE ($250k+)' : '🐟 MID ($80k+)';
+        whales.push({
+          side: isSell ? 'SELL' : 'BUY',
+          usd: +usd.toFixed(0), price: +t.p,
+          tier, ago: Math.round((Date.now() - t.T) / 60000),
+        });
+      }
     }
 
-    const closes  = klines.map(k => +k[4]);
-    const highs   = klines.map(k => +k[2]);
-    const lows    = klines.map(k => +k[3]);
-    const volumes = klines.map(k => +k[5]);
+    const buyRatio   = totalVol > 0 ? buyVol / totalVol : 0.5;
+    const whaleBuy   = whales.filter(w => w.side === 'BUY').reduce((a, w) => a + w.usd, 0);
+    const whaleSell  = whales.filter(w => w.side === 'SELL').reduce((a, w) => a + w.usd, 0);
+    const netWhale   = whaleBuy - whaleSell;
+    const whaleRatio = (whaleBuy + whaleSell) > 0 ? whaleBuy / (whaleBuy + whaleSell) : 0.5;
+    const recent5    = whales.filter(w => w.ago <= 5).length;
 
-    const n = closes.length;
-    const last = closes[n - 1];
+    let signal = 'NO WHALE ACTIVITY', whaleScore = 0;
+    const notes = [];
 
-    // Find significant pivot points (simplified EW detection)
-    // Look at last 20 candles
-    const recent = closes.slice(-20);
-    const recentH = highs.slice(-20);
-    const recentL = lows.slice(-20);
-    const recentV = volumes.slice(-20);
-
-    const localMax = Math.max(...recent);
-    const localMin = Math.min(...recent);
-    const localMaxIdx = recent.indexOf(localMax);
-    const localMinIdx = recent.indexOf(localMin);
-
-    const range = localMax - localMin;
-    const posInRange = range > 0 ? (last - localMin) / range : 0.5;
-
-    // Volume trend (is volume increasing with price = impulse?)
-    const avgVolRecent = recentV.slice(-5).reduce((a, b) => a + b, 0) / 5;
-    const avgVolEarly  = recentV.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
-    const volTrend = avgVolEarly > 0 ? avgVolRecent / avgVolEarly : 1;
-
-    // Price momentum (smoothed)
-    const ma5  = recent.slice(-5).reduce((a, b) => a + b, 0) / 5;
-    const ma10 = recent.slice(-10).reduce((a, b) => a + b, 0) / 10;
-    const ma20 = recent.reduce((a, b) => a + b, 0) / 20;
-    const momentum = (ma5 / ma20 - 1) * 100;
-
-    // Rate of change
-    const roc5  = recent.length >= 5  ? (last - recent[recent.length - 5])  / recent[recent.length - 5]  * 100 : 0;
-    const roc10 = recent.length >= 10 ? (last - recent[recent.length - 10]) / recent[recent.length - 10] * 100 : 0;
-    const roc20 = recent.length >= 20 ? (last - recent[0]) / recent[0] * 100 : 0;
-
-    // Determine wave phase using EW principles
-    let wave = '', phase = '', ewScore = 0, note = '', confidence = 'MEDIUM';
-    let target1 = 0, target2 = 0, target3 = 0;
-    let ewSL = 0;
-
-    // === MEME ELLIOTT WAVE HEURISTICS ===
-    // Wave 1 Early: Price just started moving from base, small initial pump
-    // Wave 1 Late: First impulse mostly done
-    // Wave 2: Correction after Wave 1 (ideal buy zone)
-    // Wave 3 Early: ★ BEST ENTRY — Strongest wave just starting
-    // Wave 3 Mid: Momentum continuing
-    // Wave 5: Final push, caution
-    // Wave A-C: Correction
-
-    if (roc20 < -30 && posInRange < 0.20 && momentum < -2) {
-      // Deep correction - possible Wave C ending / Wave 2 bottom
-      wave = 'Wave 2/C';
-      phase = 'REVERSAL SETUP';
-      ewScore = 22;
-      note = `${roc20.toFixed(0)}% correction → reversal zone. Wave 2/C bottom forming`;
-      confidence = 'HIGH';
-      target1 = +(last * 1.618).toFixed(8);
-      target2 = +(last * 2.618).toFixed(8);
-      target3 = +(last * 4.236).toFixed(8);
-      ewSL = +(localMin * 0.95).toFixed(8);
-
-    } else if (roc20 > 5 && roc10 > roc20 * 0.3 && posInRange < 0.45 && momentum > 0 && volTrend > 1.2) {
-      // Price starting to accelerate from bottom — Wave 3 beginning
-      wave = 'Wave 3 Early ⭐';
-      phase = 'IMPULSE START';
-      ewScore = 25; // MAX — best meme entry
-      note = `+${roc20.toFixed(0)}% base + vol ${volTrend.toFixed(1)}x → Wave 3 ignition. BEST ENTRY`;
-      confidence = 'HIGH';
-      target1 = +(last * 1.618).toFixed(8);
-      target2 = +(last * 2.618).toFixed(8);
-      target3 = +(last * 4.236).toFixed(8);
-      ewSL = +(localMin * 0.92).toFixed(8);
-
-    } else if (roc20 > 20 && posInRange > 0.45 && posInRange < 0.75 && volTrend >= 1.0) {
-      // Strong ongoing move — Wave 3 middle
-      wave = 'Wave 3 Mid';
-      phase = 'STRONG IMPULSE';
-      ewScore = 18;
-      note = `+${roc20.toFixed(0)}% Wave 3 extending. Ride or wait pullback`;
-      confidence = 'MEDIUM';
-      target1 = +(last * 1.382).toFixed(8);
-      target2 = +(last * 2.0).toFixed(8);
-      target3 = +(last * 3.0).toFixed(8);
-      ewSL = +(localMin * 0.90).toFixed(8);
-
-    } else if (roc10 < -10 && roc20 > 15 && posInRange > 0.35 && posInRange < 0.65) {
-      // Pulled back from high, still above midpoint — Wave 4 / ideal entry
-      wave = 'Wave 4';
-      phase = 'PULLBACK ENTRY';
-      ewScore = 20;
-      note = `Wave 4 pullback after pump. Entry for Wave 5 continuation`;
-      confidence = 'MEDIUM';
-      target1 = +(localMax * 1.05).toFixed(8);
-      target2 = +(localMax * 1.236).toFixed(8);
-      target3 = +(localMax * 1.618).toFixed(8);
-      ewSL = +(last * 0.88).toFixed(8);
-
-    } else if (posInRange > 0.75 && roc5 > 5 && roc20 > 40) {
-      // High in range, late pump — Wave 5 / caution zone
-      wave = 'Wave 5';
-      phase = 'LATE STAGE ⚠️';
-      ewScore = 8;
-      note = `Wave 5 — final push. Reduce position size, tight SL`;
-      confidence = 'MEDIUM';
-      target1 = +(last * 1.1).toFixed(8);
-      target2 = +(last * 1.2).toFixed(8);
-      target3 = +(last * 1.382).toFixed(8);
-      ewSL = +(last * 0.92).toFixed(8);
-
-    } else if (posInRange > 0.80 && roc5 < -5) {
-      // Already at top and declining — Wave A distribution
-      wave = 'Wave A';
-      phase = 'DISTRIBUTION ❌';
-      ewScore = 2;
-      note = `Wave A starting. Avoid new longs, consider exit`;
-      confidence = 'MEDIUM';
-      target1 = 0; target2 = 0; target3 = 0;
-      ewSL = 0;
-
-    } else if (roc10 < -15 && roc5 > 2 && posInRange > 0.30 && posInRange < 0.60) {
-      // Bouncing after first drop — Wave B (trap)
-      wave = 'Wave B';
-      phase = 'DEAD CAT BOUNCE';
-      ewScore = 5;
-      note = `Wave B bounce — likely trap. Wait for Wave C completion`;
-      confidence = 'MEDIUM';
-      target1 = 0; target2 = 0; target3 = 0;
-      ewSL = 0;
-
-    } else if (roc20 > 0 && posInRange >= 0.35 && posInRange < 0.60 && momentum > -1) {
-      // Moderate uptrend, mid-range — Wave 1 or Wave 3 early
-      wave = 'Wave 1';
-      phase = 'EARLY IMPULSE';
-      ewScore = 15;
-      note = `Wave 1 building. Watch for Wave 2 pullback to enter`;
-      confidence = 'MEDIUM';
-      target1 = +(last * 1.5).toFixed(8);
-      target2 = +(last * 2.5).toFixed(8);
-      target3 = +(last * 4.0).toFixed(8);
-      ewSL = +(localMin * 0.94).toFixed(8);
-
+    if (whales.length === 0) {
+      signal = 'NO WHALE ACTIVITY'; whaleScore = 0;
+    } else if (whaleRatio > 0.80) {
+      signal = 'WHALE ACCUMULATION 🐳'; whaleScore = 20;
+      notes.push(`$${fmtUSD(whaleBuy)} whale buys — institutional accumulation`);
+    } else if (whaleRatio > 0.65) {
+      signal = 'NET WHALE BUY'; whaleScore = 14;
+      notes.push(`Net +$${fmtUSD(netWhale)} whale buying`);
+    } else if (whaleRatio < 0.25) {
+      signal = 'WHALE DISTRIBUTION ⚠️'; whaleScore = -20;
+      notes.push(`$${fmtUSD(whaleSell)} whale sells — POTENSI MANIPULASI MARKET`);
+    } else if (whaleRatio < 0.40) {
+      signal = 'NET WHALE SELL'; whaleScore = -12;
     } else {
-      wave = 'CONSOLIDATION';
-      phase = 'RANGE / WAIT';
-      ewScore = 8;
-      note = `No clear wave. Vol=${volTrend.toFixed(1)}x, pos=${(posInRange*100).toFixed(0)}% of range`;
-      confidence = 'LOW';
-      target1 = +(last * 1.5).toFixed(8);
-      target2 = +(last * 2.0).toFixed(8);
-      target3 = +(last * 3.0).toFixed(8);
-      ewSL = +(localMin * 0.92).toFixed(8);
+      signal = 'MIXED WHALE ACTIVITY'; whaleScore = 3;
     }
 
+    if (recent5 >= 3 && whaleScore > 0) {
+      whaleScore = Math.min(20, whaleScore + 5);
+      notes.push(`${recent5} whale trades in last 5 min — active accumulation`);
+    }
+
+    // Manipulation warning: price dropping but whale buying
+    const manipulation = whaleRatio > 0.7 && buyRatio < 0.4;
+    if (manipulation) notes.push('POTENSI MANIPULASI: whale buy + retail sell — SM engineering');
+
     return {
-      wave, phase, ewScore, note, confidence,
-      targets: { t1: target1, t2: target2, t3: target3 },
-      ewSL,
-      momentum: +momentum.toFixed(2),
-      roc5: +roc5.toFixed(2), roc10: +roc10.toFixed(2), roc20: +roc20.toFixed(2),
-      posInRange: +posInRange.toFixed(3),
-      volTrend: +volTrend.toFixed(2),
-      localMin: +localMin.toFixed(8), localMax: +localMax.toFixed(8),
+      signal, score: Math.max(-20, Math.min(20, whaleScore)),
+      whales: whales.sort((a, b) => b.usd - a.usd).slice(0, 5),
+      whaleBuyUSD: +whaleBuy.toFixed(0), whaleSellUSD: +whaleSell.toFixed(0),
+      netWhaleUSD: +netWhale.toFixed(0), whaleRatio: +whaleRatio.toFixed(2),
+      buyRatio: +buyRatio.toFixed(2), manipulation, notes,
     };
   }
 
   // ════════════════════════════════════════════════════════════════
-  // ENGINE 3: CHART PATTERN DETECTOR
+  // ENGINE 4: DERIVATIVES
   // ════════════════════════════════════════════════════════════════
-  function detectChartPattern(price, high, low, open, ch24, ch7, ch30, lw, body, rp, vt) {
-    const patterns = [];
-    let patternScore = 0;
-
-    const range = (high - low) / price;
-
-    // 1. BULL FLAG — Impulse + tight consolidation → continuation
-    if ((ch7 || 0) > 10 && range < 0.04 && Math.abs(ch24) < 4 && vt >= 2) {
-      patterns.push({ name: 'Bull Flag 🚩', type: 'CONTINUATION', pts: 20, note: 'Tight consolidation after impulse. Breakout imminent' });
-      patternScore += 20;
+  function analyzeDerivatives(fundingRate, oi, lsRatio) {
+    if (fundingRate === null && oi === null) {
+      return { signal: 'DATA TIDAK TERSEDIA', score: 0, squeeze: 'NONE' };
     }
 
-    // 2. FALLING WEDGE — Bearish then bullish breakout
-    if ((ch7 || 0) < -5 && Math.abs(ch24) < 6 && lw > 0.15 && rp < 0.60 && vt >= 1) {
-      patterns.push({ name: 'Falling Wedge 📐', type: 'REVERSAL', pts: 18, note: 'Bearish compression → expect upside breakout' });
-      patternScore += 18;
+    let derivScore = 0;
+    let signal = 'NEUTRAL';
+    const notes = [];
+    let squeeze = 'NONE';
+
+    const fr = fundingRate !== null ? fundingRate * 100 : null;
+
+    if (fr !== null) {
+      if (fr < -0.01)      { derivScore += 18; signal = 'SHORT SQUEEZE SETUP'; notes.push(`Funding ${fr.toFixed(4)}% — shorts paying longs, squeeze imminent`); squeeze = 'SHORT'; }
+      else if (fr < 0)     { derivScore += 10; notes.push(`Negative funding — mild short squeeze bias`); }
+      else if (fr > 0.05)  { derivScore -= 15; signal = 'LONG TRAP'; notes.push(`Funding ${fr.toFixed(4)}% — overleveraged longs, liquidation risk`); squeeze = 'LONG'; }
+      else if (fr > 0.02)  { derivScore -= 8; notes.push(`Funding elevated — caution`); }
+      else                  { derivScore += 4; }
     }
 
-    // 3. DOUBLE BOTTOM — W pattern recovery
-    if ((ch7 || 0) < -8 && ch24 > 3 && lw > 0.25 && rp > 0.35 && vt >= 1) {
-      patterns.push({ name: 'Double Bottom W 📊', type: 'REVERSAL', pts: 22, note: 'W-pattern support test complete. High prob reversal' });
-      patternScore += 22;
+    if (lsRatio !== null) {
+      const longPct = +(lsRatio / (1 + lsRatio) * 100).toFixed(1);
+      if (longPct > 68)    { derivScore -= 10; notes.push(`${longPct}% long — crowded, stop hunt risk`); }
+      else if (longPct < 38){ derivScore += 12; notes.push(`${longPct}% long = short squeeze fuel`); }
     }
-
-    // 4. WYCKOFF SPRING — Wick below support + recovery
-    if (lw > 0.45 && rp < 0.40 && price > low * 1.002 && vt >= 1) {
-      patterns.push({ name: 'Wyckoff Spring 🌊', type: 'REVERSAL', pts: 22, note: 'Spring: wick below support = SM engineering reversal' });
-      patternScore += 22;
-    }
-
-    // 5. ASCENDING TRIANGLE — Higher lows + flat resistance
-    if (ch24 > 0 && ch24 < 6 && (ch7 || 0) > 3 && rp > 0.65 && vt >= 1) {
-      patterns.push({ name: 'Ascending Triangle △', type: 'CONTINUATION', pts: 16, note: 'Higher lows building. Breakout above resistance target' });
-      patternScore += 16;
-    }
-
-    // 6. CUP & HANDLE — Rounded base + handle dip
-    if ((ch7 || 0) > 5 && ch24 < 0 && ch24 > -8 && rp < 0.50 && vt >= 1) {
-      patterns.push({ name: 'Cup & Handle ☕', type: 'CONTINUATION', pts: 18, note: 'Handle dip after cup formation. Breakout above rim' });
-      patternScore += 18;
-    }
-
-    // 7. HAMMER / BULLISH REVERSAL CANDLE
-    if (lw > 0.35 && body < 0.25 && rp > 0.60) {
-      patterns.push({ name: 'Hammer Candle 🔨', type: 'REVERSAL', pts: 12, note: 'Long lower wick + close near high = buyers won the battle' });
-      patternScore += 12;
-    }
-
-    // 8. COMPRESSION BASE (before explosive move)
-    if (range < 0.03 && vt >= 2 && Math.abs(ch24) < 3) {
-      patterns.push({ name: 'Compression Base 💥', type: 'ACCUMULATION', pts: 15, note: `${(range*100).toFixed(1)}% range = extreme compression. Explosive move loading` });
-      patternScore += 15;
-    }
-
-    // 9. BREAKOUT WITH VOLUME
-    if (ch24 > 10 && body > 0.55 && vt >= 3 && rp > 0.60) {
-      patterns.push({ name: 'Vol Breakout ⚡', type: 'BREAKOUT', pts: 18, note: `+${ch24.toFixed(1)}% with ${vt >= 4 ? 'extreme' : 'strong'} volume = institutional breakout` });
-      patternScore += 18;
-    }
-
-    // 10. BEAR FLAG (warning)
-    if (ch24 < -3 && ch24 > -12 && body > 0.40 && rp > 0.50 && (ch7 || 0) < -10) {
-      patterns.push({ name: 'Bear Flag ⛳', type: 'WARNING', pts: -10, note: 'Possible bear flag — wait for confirmation before entry' });
-      patternScore -= 10;
-    }
-
-    const sorted  = [...patterns].sort((a, b) => b.pts - a.pts);
-    const bullish = sorted.filter(p => p.type !== 'WARNING');
-    const top     = bullish[0] || sorted[0] || null;
 
     return {
-      patterns: sorted,
-      topPattern: top,
-      patternScore: Math.max(-15, Math.min(25, patternScore)),
-      hasReversal: sorted.some(p => p.type === 'REVERSAL'),
-      hasContinuation: sorted.some(p => p.type === 'CONTINUATION'),
-      hasBreakout: sorted.some(p => p.type === 'BREAKOUT'),
-      patternCount: bullish.length,
+      signal, score: Math.max(-20, Math.min(20, derivScore)),
+      fundingRate: fr !== null ? +fr.toFixed(4) : null,
+      squeeze, notes,
     };
   }
 
   // ════════════════════════════════════════════════════════════════
-  // MASTER SCORE + SETUP BUILDER
+  // ENGINE 5: MOMENTUM & VOLUME
   // ════════════════════════════════════════════════════════════════
-  function buildSetup(coin, ew, pat, anom, fundingRate, fg) {
-    const { price, high, low, open, ch24, ch7, vol, mcap, vt } = coin;
-    const range = Math.max(high - low, price * 0.01);
-    const rp    = (price - low) / range;
-    const lw    = (Math.min(price, open) - low) / range;
-
-    let score = 0;
-    const reasons = [];
-
-    // 1. MOMENTUM (0-20)
-    let mom = 0;
-    if (ch24 > 20)        { mom = 20; reasons.push(`🔥 +${ch24.toFixed(1)}% pumping`); }
-    else if (ch24 > 10)   { mom = 16; reasons.push(`📈 +${ch24.toFixed(1)}% strong move`); }
-    else if (ch24 > 5)    { mom = 13; reasons.push(`✅ +${ch24.toFixed(1)}% bullish`); }
-    else if (ch24 > 0)    { mom = 9;  }
-    else if (ch24 > -5)   { mom = 6;  }
-    else if (ch24 > -15)  { mom = 4;  }
-    else                  { mom = 2;  }
-    if ((ch7 || 0) > 15 && ch24 > 0) { mom = Math.min(20, mom + 4); reasons.push(`📈 7D +${(ch7||0).toFixed(0)}%`); }
-    if (fg <= 20) mom = Math.min(20, mom + 4);
-    score += mom;
-
-    // 2. VOLUME QUALITY (0-20)
-    const volM = vol / 1e6;
-    let vol_s = volM >= 500 ? 20 : volM >= 100 ? 17 : volM >= 30 ? 13 : volM >= 10 ? 9 : volM >= 2 ? 5 : 2;
-    if (volM >= 30 && Math.abs(ch24) <= 6) { vol_s = Math.min(20, vol_s + 4); reasons.push(`🐳 $${volM.toFixed(0)}M vol + flat = SM accum`); }
-    score += vol_s;
-
-    // 3. ANOMALY (0-25)
-    score += Math.max(0, anom.anomalyScore);
-    if (anom.isCoiling)       reasons.push(`💥 COILING — explosive move imminent`);
-    if (anom.hasStopHunt)     reasons.push(`🎯 Stop hunt complete — reversal signal`);
-    if (anom.isStealthAccum)  reasons.push(`🕵️ Stealth accumulation detected`);
-    if (anom.volMcapRatio > 0.5) reasons.push(`📊 Vol/MCap ${anom.volMcapRatio.toFixed(1)}x anomaly`);
-
-    // 4. ELLIOTT WAVE (0-25)
-    score += Math.max(0, ew.ewScore);
-    if (ew.ewScore > 15) reasons.push(`🌊 ${ew.wave} — ${ew.note}`);
-
-    // 5. CHART PATTERN (0-25)
-    score += Math.max(0, pat.patternScore);
-    if (pat.topPattern) reasons.push(`📐 ${pat.topPattern.name} — ${pat.topPattern.note}`);
-
-    // 6. DERIVATIVES (0-10)
-    let deriv_s = 0;
-    if (fundingRate !== null) {
-      const fr = fundingRate * 100;
-      if (fr < -0.01)      { deriv_s = 10; reasons.push(`💥 Funding ${fr.toFixed(4)}% — short squeeze setup`); }
-      else if (fr < 0)     { deriv_s = 7;  }
-      else if (fr > 0.05)  { deriv_s = -5; reasons.push(`⚠️ Funding ${fr.toFixed(4)}% — overleveraged longs`); }
-      else                 { deriv_s = 3;  }
+  function analyzeMomentum(klines, price, ch24) {
+    if (!klines || klines.length < 5) {
+      return { signal: 'DATA TIDAK TERSEDIA', score: 0 };
     }
-    score += deriv_s;
+    const cls = klines.map(k => +k[4]);
+    const vol = klines.map(k => +k[5]);
+    const n   = klines.length;
 
-    // 7. MARKET CONTEXT (0-10)
-    let mkt_s = fg <= 20 ? 10 : fg <= 35 ? 7 : fg >= 75 ? 2 : 5;
-    if (rp < 0.35) { mkt_s = Math.min(10, mkt_s + 3); reasons.push(`📉 At lows — discount entry`); }
-    score += mkt_s;
+    // EMA 9 and 21
+    const ema = (arr, p) => {
+      const k = 2 / (p + 1); let e = arr[0];
+      for (let i = 1; i < arr.length; i++) e = arr[i] * k + e * (1 - k);
+      return e;
+    };
+    const ema9  = ema(cls, 9);
+    const ema21 = ema(cls, Math.min(21, n));
 
-    // PENALTY: Late stage / warnings
-    if (ew.phase.includes('DISTRIBUTION')) score -= 15;
-    if (ew.phase.includes('DEAD CAT'))     score -= 10;
-    if (pat.patterns.some(p => p.type === 'WARNING')) score -= 5;
+    // RSI proxy (14 period)
+    let gains = 0, losses = 0;
+    const period = Math.min(14, n - 1);
+    for (let i = n - period; i < n; i++) {
+      const diff = cls[i] - cls[i - 1];
+      if (diff > 0) gains += diff; else losses += Math.abs(diff);
+    }
+    const rs  = losses > 0 ? gains / losses : 100;
+    const rsi = 100 - (100 / (1 + rs));
 
-    const finalScore = Math.max(0, Math.min(100, Math.round(score)));
+    // Volume delta (last 5 candles)
+    const volDelta = cls.slice(-5).reduce((acc, c, i) => {
+      const idx = n - 5 + i;
+      return acc + (c > +klines[idx][1] ? vol[idx] : -vol[idx]);
+    }, 0);
 
-    // ── TIER ──────────────────────────────────────────────────────
-    const tier = finalScore >= 80 ? 'S★' : finalScore >= 65 ? 'S' : finalScore >= 50 ? 'A' : finalScore >= 35 ? 'B' : 'C';
+    // Volume divergence: price going up but volume decreasing
+    const avgVol5  = vol.slice(-5).reduce((a, b) => a + b, 0) / 5;
+    const avgVol20 = vol.slice(-20).reduce((a, b) => a + b, 0) / Math.min(20, n);
+    const volRatio = avgVol20 > 0 ? avgVol5 / avgVol20 : 1;
 
-    // ── TRADE SETUP ───────────────────────────────────────────────
-    // SL: below pattern invalidation OR local minimum
-    const slBase = ew.ewSL > 0 && ew.ewSL < price ? ew.ewSL : price * (1 - Math.max(0.08, Math.min(0.25, (high - low) / price * 1.8)));
-    const sl     = +Math.min(slBase, price * 0.80).toFixed(8);
+    // Momentum state
+    const above21  = price > ema21;
+    const emaCross = cls[n-1] > ema9 && cls[n-3] < ema9; // recent cross above
+
+    let signal = 'NEUTRAL', momScore = 0;
+    const notes = [];
+
+    if (rsi < 30)        { momScore += 15; signal = 'OVERSOLD BOUNCE'; notes.push(`RSI ${rsi.toFixed(0)} — oversold, reversal likely`); }
+    else if (rsi > 75)   { momScore -= 12; signal = 'OVERBOUGHT ⚠️'; notes.push(`RSI ${rsi.toFixed(0)} — overbought, correction risk`); }
+    else if (rsi > 55 && above21) { momScore += 8; signal = 'BULLISH MOMENTUM'; }
+    else if (rsi < 45)   { momScore -= 5; }
+
+    if (volDelta > 0)    { momScore += 8; notes.push(`Volume delta +${(volDelta/1e6).toFixed(1)}M — net buying`); }
+    else                 { momScore -= 5; }
+
+    if (volRatio > 1.8)  { momScore += 8; notes.push(`Volume ${volRatio.toFixed(1)}x above 20-period avg — expansion`); }
+    else if (volRatio < 0.5) { momScore -= 8; notes.push('BREAKOUT LEMAH: volume declining'); }
+
+    const emaJunction = emaCross && above21;
+    if (emaJunction) { momScore += 5; notes.push('EMA cross above: bullish momentum signal'); }
+
+    // Divergence: price down but RSI up = bullish div
+    const bullDiv = ch24 < -3 && rsi > 45;
+    if (bullDiv) { momScore += 8; notes.push('Bullish divergence: price down, momentum up'); }
+
+    return {
+      signal, score: Math.max(-20, Math.min(20, momScore)),
+      rsi: +rsi.toFixed(1), ema9: +ema9.toFixed(8), ema21: +ema21.toFixed(8),
+      above21, volRatio: +volRatio.toFixed(2), volDelta: +volDelta.toFixed(0),
+      notes,
+    };
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // CONFIDENCE SCORE (following spec exactly)
+  // ════════════════════════════════════════════════════════════════
+  function calcConfidence(struct, ob, whale, deriv, mom, ch24, fg) {
+    let score = 30; // base
+    const breakdown = {};
+
+    // +20 whale accumulation
+    if (whale.whaleRatio > 0.65 && whale.whales.length > 0) { score += 20; breakdown.whale = '+20 (whale accumulation)'; }
+    else if (whale.score > 0) { score += whale.score; breakdown.whale = `+${whale.score} (whale activity)`; }
+    else if (whale.score < 0) { score += whale.score; breakdown.whale = `${whale.score} (whale selling)`; }
+
+    // +20 order book imbalance
+    if (ob.imbalance > 2.0) { score += 20; breakdown.ob = '+20 (OB imbalance >2x)'; }
+    else if (ob.score > 0)  { score += ob.score; breakdown.ob = `+${ob.score} (OB)`; }
+    else if (ob.score < 0)  { score += ob.score; breakdown.ob = `${ob.score} (OB selling)`; }
+
+    // +15 liquidity sweep
+    if (struct.sweep) { score += 15; breakdown.sweep = '+15 (liquidity sweep confirmed)'; }
+    else if (struct.bos) { score += 10; breakdown.sweep = '+10 (BOS confirmed)'; }
+
+    // +15 breakout structure
+    if (struct.bos && struct.trend === 'UPTREND') { score += 15; breakdown.struct = '+15 (BOS + uptrend)'; }
+    else if (struct.trend === 'UPTREND') { score += 8; breakdown.struct = '+8 (uptrend)'; }
+    else if (struct.trend === 'DOWNTREND') { score -= 10; breakdown.struct = '-10 (downtrend)'; }
+
+    // +10 funding supports direction
+    if (deriv.score >= 15) { score += 10; breakdown.deriv = '+10 (funding supports)'; }
+    else if (deriv.score > 0) { score += 5; breakdown.deriv = '+5 (funding mild)'; }
+    else if (deriv.score < -10) { score += deriv.score; breakdown.deriv = `${deriv.score} (funding against)`; }
+
+    // +10 volume expansion
+    if (struct.volExpansion || mom.volRatio > 1.5) { score += 10; breakdown.vol = '+10 (volume expansion)'; }
+
+    // +10 market correlation (F&G, CVD)
+    if (fg <= 25) { score += 10; breakdown.market = '+10 (extreme fear = buy zone)'; }
+    else if (fg <= 40) { score += 5; breakdown.market = '+5 (fear zone)'; }
+    else if (fg >= 75) { score -= 8; breakdown.market = '-8 (greed zone)'; }
+
+    // Momentum bonus
+    if (mom.score > 0) { score += Math.min(8, mom.score); }
+    else if (mom.score < 0) { score += Math.max(-8, mom.score); }
+
+    // CVD confirmation
+    if (struct.cvdBull) score += 5;
+
+    const final = Math.max(0, Math.min(100, Math.round(score)));
+    return { score: final, breakdown };
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // SETUP BUILDER — Entry / SL / TP with structural basis
+  // ════════════════════════════════════════════════════════════════
+  function buildTradeSetup(price, high, low, confidence, struct, ob, deriv) {
+    // SL: below structural support (OB wall or swing low), NOT 24h low
+    const structuralSupport = ob.support > 0 && ob.support < price ? ob.support : struct.recentLow || price * 0.90;
+    const sl     = +(Math.min(structuralSupport * 0.992, price * 0.88)).toFixed(8);
+    const slPct  = +((price - sl) / price * 100).toFixed(1);
     const slDist = price - sl;
-    const slPct  = +((slDist / price) * 100).toFixed(1);
 
-    // Entry zone (current or slight pullback)
-    const entryLo = +Math.max(price * 0.97, sl * 1.01).toFixed(8);
-    const entryHi = +(price * 1.01).toFixed(8);
+    // Entry: current or slight discount
+    const entry  = +(price * 1.001).toFixed(8);
 
-    // TPs: use EW targets if available, else multipliers
-    const ewT1 = ew.targets?.t1 > price ? ew.targets.t1 : 0;
-    const ewT2 = ew.targets?.t2 > price ? ew.targets.t2 : 0;
-    const ewT3 = ew.targets?.t3 > price ? ew.targets.t3 : 0;
-
-    const tp1 = +(ewT1 || price + slDist * 1.5).toFixed(8);
-    const tp2 = +(ewT2 || price + slDist * 3.0).toFixed(8);
-    const tp3 = +(ewT3 || price + slDist * 6.0).toFixed(8);
-    const tp4 = +(price + slDist * 10.0).toFixed(8); // moon shot
+    // TP levels: use resistance or multipliers
+    const structResist = ob.resistance > price ? ob.resistance : price * 1.05;
+    const tp1 = +(Math.min(structResist, price + slDist * 1.5)).toFixed(8);
+    const tp2 = +(price + slDist * 3.0).toFixed(8);
+    const tp3 = +(price + slDist * 5.0).toFixed(8);
 
     const tp1Pct = +((tp1 - price) / price * 100).toFixed(1);
     const tp2Pct = +((tp2 - price) / price * 100).toFixed(1);
     const tp3Pct = +((tp3 - price) / price * 100).toFixed(1);
-    const tp4Pct = +((tp4 - price) / price * 100).toFixed(1);
 
-    // RR
     const rr1 = slDist > 0 ? +((tp1 - price) / slDist).toFixed(1) : 1.5;
     const rr2 = slDist > 0 ? +((tp2 - price) / slDist).toFixed(1) : 3.0;
 
-    // Risk rating
-    const riskScore = vt <= 1 ? 5 : finalScore < 40 ? 5 : finalScore < 60 ? 4 : volM < 10 ? 4 : 3;
-    const riskLabel = riskScore >= 5 ? '🔴 VERY HIGH' : riskScore >= 4 ? '🟠 HIGH' : '🟡 MEDIUM';
+    // Verdict (following spec)
+    let verdict, verdictColor;
+    if (confidence >= 80) { verdict = '🎯 HIGH PROBABILITY LONG'; verdictColor = '#00ff88'; }
+    else if (confidence >= 65) { verdict = '✅ BUY'; verdictColor = '#00ffd0'; }
+    else if (confidence >= 50) { verdict = '⏳ WAIT CONFIRMATION'; verdictColor = '#FFB300'; }
+    else if (deriv.squeeze === 'LONG') { verdict = '❌ AVOID — LONG TRAP'; verdictColor = '#ff4466'; }
+    else { verdict = '🚫 NO TRADE / NO CLEAR EDGE'; verdictColor = '#666'; }
 
-    // Trade style recommendation
-    let tradeStyle = 'SCALP';
-    if (ew.phase === 'REVERSAL SETUP' || ew.phase === 'IMPULSE START') tradeStyle = 'SWING';
-    else if (ew.phase === 'PULLBACK ENTRY') tradeStyle = 'DAY TRADE';
-    else if (anom.isCoiling) tradeStyle = 'BREAKOUT PLAY';
-    else if (ch24 > 15) tradeStyle = 'MOMENTUM';
-
-    // Position size recommendation (based on risk + tier)
-    const posSize = tier === 'S★' || tier === 'S' ? '1-2%' : tier === 'A' ? '0.5-1%' : '0.25-0.5%';
+    const risk = slPct > 15 ? 'HIGH' : slPct > 8 ? 'MEDIUM' : 'LOW';
 
     return {
-      score: finalScore, tier, reasons: reasons.slice(0, 6),
-      riskLabel, riskScore, tradeStyle, posSize,
-      trade: {
-        entry: price, entryLo, entryHi,
-        sl: +sl.toFixed(8), slPct,
-        tp1, tp1Pct, rr1: rr1.toString(),
-        tp2, tp2Pct, rr2: rr2.toString(),
-        tp3, tp3Pct,
-        tp4, tp4Pct,
-        tp1Tag: 'Quick Flip (1:' + rr1 + ')',
-        tp2Tag: 'Main Target (1:' + rr2 + ')',
-        tp3Tag: 'Meme Pump Target',
-        tp4Tag: '🌙 Moon Shot',
-      },
+      entry, sl, slPct,
+      slNote: `Below SM support $${fmtP(structuralSupport)} (structural)`,
+      tp1, tp1Pct, tp2, tp2Pct, tp3, tp3Pct,
+      rr1, rr2,
+      verdict, verdictColor, risk,
     };
   }
 
@@ -557,249 +463,226 @@ export default async function handler(req, res) {
   try {
     const t0 = Date.now();
 
-    // Fetch all base data in parallel
-    // ── 5-SOURCE FALLBACK ─────────────────────────────────────────
-    const [binR, fngR, cgR] = await Promise.allSettled([
+    // ── 5-SOURCE TICKER FALLBACK ──────────────────────────────────
+    const [binR, fngR] = await Promise.allSettled([
       (async () => {
         const b1 = await sf('https://api.binance.com/api/v3/ticker/24hr', 8000);
         if (Array.isArray(b1) && b1.length > 100) return b1;
         const b2 = await sf('https://fapi.binance.com/fapi/v1/ticker/24hr', 6000);
         if (Array.isArray(b2) && b2.length > 50) return b2;
         const by = await sf('https://api.bybit.com/v5/market/tickers?category=spot', 6000);
-        if (by?.result?.list?.length > 50) {
-          return by.result.list.map(t => ({
-            symbol: t.symbol || '',
-            lastPrice: t.lastPrice || '0',
-            priceChangePercent: t.price24hPcnt ? (parseFloat(t.price24hPcnt) * 100).toFixed(4) : '0',
-            quoteVolume: t.turnover24h || '0',
-            highPrice: t.highPrice24h || t.lastPrice || '0',
-            lowPrice: t.lowPrice24h || t.lastPrice || '0',
-            openPrice: t.prevPrice24h || t.lastPrice || '0',
-          }));
-        }
+        if (by?.result?.list?.length > 50) return by.result.list.map(t => ({
+          symbol: t.symbol || '', lastPrice: t.lastPrice || '0',
+          priceChangePercent: t.price24hPcnt ? (parseFloat(t.price24hPcnt) * 100).toFixed(4) : '0',
+          quoteVolume: t.turnover24h || '0', highPrice: t.highPrice24h || t.lastPrice || '0',
+          lowPrice: t.lowPrice24h || t.lastPrice || '0', openPrice: t.prevPrice24h || t.lastPrice || '0',
+        }));
         const mx = await sf('https://api.mexc.com/api/v3/ticker/24hr', 6000);
         if (Array.isArray(mx) && mx.length > 50) return mx;
-        const cg = await sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=meme-token&order=volume_desc&per_page=50&page=1&sparkline=false&price_change_percentage=24h,7d', 8000);
+        const cg = await sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=meme-token&order=volume_desc&per_page=50&page=1&sparkline=false&price_change_percentage=24h', 9000);
         if (Array.isArray(cg)) return cg.map(c => ({
           symbol: c.symbol.toUpperCase() + 'USDT',
           lastPrice: String(c.current_price || 0),
           priceChangePercent: String(c.price_change_percentage_24h || 0),
           quoteVolume: String(c.total_volume || 0),
-          highPrice: String((c.current_price || 0) * 1.05),
-          lowPrice:  String((c.current_price || 0) * 0.95),
+          highPrice: String((c.current_price || 0) * 1.04),
+          lowPrice: String((c.current_price || 0) * 0.96),
           openPrice: String((c.current_price || 0) / (1 + (c.price_change_percentage_24h || 0) / 100)),
-          _mcap: c.market_cap || 0, _7d: c.price_change_percentage_7d_in_currency || 0,
         }));
         return [];
       })(),
       sf('https://api.alternative.me/fng/?limit=1&format=json', 5000),
-      sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=dogecoin,shiba-inu,pepe,bonk,dogwifcoin,floki,brett,mog-coin,neiro,goatseus-maximus,peanut-the-squirrel,act-i-the-ai-prophecy,turbo,meme,popcat,not-coin&order=volume_desc&sparkline=false&price_change_percentage=7d', 6000),
     ]);
 
+    const allTickers = binR.status === 'fulfilled' && Array.isArray(binR.value) ? binR.value : [];
+    const fg = fngR.status === 'fulfilled' ? parseInt(fngR.value?.data?.[0]?.value || 50) : 50;
+
     if (!allTickers.length) {
-      return res.status(200).json({ error: null, version: 'v2.0', memes: [], all: [], totalScanned: 0, fg, timestamp: Date.now() });
+      return res.status(200).json({ version: 'v3.0', error: null, all: [], totalScanned: 0, fg, timestamp: Date.now() });
     }
 
-    // Build lookups
     const tickerMap = {};
     allTickers.forEach(t => { if (t?.symbol) tickerMap[t.symbol] = t; });
 
-    const cgLookup = {};
-    cgCoins.forEach(c => {
-      const sym = (c.symbol || '').toUpperCase();
-      cgLookup[sym] = {
-        ch7: c.price_change_percentage_7d_in_currency || 0,
-        mcap: c.market_cap || 0,
-        ath: c.ath || 0,
-        athPct: c.ath_change_percentage || -50,
-      };
-    });
+    // Deep scan top memes: klines + orderbook + trades + funding in parallel
+    const TOP_DEEP = MEME_SYMBOLS.filter(s => tickerMap[s + 'USDT']).slice(0, 12);
 
-    // Fetch klines + funding for top memes in parallel (max 10 to stay fast)
-    const TOP_KLINES = ['DOGE','SHIB','PEPE','BONK','WIF','FLOKI','BRETT','NEIRO','GOAT','PNUT'];
-    const TOP_FUTURES = [...MEME_FUTURES].slice(0, 8);
+    const deepResults = await Promise.allSettled(
+      TOP_DEEP.map(sym => Promise.allSettled([
+        sf(`https://api.binance.com/api/v3/klines?symbol=${sym}USDT&interval=4h&limit=20`, 4000),
+        sf(`https://api.binance.com/api/v3/depth?symbol=${sym}USDT&limit=15`, 3500),
+        sf(`https://api.binance.com/api/v3/aggTrades?symbol=${sym}USDT&limit=300`, 3500),
+      ]))
+    );
 
-    const [klinesResults, fundingResult] = await Promise.allSettled([
-      Promise.allSettled(
-        TOP_KLINES.map(sym =>
-          sf(`https://api.binance.com/api/v3/klines?symbol=${sym}USDT&interval=4h&limit=24`, 4000)
-        )
-      ),
-      sf('https://fapi.binance.com/fapi/v1/premiumIndex', 4000),
-    ]);
-
-    // Build klines map
-    const klinesMap = {};
-    if (klinesResults.status === 'fulfilled') {
-      TOP_KLINES.forEach((sym, i) => {
-        const r = klinesResults.value[i];
-        if (r.status === 'fulfilled' && Array.isArray(r.value) && r.value.length >= 10) {
-          klinesMap[sym] = r.value;
-        }
-      });
-    }
-
-    // Build funding map
+    // Funding rates (batch)
+    const fundingR = await sf('https://fapi.binance.com/fapi/v1/premiumIndex', 4000);
     const fundingMap = {};
-    if (fundingResult.status === 'fulfilled' && Array.isArray(fundingResult.value)) {
-      fundingResult.value.forEach(f => {
-        const sym = (f.symbol || '').replace('USDT', '');
-        if (sym) fundingMap[sym] = parseFloat(f.lastFundingRate || 0);
+    if (Array.isArray(fundingR)) {
+      fundingR.forEach(f => {
+        const s = (f.symbol || '').replace('USDT', '');
+        if (s) fundingMap[s] = parseFloat(f.lastFundingRate || 0);
       });
     }
 
-    // Also scan all tickers for unknown meme anomalies
-    const autoDiscovered = [];
-    if (Array.isArray(allTickers)) {
-      allTickers.forEach(t => {
-        if (!t?.symbol?.endsWith('USDT')) return;
-        const b = t.symbol.replace('USDT', '');
-        if (STABLES.has(b) || MEME_SYMBOLS.includes(b) || b.length > 10) return;
-        const v = +(t.quoteVolume || 0);
-        const ch = +(t.priceChangePercent || 0);
-        const p = +(t.lastPrice || 0);
-        if (p <= 0 || v < 10e6) return;
-        // Auto-detect: extreme vol + extreme move = likely new meme
-        if (Math.abs(ch) > 25 && v > 30e6) autoDiscovered.push(b);
-        else if (v > 100e6 && Math.abs(ch) > 15) autoDiscovered.push(b);
-      });
-    }
-
-    // Process all symbols
-    const allSymbols = [...MEME_SYMBOLS, ...autoDiscovered.slice(0, 8)];
+    // Process each meme
     const results = [];
 
-    for (const sym of allSymbols) {
-      const t = tickerMap[sym + 'USDT'];
-      if (!t) continue;
+    for (let idx = 0; idx < TOP_DEEP.length; idx++) {
+      const sym = TOP_DEEP[idx];
+      const ticker = tickerMap[sym + 'USDT'];
+      if (!ticker) continue;
 
-      const price = +(t.lastPrice || 0);
-      const ch24  = +(t.priceChangePercent || 0);
-      const vol   = +(t.quoteVolume || 0);
-      const high  = +(t.highPrice || price * 1.04);
-      const low   = +(t.lowPrice  || price * 0.96);
-      const open  = +(t.openPrice || price);
+      const price  = +(ticker.lastPrice || 0);
+      const ch24   = +(ticker.priceChangePercent || 0);
+      const vol    = +(ticker.quoteVolume || 0);
+      const high   = +(ticker.highPrice || price * 1.04);
+      const low    = +(ticker.lowPrice  || price * 0.96);
+      const open   = +(ticker.openPrice || price);
 
       if (price <= 0 || vol < 500000) continue;
 
-      const cgInfo = cgLookup[sym] || {};
-      const ch7    = cgInfo.ch7 || t._7d || 0;
-      const mcap   = cgInfo.mcap || t._mcap || 0;
-      const athPct = cgInfo.athPct || -60;
+      const symDeep = deepResults[idx];
+      const [klinesR, depthR, tradesR] = symDeep.status === 'fulfilled'
+        ? symDeep.value
+        : [{ status: 'rejected' }, { status: 'rejected' }, { status: 'rejected' }];
 
-      const range  = Math.max(high - low, price * 0.005);
-      const rp     = (price - low) / range;
-      const lw     = (Math.min(price, open) - low) / range;
-      const body   = Math.abs(price - open) / range;
-      const vt     = vol >= 500e6 ? 5 : vol >= 100e6 ? 4 : vol >= 30e6 ? 3 : vol >= 10e6 ? 2 : vol >= 2e6 ? 1 : 0;
+      const klines = klinesR.status === 'fulfilled' && Array.isArray(klinesR.value) ? klinesR.value : null;
+      const depth  = depthR.status === 'fulfilled' ? depthR.value : null;
+      const trades = tradesR.status === 'fulfilled' && Array.isArray(tradesR.value) ? tradesR.value : null;
+      const fr     = MEME_FUTURES.has(sym) ? (fundingMap[sym] || null) : null;
 
-      const klines      = klinesMap[sym] || null;
-      const fundingRate = fundingMap[sym] !== undefined ? fundingMap[sym] : null;
+      // Run all 5 engines
+      const struct = analyzeStructure(klines, price);
+      const ob     = analyzeOrderBook(depth, price);
+      const whale  = analyzeWhales(trades, price);
+      const deriv  = analyzeDerivatives(fr, null, null);
+      const mom    = analyzeMomentum(klines, price, ch24);
 
-      // Run all 3 engines
-      const anom = detectAnomaly(price, high, low, open, ch24, vol, mcap, vt);
-      const ew   = detectElliottWave(klines, price);
-      const pat  = detectChartPattern(price, high, low, open, ch24, ch7, null, lw, body, rp, vt);
+      // Confidence score
+      const conf   = calcConfidence(struct, ob, whale, deriv, mom, ch24, fg);
 
-      // Build master score + setup
-      const coin = { price, high, low, open, ch24, ch7, vol, mcap, vt };
-      const setup = buildSetup(coin, ew, pat, anom, fundingRate, fg);
+      // Filter: only build full setup if score >= 50
+      if (conf.score < 50 && Math.abs(ch24) < 3) continue;
 
-      const meta = MEME_META[sym] || { cat: autoDiscovered.includes(sym) ? '🆕 New Discovery' : 'Meme', chain: '?', gen: 3 };
+      // Trade setup
+      const setup  = buildTradeSetup(price, high, low, conf.score, struct, ob, deriv);
+
+      const meta   = MEME_META[sym] || { cat: 'Meme', gen: 2, chain: '?' };
 
       results.push({
         symbol: sym,
-        category: meta.cat,
-        chain: meta.chain,
-        gen: meta.gen,
-        isNew: autoDiscovered.includes(sym),
-        price, ch24: +ch24.toFixed(2), ch7: +ch7.toFixed(2),
-        vol, volM: +(vol / 1e6).toFixed(1), mcap,
-        high, low, open, rp: +rp.toFixed(2), lw: +lw.toFixed(2),
-        athPct: +athPct.toFixed(1), vt,
-        fundingRate: fundingRate !== null ? +(fundingRate * 100).toFixed(4) : null,
-        hasKlines: !!klines,
+        category: meta.cat, chain: meta.chain, gen: meta.gen,
+        price, ch24: +ch24.toFixed(2), vol,
+        volM: +(vol / 1e6).toFixed(1),
+        high, low,
+        fundingRate: fr !== null ? +(fr * 100).toFixed(4) : null,
+        confidence: conf.score,
+        confidenceLabel: conf.score >= 80 ? '🔥 HIGH PROBABILITY' : conf.score >= 65 ? '✅ VALID SETUP' : conf.score >= 50 ? '⚠️ LOW CONFIDENCE' : '🚫 NO TRADE',
+        confBreakdown: conf.breakdown,
         // Engine results
-        anomaly: {
-          score: anom.anomalyScore,
-          topAnomaly: anom.topAnomaly,
-          isCoiling: anom.isCoiling,
-          hasStopHunt: anom.hasStopHunt,
-          isStealthAccum: anom.isStealthAccum,
-          volMcapRatio: anom.volMcapRatio,
-          rangeCompression: anom.rangeCompression,
-          list: anom.anomalies.slice(0, 3),
-        },
-        elliottWave: {
-          wave: ew.wave,
-          phase: ew.phase,
-          score: ew.ewScore,
-          note: ew.note,
-          confidence: ew.confidence,
-          targets: ew.targets,
-          roc20: ew.roc20,
-          posInRange: ew.posInRange,
-          momentum: ew.momentum,
-        },
-        patterns: {
-          topPattern: pat.topPattern,
-          list: pat.patterns.slice(0, 3),
-          score: pat.patternScore,
-          hasReversal: pat.hasReversal,
-          hasContinuation: pat.hasContinuation,
-          count: pat.patternCount,
-        },
-        // Master
-        score: setup.score,
-        tier: setup.tier,
-        reasons: setup.reasons,
-        riskLabel: setup.riskLabel,
-        riskScore: setup.riskScore,
-        tradeStyle: setup.tradeStyle,
-        posSize: setup.posSize,
-        trade: setup.trade,
+        structure: struct,
+        orderBook: ob,
+        whale: { ...whale, whales: whale.whales.slice(0, 4) },
+        derivatives: deriv,
+        momentum: mom,
+        // Final output
+        verdict: setup.verdict,
+        verdictColor: setup.verdictColor,
+        risk: setup.risk,
+        trade: setup,
+        // Status flags
+        hasKlines: !!klines,
+        hasOrderBook: !!(depth?.bids?.length),
+        hasWhaleData: !!(trades?.length),
       });
     }
 
-    // Sort by score
-    results.sort((a, b) => b.score - a.score || b.vol - a.vol);
+    // Also process remaining symbols (no deep scan, just base ticker)
+    const deepSyms = new Set(TOP_DEEP);
+    MEME_SYMBOLS.forEach(sym => {
+      if (deepSyms.has(sym)) return;
+      const ticker = tickerMap[sym + 'USDT'];
+      if (!ticker) return;
+      const price = +(ticker.lastPrice || 0);
+      const ch24  = +(ticker.priceChangePercent || 0);
+      const vol   = +(ticker.quoteVolume || 0);
+      if (price <= 0 || vol < 1e6) return;
+      const meta = MEME_META[sym] || { cat: 'Meme', gen: 2, chain: '?' };
+      results.push({
+        symbol: sym, category: meta.cat, chain: meta.chain, gen: meta.gen,
+        price, ch24: +ch24.toFixed(2), vol, volM: +(vol/1e6).toFixed(1),
+        high: +(ticker.highPrice||price*1.04), low: +(ticker.lowPrice||price*0.96),
+        fundingRate: null, confidence: 35,
+        confidenceLabel: '📊 BASIC DATA',
+        confBreakdown: {}, structure: null, orderBook: null,
+        whale: { signal: 'DATA TIDAK TERSEDIA', score: 0, whales: [], whaleBuyUSD: 0, whaleSellUSD: 0, netWhaleUSD: 0, whaleRatio: 0.5, notes: [] },
+        derivatives: null, momentum: null,
+        verdict: 'NO TRADE / NO CLEAR EDGE', verdictColor: '#666', risk: 'HIGH',
+        trade: {
+          entry: price, sl: +(price * 0.88).toFixed(8), slPct: 12,
+          slNote: 'Basic SL — no structural data', tp1: +(price * 1.15).toFixed(8), tp1Pct: 15,
+          tp2: +(price * 1.30).toFixed(8), tp2Pct: 30, tp3: +(price * 1.60).toFixed(8), tp3Pct: 60,
+          rr1: 1.2, rr2: 2.5, verdict: 'NO TRADE / NO CLEAR EDGE', verdictColor: '#666', risk: 'HIGH',
+        },
+        hasKlines: false, hasOrderBook: false, hasWhaleData: false,
+      });
+    });
+
+    results.sort((a, b) => b.confidence - a.confidence || b.vol - a.vol);
 
     // Build tabs
-    const elite     = results.filter(r => r.tier === 'S★' || r.tier === 'S').slice(0, 6);
+    const elite     = results.filter(r => r.confidence >= 65).slice(0, 8);
     const trending  = results.filter(r => r.ch24 > 5).sort((a, b) => b.ch24 - a.ch24).slice(0, 8);
-    const anomalies = results.filter(r => r.anomaly.score >= 12 || r.anomaly.isCoiling || r.anomaly.hasStopHunt).sort((a, b) => b.anomaly.score - a.anomaly.score).slice(0, 8);
-    const wave3     = results.filter(r => r.elliottWave.wave.includes('Wave 3') || r.elliottWave.wave.includes('Wave 2')).sort((a, b) => b.elliottWave.score - a.elliottWave.score).slice(0, 6);
-    const patterns  = results.filter(r => r.patterns.count >= 1).sort((a, b) => b.patterns.score - a.patterns.score).slice(0, 8);
-    const dips      = results.filter(r => r.ch24 < -5 && r.score >= 35).sort((a, b) => b.score - a.score).slice(0, 6);
-    const newCoins  = results.filter(r => r.isNew).slice(0, 5);
+    const whaleSet  = results.filter(r => r.whale?.whaleRatio > 0.6).slice(0, 6);
+    const oversold  = results.filter(r => r.momentum?.rsi < 35).sort((a, b) => a.momentum.rsi - b.momentum.rsi).slice(0, 6);
+    const dips      = results.filter(r => r.ch24 < -5 && r.confidence >= 45).slice(0, 6);
 
     // Market stats
-    const avg24h   = results.length ? +(results.reduce((a, r) => a + r.ch24, 0) / results.length).toFixed(2) : 0;
-    const pumping  = results.filter(r => r.ch24 > 8).length;
-    const dumping  = results.filter(r => r.ch24 < -8).length;
-    const coiling  = results.filter(r => r.anomaly.isCoiling).length;
-    const totalVol = results.reduce((a, r) => a + r.vol, 0);
-    const memeSignal = avg24h > 5 ? 'BULL' : avg24h < -5 ? 'BEAR' : coiling >= 3 ? 'COILING' : 'NEUTRAL';
+    const deepScanned = results.filter(r => r.hasKlines).length;
+    const avg24h = results.length ? +(results.reduce((a, r) => a + r.ch24, 0) / results.length).toFixed(2) : 0;
+    const pumping = results.filter(r => r.ch24 > 8).length;
+    const dumping = results.filter(r => r.ch24 < -8).length;
+    const validSetups = results.filter(r => r.confidence >= 65).length;
 
     return res.status(200).json({
-      version: 'v2.0',
+      version: 'v3.0',
       timestamp: Date.now(),
       scanTime: ((Date.now() - t0) / 1000).toFixed(1),
-      fg,
-      fgLabel: fg <= 25 ? 'Extreme Fear' : fg <= 45 ? 'Fear' : fg >= 75 ? 'Greed' : 'Neutral',
+      fg, fgLabel: fg <= 25 ? 'Extreme Fear' : fg <= 45 ? 'Fear' : fg >= 75 ? 'Greed' : 'Neutral',
       totalScanned: results.length,
-      stats: { avg24h, pumping, dumping, coiling, totalVol, memeSignal },
+      deepScanned,
+      stats: { avg24h, pumping, dumping, validSetups, memeSignal: avg24h > 5 ? 'BULL' : avg24h < -5 ? 'BEAR' : 'NEUTRAL' },
       all: results,
       elite,
       trending,
-      anomalies,
-      wave3,
-      patterns,
+      whaleAccum: whaleSet,
+      oversold,
       dips,
-      newCoins,
     });
 
   } catch (e) {
-    return res.status(500).json({ error: e.message, version: 'v2.0', all: [], totalScanned: 0, timestamp: Date.now() });
+    // Never return 500 with empty data
+    return res.status(200).json({
+      version: 'v3.0', error: e.message, all: [], totalScanned: 0,
+      fg: 50, timestamp: Date.now(), stats: {},
+      elite: [], trending: [], whaleAccum: [], oversold: [], dips: [],
+    });
   }
+}
+
+function fmtP(p) {
+  if (!p || p <= 0) return '—';
+  if (p >= 10000) return p.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  if (p >= 1000)  return p.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  if (p >= 1)     return p.toFixed(4);
+  if (p >= 0.001) return p.toFixed(6);
+  return p.toFixed(8);
+}
+
+function fmtUSD(n) {
+  if (!n) return '—';
+  if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
+  return '$' + n;
 }
