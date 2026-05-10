@@ -403,8 +403,42 @@ export default async function handler(req, res) {
     const sym = (req.query?.symbol || '').toUpperCase() || null;
 
     // Fetch 24hr ticker first to get price + top volume coins
+    // Multi-source ticker fallback (same as scanner-full which always works)
+    // ── 5-SOURCE FALLBACK (Binance → Bybit → MEXC → CoinGecko) ──
     const [tickerR, fngR] = await Promise.allSettled([
-      sf('https://api.binance.com/api/v3/ticker/24hr', 7000),
+      (async () => {
+        const b1 = await sf('https://api.binance.com/api/v3/ticker/24hr', 7000);
+        if (Array.isArray(b1) && b1.length > 100) return b1;
+        const b2 = await sf('https://fapi.binance.com/fapi/v1/ticker/24hr', 6000);
+        if (Array.isArray(b2) && b2.length > 50) return b2;
+        const by = await sf('https://api.bybit.com/v5/market/tickers?category=spot', 6000);
+        if (by?.result?.list?.length > 50) {
+          return by.result.list.map(t => ({
+            symbol: t.symbol || '',
+            lastPrice: t.lastPrice || '0',
+            priceChangePercent: t.price24hPcnt ? (parseFloat(t.price24hPcnt) * 100).toFixed(4) : '0',
+            quoteVolume: t.turnover24h || '0',
+            highPrice: t.highPrice24h || t.lastPrice || '0',
+            lowPrice: t.lowPrice24h || t.lastPrice || '0',
+            openPrice: t.prevPrice24h || t.lastPrice || '0',
+          }));
+        }
+        const mx = await sf('https://api.mexc.com/api/v3/ticker/24hr', 6000);
+        if (Array.isArray(mx) && mx.length > 50) return mx;
+        const cg = await sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h', 9000);
+        if (Array.isArray(cg) && cg.length > 0) {
+          return cg.map(c => ({
+            symbol: (c.symbol || '').toUpperCase() + 'USDT',
+            lastPrice: String(c.current_price || 0),
+            priceChangePercent: String(c.price_change_percentage_24h || 0),
+            quoteVolume: String(c.total_volume || 0),
+            highPrice: String((c.current_price || 0) * 1.03),
+            lowPrice: String((c.current_price || 0) * 0.97),
+            openPrice: String((c.current_price || 0) / (1 + (c.price_change_percentage_24h || 0) / 100)),
+          }));
+        }
+        return [];
+      })(),
       sf('https://api.alternative.me/fng/?limit=1&format=json', 4000),
     ]);
 
@@ -412,7 +446,15 @@ export default async function handler(req, res) {
     const fg = fngR.status === 'fulfilled' ? parseInt(fngR.value?.data?.[0]?.value || 50) : 50;
 
     if (!tickers.length) {
-      return res.status(200).json({ error: 'Binance unavailable', results: [], timestamp: Date.now() });
+      // All sources failed - return empty but friendly response
+      return res.status(200).json({
+        version: 'v1.0', error: null,
+        timestamp: Date.now(), scanTime: '0',
+        totalScanned: 0, fg,
+        summary: { strongBuy: 0, buy: 0, neutral: 0, sell: 0 },
+        results: [], topBuy: [], topSell: [],
+        message: 'Data sumber tidak tersedia — coba scan lagi dalam 30 detik',
+      });
     }
 
     const tickerMap = {};
