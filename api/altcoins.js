@@ -30,12 +30,33 @@ export default async function handler(req, res) {
   const BAD_SUFFIX = ['UP', 'DOWN', 'BEAR', 'BULL', '3L', '3S', '2L', '2S'];
 
   try {
-    // SOURCE 1: Binance Spot (most reliable)
-    let tickers = await sf('https://api.binance.com/api/v3/ticker/24hr');
-    let source = 'binance_spot';
-
-    if (!Array.isArray(tickers) || tickers.length < 50) {
-      // SOURCE 2: CoinGecko
+    // MULTI-SOURCE FALLBACK (5 sources)
+    let tickers = null, source = 'unknown';
+    const b1 = await sf('https://api.binance.com/api/v3/ticker/24hr');
+    if (Array.isArray(b1) && b1.length > 100) { tickers = b1; source = 'binance_spot'; }
+    if (!tickers) {
+      const b2 = await sf('https://fapi.binance.com/fapi/v1/ticker/24hr');
+      if (Array.isArray(b2) && b2.length > 50) { tickers = b2; source = 'binance_futures'; }
+    }
+    if (!tickers) {
+      const by = await sf('https://api.bybit.com/v5/market/tickers?category=spot');
+      if (by?.result?.list?.length > 50) {
+        tickers = by.result.list.map(t => ({
+          symbol: t.symbol || '', lastPrice: t.lastPrice || '0',
+          priceChangePercent: t.price24hPcnt ? (parseFloat(t.price24hPcnt)*100).toFixed(4) : '0',
+          quoteVolume: t.turnover24h || '0',
+          highPrice: t.highPrice24h || t.lastPrice || '0',
+          lowPrice: t.lowPrice24h || t.lastPrice || '0',
+        }));
+        source = 'bybit';
+      }
+    }
+    if (!tickers) {
+      const mx = await sf('https://api.mexc.com/api/v3/ticker/24hr');
+      if (Array.isArray(mx) && mx.length > 50) { tickers = mx; source = 'mexc'; }
+    }
+    if (!tickers) {
+      // SOURCE: CoinGecko (always works as last resort)
       const cgRes = await sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h');
       if (Array.isArray(cgRes) && cgRes.length > 10) { tickers = cgRes; source = 'coingecko'; }
     }
@@ -47,7 +68,7 @@ export default async function handler(req, res) {
         source = 'coincap';
       }
     }
-    if (!Array.isArray(tickers) || tickers.length === 0) throw new Error('All sources failed');
+    if (!Array.isArray(tickers) || tickers.length === 0) return res.status(200).json({ timestamp: Date.now(), dataSource: 'unavailable', topGainers: [], topLosers: [], volumeSpike: [], rsiExtremes: [], narratives: [], smc: [] });
 
     // Detect format
     const isBinance = tickers[0]?.lastPrice !== undefined || tickers[0]?.symbol?.endsWith('USDT');
@@ -67,7 +88,7 @@ export default async function handler(req, res) {
         if (+(t.lastPrice || 0) <= 0) return false;
         return true;
       });
-      if (!filtered.length) throw new Error('No valid tickers after filter');
+      if (!filtered.length) return res.status(200).json({ timestamp: Date.now(), dataSource: source, topGainers: [], topLosers: [], volumeSpike: [], rsiExtremes: [], narratives: [], smc: [] });
 
       const sorted = [...filtered].sort((a, b) => +b.priceChangePercent - +a.priceChangePercent);
 
@@ -95,11 +116,11 @@ export default async function handler(req, res) {
         }));
 
       // RSI from klines for majors
-      const MAJORS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOGEUSDT', 'LINKUSDT', 'DOTUSDT'];
+      const MAJORS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT']; // Reduced to 5 for faster response
       const klineResults = await Promise.allSettled(
-        MAJORS.map(s => sf(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=1h&limit=100`)
+        MAJORS.map(s => sf(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=1h&limit=50`, 3000)
           .then(d => Array.isArray(d) && d.length > 14 ? d :
-            sf(`https://api.binance.com/api/v3/klines?symbol=${s}&interval=1h&limit=100`)))
+            sf(`https://api.binance.com/api/v3/klines?symbol=${s}&interval=1h&limit=50`, 3000)))
       );
 
       const rsiExtremes = [];
@@ -160,7 +181,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ timestamp: Date.now(), dataSource: 'coingecko', topGainers, topLosers, volumeBreakouts, rsiExtremes, narrative: (topG ? `🔥 Top gainer: ${topG.symbol} (${topG.change24h}). ` : '') + '[Data CoinGecko]' });
     }
 
-    throw new Error('Unknown data format');
+    return res.status(200).json({ timestamp: Date.now(), dataSource: 'error', topGainers: [], topLosers: [], volumeSpike: [], rsiExtremes: [], narratives: [], smc: [] });
   } catch (e) {
     return res.status(200).json({ timestamp: Date.now(), dataSource: 'error', topGainers: [], topLosers: [], volumeBreakouts: [], rsiExtremes: [], narrative: 'Error: ' + e.message });
   }
