@@ -622,14 +622,14 @@ async function fetchMacro(){
       H('mv-c','<div class="ct">📈 MVRV Z-Score</div><div class="mv" style="color:'+mc+'">'+( +mval).toFixed(2)+'</div><div style="font-size:10px;color:var(--muted)">'+msig+'</div>');
       H('s-mv','<span style="color:'+mc+'">'+( +mval).toFixed(1)+'</span>');
     }
-    if(d.cycleSummary){ H('cy-c','<div class="ct">🔄 Cycle Summary</div><div class="narr">'+d.cycleSummary+'</div>'); }
+    if(d.cycleSummary){ H('cyc-c','<div class="ct">🔄 Cycle Summary</div><div class="narr">'+d.cycleSummary+'</div>'); }
     // Altcoin season
     if(d.altcoinSeason){
       const as=d.altcoinSeason;
       const asVal=typeof as==='object'?as.value:+as;
       const asSig=typeof as==='object'?(as.signal||as.season||''):'';
       const asC=asVal>60?'var(--g)':asVal<40?'var(--amber)':'var(--muted)';
-      H('as-c','<div class="ct">🔄 Altcoin Season</div>'+
+      H('alt-c','<div class="ct">🔄 Altcoin Season</div>'+
         '<div class="mv" style="color:'+asC+'">'+asVal+'</div>'+
         '<div class="pbar"><div class="pfill" style="width:'+Math.min(100,asVal)+'%;background:'+asC+'"></div></div>'+
         '<div style="font-size:10px;color:var(--muted)">'+asSig+'</div>');
@@ -843,77 +843,91 @@ async function doScan(){
 }
 
 function renderScanResults(d){
-  const tabs=['all','scalp','swing','elite'];
-  const labels={all:'📊 ALL',scalp:'⚡ SCALP',swing:'🌊 SWING',elite:'🏆 ELITE'};
-  const data={
-    all: d.regularSetups||[],
-    scalp: d.scalpSetups||[],
-    swing: d.swingSetups||[],
-    elite: d.eliteSetups||[],
-  };
-  let tabHtml=tabs.map(t=>'<button onclick="showScanTab(\''+t+'\',this)" class="acc-tab'+(t==='all'?' on':'')+'">'+labels[t]+'</button>').join('');
-  H('sc-tabs','<div class="acc-tabs">'+tabHtml+'</div>');
-  window._scanData=data;
-  renderScanTab('all');
+  // scanner-full returns: d.topSetups.{institutional, bullish, fullSend, highProbBull, smcSetups, ewSetups, volumeBreakout, strongSell}
+  window._scanData = d.topSetups||{};
+  window._scanResults = d.results||[];
+  // Show tabs
+  const tabs=$('sc-tabs');
+  if(tabs) tabs.style.display='flex';
+  // Update status
+  const st=$('sc-st');
+  if(st) st.textContent='v11: '+(d.totalScanned||0)+' scanned · '+(d.totalQualified||0)+' qualified · '+(d.scanDuration||d.scanTime||'?')+'s';
+  // Render default tab
+  showTab('institutional', document.querySelector('.tab.on'));
 }
 
-function showScanTab(tab,el){
-  document.querySelectorAll('.acc-tab').forEach(b=>b.classList.remove('on'));
+function showTab(tab, el){
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
   if(el) el.classList.add('on');
-  renderScanTab(tab);
+  const data = window._scanData||{};
+  const coins = tab==='bullish' ? (window._scanResults||[]).filter(r=>r.score>0).slice(0,60)
+              : tab==='bearish' ? (window._scanResults||[]).filter(r=>r.score<0).slice(0,40)
+              : (data[tab]||[]);
+  const tbody=$('sc-body');
+  if(!tbody){ return; }
+  if(!coins.length){
+    tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);font-size:11px;padding:16px">No setups for this tab</td></tr>';
+    return;
+  }
+  tbody.innerHTML = coins.slice(0,40).map((c,i)=>buildScanRow(c,i)).join('');
 }
 
-function renderScanTab(tab){
-  const coins=(window._scanData||{})[tab]||[];
-  if(!coins.length){ H('sc-prog','<div style="color:var(--muted);font-size:11px;padding:10px;text-align:center">No setups for this filter</div>'); return; }
-  H('sc-prog', coins.slice(0,12).map((c,i)=>buildScanCard(c,i)).join(''));
-}
-
-function buildScanCard(c,i){
-  const score=c.finalScore||c.confidence||0;
-  const sc=score>=70?'var(--g)':score>=50?'var(--amber)':'var(--muted)';
-  const ch=c.ch24||0;
-  const ep=c.ict?.entryPkg||c.entryPkg||{};
-  return '<div style="background:var(--c2);border:1px solid var(--brd);border-radius:10px;padding:11px 13px;margin-bottom:7px;cursor:pointer" onclick="clickCoin(\''+c.symbol+'\')" >'+
-    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'+
-    '<div><div style="font-family:var(--m);font-size:15px;font-weight:900;color:var(--txt)">'+c.symbol+'</div>'+
-    '<div style="font-size:10px;color:var(--muted)">$'+fP(c.price||0)+' <span style="color:'+(ch>=0?'var(--g2)':'var(--red)')+'">'+(ch>=0?'+':'')+ch.toFixed(2)+'%</span></div></div>'+
-    '<div style="text-align:right"><div style="font-family:var(--m);font-size:20px;font-weight:900;color:'+sc+'">'+score+'</div><div style="font-size:8px;color:var(--dim)">SCORE</div></div></div>'+
-    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">'+
-    '<div style="background:rgba(255,68,100,.05);border-radius:5px;padding:5px;text-align:center"><div style="font-size:8px;color:var(--red)">STOP</div><div style="font-family:var(--m);font-size:9px;font-weight:700;color:var(--red)">$'+fP(ep.sl||c.rr?.slPrice||0)+'</div></div>'+
-    '<div style="background:rgba(0,255,136,.05);border-radius:5px;padding:5px;text-align:center"><div style="font-size:8px;color:var(--g2)">TP1</div><div style="font-family:var(--m);font-size:9px;font-weight:700;color:var(--g2)">$'+fP(ep.tp1||c.rr?.tp1||0)+'</div></div>'+
-    '<div style="background:rgba(0,255,136,.07);border-radius:5px;padding:5px;text-align:center"><div style="font-size:8px;color:var(--g2)">TP2</div><div style="font-family:var(--m);font-size:9px;font-weight:700;color:var(--g2)">$'+fP(ep.tp2||c.rr?.tp2||0)+'</div></div>'+
-    '</div></div>';
+function buildScanRow(c,i){
+  const score=c.score||c.probability||50;
+  const sc=score>=75?'var(--g)':score>=60?'var(--g2)':score>=45?'var(--amber)':'var(--muted)';
+  const ch=+(c.change24h||c.ch24||0);
+  const px=c.price||c.currentPrice||0;
+  const ep=c.ict?.entryPkg||{};
+  const sl=ep.sl||c.rr?.slPrice||0;
+  const tp1=ep.tp1||c.rr?.tp1||0;
+  const tp2=ep.tp2||c.rr?.tp2||0;
+  const signal=c.confluenceSignal||c.action||c.taLabel||'—';
+  const sigC=signal.includes('BULL')||signal==='BUY'?'var(--g)':signal.includes('BEAR')||signal==='SELL'?'var(--red)':'var(--amber)';
+  const sigs=(c.smc?.signals||c.signals||[]).slice(0,3).join(' ');
+  return '<tr onclick="clickCoin(\''+c.symbol+'\')" style="cursor:pointer" onmouseover="this.style.background=\'rgba(255,255,255,.03)\'" onmouseout="this.style.background=\'\'">'+
+    '<td style="font-family:var(--m);font-weight:800;color:var(--txt)">'+c.symbol+'</td>'+
+    '<td style="font-family:var(--m);color:var(--g)">$'+fP(px)+'</td>'+
+    '<td style="font-family:var(--m);color:'+(ch>=0?'var(--g2)':'var(--red)')+'">'+(ch>=0?'+':'')+ch.toFixed(2)+'%</td>'+
+    '<td style="font-family:var(--m);font-weight:700;color:'+sc+'">'+score+'</td>'+
+    '<td style="font-size:10px;color:'+sigC+'">'+signal+'</td>'+
+    '<td style="font-family:var(--m);font-size:10px;color:var(--red)">$'+fP(sl)+'</td>'+
+    '<td style="font-family:var(--m);font-size:10px;color:var(--g2)">$'+fP(tp1)+'</td>'+
+    '<td style="font-size:9px;color:var(--muted)">'+sigs+'</td>'+
+  '</tr>';
 }
 
 // ── ONCHAIN ───────────────────────────────────────────────────────
 async function fetchOnchain(){
   const body=$('onchain-body'); if(!body) return;
   body.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;text-align:center"><span class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>Loading onchain data...</div>';
-  const sf=async(url,ms=6000)=>{
+  const ocsf=async(url,ms=6000)=>{
     const ctrl=new AbortController(); setTimeout(()=>ctrl.abort(),ms);
-    try{ const r=await fetch(url,{signal:ctrl.signal,headers:{'User-Agent':'Mozilla/5.0'}});
+    try{ const r=await fetch(url,{signal:ctrl.signal,headers:{'User-Agent':'Mozilla/5.0','Accept':'application/json'}});
     if(!r.ok)return null; return await r.json(); }catch{return null;}
   };
   try{
-    // Try blockchain.info first, then blockchair
-    const [statsR, mempoolR, btcPxR] = await Promise.allSettled([
-      sf('https://api.blockchain.info/stats', 6000),
-      sf('https://api.blockchain.info/mempool/count', 4000),
-      sf('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', 4000),
+    // Multiple sources: blockchain.info + mempool.space (never blocked) + Binance
+    const [statsR, mempoolR, mempoolSpace, btcPxR] = await Promise.allSettled([
+      ocsf('https://api.blockchain.info/stats', 6000),
+      ocsf('https://api.blockchain.info/q/getblockcount', 4000),
+      ocsf('https://mempool.space/api/v1/difficulty-adjustment', 5000),
+      ocsf('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', 4000),
     ]);
     const stats   = statsR.status==='fulfilled'   ? statsR.value   : null;
-    const mempool = mempoolR.status==='fulfilled'  ? mempoolR.value : null;
-    const btcPx   = btcPxR.status==='fulfilled'    ? +btcPxR.value?.price||0 : 0;
-    const hashRate   = stats?.hash_rate   ? (stats.hash_rate/1e18).toFixed(1)  : '—';
-    const difficulty = stats?.difficulty  ? (stats.difficulty/1e12).toFixed(1) : '—';
+    const blkCount = mempoolR.status==='fulfilled' ? mempoolR.value : null;
+    const mempSpace= mempoolSpace.status==='fulfilled' ? mempoolSpace.value : null;
+    const btcPx   = btcPxR.status==='fulfilled'    ? +(btcPxR.value?.price||0) : 0;
+    // Use mempool.space for accurate block height if blockchain.info fails
+    const currentBlock = stats?.n_blocks_total || (typeof blkCount==='number'?blkCount:null) || mempSpace?.adjustedTimeAvg || 896000;
+    const hashRate   = stats?.hash_rate   ? (stats.hash_rate/1e18).toFixed(1)  : (mempSpace?.estimatedHashrate_3d ? (mempSpace.estimatedHashrate_3d/1e18).toFixed(1) : '—');
+    const difficulty = stats?.difficulty  ? (stats.difficulty/1e12).toFixed(1) : (mempSpace?.difficulty ? (mempSpace.difficulty/1e12).toFixed(1) : '—');
     const txn24h     = stats?.n_tx        ? stats.n_tx.toLocaleString()        : '—';
     const mempoolSz  = stats?.mempool_size ? stats.mempool_size.toLocaleString() : '—';
-    const blockHeight= stats?.n_blocks_total ? stats.n_blocks_total.toLocaleString() : '—';
+    const blockHeight= (currentBlock && currentBlock > 100000) ? (+currentBlock).toLocaleString() : '—';
     const mktCap     = btcPx > 0 ? '$'+(btcPx*19900000/1e12).toFixed(2)+'T' : '—';
+    const dataOk     = !!(stats || mempSpace);
     // Halving countdown
     const halvingBlock = 1050000;
-    const currentBlock = stats?.n_blocks_total || 896000;
     const blocksLeft = Math.max(0, halvingBlock - currentBlock);
     const daysLeft = Math.round(blocksLeft * 10 / 60 / 24);
     body.innerHTML='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">'+
@@ -924,7 +938,7 @@ async function fetchOnchain(){
       '<div class="c2"><div style="font-size:9px;color:var(--dim);letter-spacing:1px">BLOCK HEIGHT</div><div style="font-family:var(--m);font-size:14px;font-weight:700">'+blockHeight+'</div></div>'+
       '<div class="c2" style="border-color:rgba(255,179,0,.2)"><div style="font-size:9px;color:var(--amber);letter-spacing:1px">NEXT HALVING</div><div style="font-family:var(--m);font-size:14px;font-weight:700;color:var(--amber)">'+(daysLeft>0?'~'+daysLeft+' days':'DONE')+'</div><div style="font-size:9px;color:var(--dim)">'+blocksLeft.toLocaleString()+' blocks left</div></div>'+
     '</div>'+
-    (stats?'<div style="font-size:9px;color:var(--dim);margin-top:6px;text-align:right">src: blockchain.info · live</div>':'<div style="font-size:9px;color:var(--amber);margin-top:6px">⚠️ Limited data — some sources unavailable</div>');
+    (dataOk?'<div style="font-size:9px;color:var(--dim);margin-top:6px;text-align:right">src: blockchain.info + mempool.space · live</div>':'<div style="font-size:9px;color:var(--amber);margin-top:6px">⚠️ Onchain sources temporarily unavailable</div>');
   }catch(e){ 
     body.innerHTML='<div style="color:var(--amber);font-size:10px;padding:8px">⚠️ Onchain data temporarily unavailable: '+e.message+'</div>'; 
   }
