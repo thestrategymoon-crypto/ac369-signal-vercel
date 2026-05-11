@@ -23,7 +23,7 @@ export default async function handler(req, res) {
       timestamp: Date.now(),
     });
   } catch (e) {
-    return res.status(500).json({ error: e.message, btc: null, eth: null });
+    return res.status(200).json({ error: e.message, btc: null, eth: null });
   }
 }
 
