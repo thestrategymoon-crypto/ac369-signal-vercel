@@ -314,10 +314,18 @@ export default async function handler(req, res) {
 
     // Fetch BTC ticker + Fear & Greed first
     const [tickerR, fngR] = await Promise.allSettled([
-      fetch('https://api.binance.com/api/v3/ticker/24hr', {
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-        signal: AbortSignal.timeout(7000),
-      }).then(r => r.ok ? r.json() : null).catch(() => null),
+      sf('https://api.binance.com/api/v3/ticker/24hr', 8000)
+        .then(d => Array.isArray(d) && d.length > 100 ? d :
+          sf('https://fapi.binance.com/fapi/v1/ticker/24hr', 6000)
+            .then(d2 => Array.isArray(d2) && d2.length > 50 ? d2 :
+              sf('https://api.bybit.com/v5/market/tickers?category=spot', 6000)
+                .then(by => by?.result?.list?.length > 50 ? by.result.list.map(t => ({
+                  symbol: t.symbol||'', lastPrice: t.lastPrice||'0',
+                  priceChangePercent: t.price24hPcnt?(parseFloat(t.price24hPcnt)*100).toFixed(4):'0',
+                  quoteVolume: t.turnover24h||'0',
+                })) : null)
+            )
+        ),
       sf('https://api.alternative.me/fng/?limit=1&format=json', 4000),
     ]);
 
@@ -333,6 +341,7 @@ export default async function handler(req, res) {
     // Process each futures symbol in parallel
     const symResults = await Promise.allSettled(
       FUTURES_SYMS.slice(0, 15).map(async (sym) => {
+        try {
         const ticker = tickerMap[sym];
         if (!ticker) return null;
         const price = +(ticker.lastPrice || 0);
@@ -383,6 +392,7 @@ export default async function handler(req, res) {
           reasons: combined.reasons,
           warnings: combined.warnings,
         };
+        } catch(symErr) { return null; } // safety catch per symbol
       })
     );
 
