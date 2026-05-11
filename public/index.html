@@ -542,6 +542,9 @@ async function fetchBias(){
       const chips=(d.chips||[]).map(c=>'<span class="bchip">'+c+'</span>').join('');
       H('bias-chips',chips);
     }
+    // Strip items
+    if(bias.direction) H('s-bias','<span style="color:'+(bias.direction==='BULLISH'?'var(--g)':bias.direction==='BEARISH'?'var(--red)':'var(--amber)')+'">'+bias.direction+'</span>');
+    if(d.moonPhase) H('s-moon',d.moonPhase.emoji||'🌙');
   }catch(e){ H('bias-label','<span style="color:var(--muted)">Bias unavailable</span>'); }
 }
 
@@ -552,16 +555,40 @@ async function fetchAnalytics(){
     const r=await fetch('/api/analytics',{signal:ctrl.signal});
     if(!r.ok) throw new Error('HTTP '+r.status);
     const d=await r.json();
-    ['btc','eth'].forEach(sym=>{
-      const coin=d[sym]||{};
-      const el=$(sym+'-card');if(!el)return;
-      el.querySelector('.ap').textContent='$'+(coin.price||0).toLocaleString('en-US',{maximumFractionDigits:0});
-      const chgEl=el.querySelector('.achg');
-      if(chgEl){ const ch=coin.change24h||0; chgEl.textContent=(ch>=0?'+':'')+ch.toFixed(2)+'%'; chgEl.className='achg '+(ch>=0?'up':'dn'); }
-    });
-    if(d.btc?.price) H('s-btc','$'+(d.btc.price/1000).toFixed(1)+'K');
-    if(d.eth?.price) H('s-eth','$'+(d.eth.price).toLocaleString('en-US',{maximumFractionDigits:0}));
-  }catch(e){}
+    // Build BTC card
+    const btc=d.btc||{}, eth=d.eth||{};
+    const bpx=btc.currentPrice||btc.price||0;
+    const epx=eth.currentPrice||eth.price||0;
+    const bch=btc.change24h||0, ech=eth.change24h||0;
+    const bact=btc.action||btc.confluenceSignal||'—';
+    const eact=eth.action||eth.confluenceSignal||'—';
+    const actC=a=>a==='BUY'||a==='BULLISH'?'var(--g)':a==='SELL'||a==='BEARISH'?'var(--red)':'var(--amber)';
+    H('btc-c','<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'+
+      '<div><div style="font-size:10px;color:var(--dim);margin-bottom:2px">BITCOIN</div>'+
+      '<div style="font-family:var(--m);font-size:22px;font-weight:800;color:var(--g)">$'+bpx.toLocaleString('en-US',{maximumFractionDigits:0})+'</div>'+
+      '<span class="achg '+(bch>=0?'up':'dn')+'">'+(bch>=0?'+':'')+bch.toFixed(2)+'%</span></div>'+
+      '<div style="text-align:right"><div style="font-size:11px;font-weight:700;color:'+actC(bact)+'">'+bact+'</div>'+
+      (btc.probabilityScore?'<div style="font-size:10px;color:var(--muted)">Prob: '+btc.probabilityScore+'%</div>':'')+
+      '</div></div>'+
+      (btc.technicalSummary?'<div style="font-size:10px;color:var(--muted);line-height:1.5">'+String(btc.technicalSummary).substring(0,120)+'...</div>':'')+
+      (btc.rsi?'<div style="font-size:10px;color:var(--dim);margin-top:5px">RSI 1H: '+btc.rsi['1h']+' · 4H: '+btc.rsi['4h']+' · 1D: '+btc.rsi['1d']+'</div>':''));
+    H('eth-c','<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'+
+      '<div><div style="font-size:10px;color:var(--dim);margin-bottom:2px">ETHEREUM</div>'+
+      '<div style="font-family:var(--m);font-size:22px;font-weight:800;color:#627EEA">$'+epx.toLocaleString('en-US',{maximumFractionDigits:0})+'</div>'+
+      '<span class="achg '+(ech>=0?'up':'dn')+'">'+(ech>=0?'+':'')+ech.toFixed(2)+'%</span></div>'+
+      '<div style="text-align:right"><div style="font-size:11px;font-weight:700;color:'+actC(eact)+'">'+eact+'</div>'+
+      (eth.probabilityScore?'<div style="font-size:10px;color:var(--muted)">Prob: '+eth.probabilityScore+'%</div>':'')+
+      '</div></div>'+
+      (eth.technicalSummary?'<div style="font-size:10px;color:var(--muted);line-height:1.5">'+String(eth.technicalSummary).substring(0,120)+'...</div>':'')+
+      (eth.rsi?'<div style="font-size:10px;color:var(--dim);margin-top:5px">RSI 1H: '+eth.rsi['1h']+' · 4H: '+eth.rsi['4h']+' · 1D: '+eth.rsi['1d']+'</div>':''));
+    if(d.smartMoneyNarrative) H('narr-sm', d.smartMoneyNarrative||'—');
+    // Update strip
+    if(bpx) H('s-btc','$'+(bpx/1000).toFixed(1)+'K');
+    if(epx) H('s-eth','$'+epx.toLocaleString('en-US',{maximumFractionDigits:0}));
+  }catch(e){
+    H('btc-c','<div style="color:var(--red);font-size:11px">❌ '+e.message+'</div>');
+    H('eth-c','<div style="color:var(--red);font-size:11px">❌ '+e.message+'</div>');
+  }
 }
 
 // ── MACRO ─────────────────────────────────────────────────────────
@@ -578,10 +605,14 @@ async function fetchMacro(){
       '<div class="fbar"><div class="fmk" style="left:'+fg.value+'%"></div></div>'+
       '<div style="font-size:9px;color:var(--dim);text-align:right">src: Alt.me</div>');
     if(d.btcDominance){
-      const dom=d.btcDominance;
+      // btcDominance can be number or object {value, dominance, interpretation}
+      const domRaw=d.btcDominance;
+      const dom=typeof domRaw==='object'?(domRaw.value||58):+domRaw;
+      const domInterp=typeof domRaw==='object'?(domRaw.interpretation||''):(dom>55?'BTC Season':dom<40?'Alt Season':'Transitioning');
       H('dom-c','<div class="ct">₿ BTC Dominance</div><div class="mv">'+dom.toFixed(1)+'%</div>'+
         '<div class="pbar"><div class="pfill" style="width:'+Math.min(100,dom)+'%;background:var(--amber)"></div></div>'+
-        '<div style="font-size:10px;color:var(--muted)">'+(dom>55?'BTC season':dom<40?'Alt season':'Transitioning')+'</div>');
+        '<div style="font-size:10px;color:var(--muted)">'+domInterp+'</div>');
+      H('s-dom',dom.toFixed(1)+'%');
     }
     if(d.mvrvZScore||d.mvrv){
       const mv=d.mvrvZScore||d.mvrv;
@@ -589,9 +620,20 @@ async function fetchMacro(){
       const msig=typeof mv==='object'?mv.signal:'';
       const mc=mval<0?'var(--g)':mval<2?'var(--g2)':mval<4?'var(--amber)':'var(--red)';
       H('mv-c','<div class="ct">📈 MVRV Z-Score</div><div class="mv" style="color:'+mc+'">'+( +mval).toFixed(2)+'</div><div style="font-size:10px;color:var(--muted)">'+msig+'</div>');
+      H('s-mv','<span style="color:'+mc+'">'+( +mval).toFixed(1)+'</span>');
     }
     if(d.cycleSummary){ H('cy-c','<div class="ct">🔄 Cycle Summary</div><div class="narr">'+d.cycleSummary+'</div>'); }
-    H('s-dom',(d.btcDominance||'—')+'%');
+    // Altcoin season
+    if(d.altcoinSeason){
+      const as=d.altcoinSeason;
+      const asVal=typeof as==='object'?as.value:+as;
+      const asSig=typeof as==='object'?(as.signal||as.season||''):'';
+      const asC=asVal>60?'var(--g)':asVal<40?'var(--amber)':'var(--muted)';
+      H('as-c','<div class="ct">🔄 Altcoin Season</div>'+
+        '<div class="mv" style="color:'+asC+'">'+asVal+'</div>'+
+        '<div class="pbar"><div class="pfill" style="width:'+Math.min(100,asVal)+'%;background:'+asC+'"></div></div>'+
+        '<div style="font-size:10px;color:var(--muted)">'+asSig+'</div>');
+    }
   }catch(e){ H('fg-c','<div class="ct">😨 Fear & Greed</div><div class="err">Error: '+e.message+'</div>'); }
 }
 
@@ -847,19 +889,45 @@ function buildScanCard(c,i){
 // ── ONCHAIN ───────────────────────────────────────────────────────
 async function fetchOnchain(){
   const body=$('onchain-body'); if(!body) return;
-  body.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;text-align:center"><span class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>Loading...</div>';
+  body.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;text-align:center"><span class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>Loading onchain data...</div>';
+  const sf=async(url,ms=6000)=>{
+    const ctrl=new AbortController(); setTimeout(()=>ctrl.abort(),ms);
+    try{ const r=await fetch(url,{signal:ctrl.signal,headers:{'User-Agent':'Mozilla/5.0'}});
+    if(!r.ok)return null; return await r.json(); }catch{return null;}
+  };
   try{
-    const ctrl=new AbortController(); setTimeout(()=>ctrl.abort(),15000);
-    const r=await fetch('https://api.blockchain.info/stats',{signal:ctrl.signal});
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    const d=await r.json();
+    // Try blockchain.info first, then blockchair
+    const [statsR, mempoolR, btcPxR] = await Promise.allSettled([
+      sf('https://api.blockchain.info/stats', 6000),
+      sf('https://api.blockchain.info/mempool/count', 4000),
+      sf('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', 4000),
+    ]);
+    const stats   = statsR.status==='fulfilled'   ? statsR.value   : null;
+    const mempool = mempoolR.status==='fulfilled'  ? mempoolR.value : null;
+    const btcPx   = btcPxR.status==='fulfilled'    ? +btcPxR.value?.price||0 : 0;
+    const hashRate   = stats?.hash_rate   ? (stats.hash_rate/1e18).toFixed(1)  : '—';
+    const difficulty = stats?.difficulty  ? (stats.difficulty/1e12).toFixed(1) : '—';
+    const txn24h     = stats?.n_tx        ? stats.n_tx.toLocaleString()        : '—';
+    const mempoolSz  = stats?.mempool_size ? stats.mempool_size.toLocaleString() : '—';
+    const blockHeight= stats?.n_blocks_total ? stats.n_blocks_total.toLocaleString() : '—';
+    const mktCap     = btcPx > 0 ? '$'+(btcPx*19900000/1e12).toFixed(2)+'T' : '—';
+    // Halving countdown
+    const halvingBlock = 1050000;
+    const currentBlock = stats?.n_blocks_total || 896000;
+    const blocksLeft = Math.max(0, halvingBlock - currentBlock);
+    const daysLeft = Math.round(blocksLeft * 10 / 60 / 24);
     body.innerHTML='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">'+
-      '<div class="c2"><div style="font-size:9px;color:var(--dim)">HASH RATE</div><div style="font-family:var(--m);font-size:13px;font-weight:700;color:var(--g)">'+(d.hash_rate?(d.hash_rate/1e18).toFixed(2):' —')+' EH/s</div></div>'+
-      '<div class="c2"><div style="font-size:9px;color:var(--dim)">DIFFICULTY</div><div style="font-family:var(--m);font-size:13px;font-weight:700">'+(d.difficulty?(d.difficulty/1e12).toFixed(2):'—')+' T</div></div>'+
-      '<div class="c2"><div style="font-size:9px;color:var(--dim)">MEMPOOL SIZE</div><div style="font-family:var(--m);font-size:13px;font-weight:700;color:var(--amber)">'+(d.mempool_size?d.mempool_size.toLocaleString():'—')+'</div></div>'+
-      '<div class="c2"><div style="font-size:9px;color:var(--dim)">TXN/24H</div><div style="font-family:var(--m);font-size:13px;font-weight:700">'+(d.n_tx?d.n_tx.toLocaleString():'—')+'</div></div>'+
-    '</div>';
-  }catch(e){ body.innerHTML='<div style="color:var(--dim);font-size:10px;padding:8px">BTC onchain: '+e.message+'</div>'; }
+      '<div class="c2" style="border-color:rgba(0,255,208,.15)"><div style="font-size:9px;color:var(--dim);letter-spacing:1px">HASH RATE</div><div style="font-family:var(--m);font-size:14px;font-weight:700;color:var(--g)">'+hashRate+' EH/s</div></div>'+
+      '<div class="c2" style="border-color:rgba(0,255,208,.1)"><div style="font-size:9px;color:var(--dim);letter-spacing:1px">DIFFICULTY</div><div style="font-family:var(--m);font-size:14px;font-weight:700">'+difficulty+' T</div></div>'+
+      '<div class="c2"><div style="font-size:9px;color:var(--dim);letter-spacing:1px">MEMPOOL</div><div style="font-family:var(--m);font-size:14px;font-weight:700;color:var(--amber)">'+mempoolSz+' tx</div></div>'+
+      '<div class="c2"><div style="font-size:9px;color:var(--dim);letter-spacing:1px">TXN / 24H</div><div style="font-family:var(--m);font-size:14px;font-weight:700">'+txn24h+'</div></div>'+
+      '<div class="c2"><div style="font-size:9px;color:var(--dim);letter-spacing:1px">BLOCK HEIGHT</div><div style="font-family:var(--m);font-size:14px;font-weight:700">'+blockHeight+'</div></div>'+
+      '<div class="c2" style="border-color:rgba(255,179,0,.2)"><div style="font-size:9px;color:var(--amber);letter-spacing:1px">NEXT HALVING</div><div style="font-family:var(--m);font-size:14px;font-weight:700;color:var(--amber)">'+(daysLeft>0?'~'+daysLeft+' days':'DONE')+'</div><div style="font-size:9px;color:var(--dim)">'+blocksLeft.toLocaleString()+' blocks left</div></div>'+
+    '</div>'+
+    (stats?'<div style="font-size:9px;color:var(--dim);margin-top:6px;text-align:right">src: blockchain.info · live</div>':'<div style="font-size:9px;color:var(--amber);margin-top:6px">⚠️ Limited data — some sources unavailable</div>');
+  }catch(e){ 
+    body.innerHTML='<div style="color:var(--amber);font-size:10px;padding:8px">⚠️ Onchain data temporarily unavailable: '+e.message+'</div>'; 
+  }
 }
 
 // ── INTELLIGENCE DASHBOARD ────────────────────────────────────────
@@ -993,7 +1061,9 @@ async function refreshAll(){
   const btn=$('r-btn'); if(btn){ btn.disabled=true; btn.textContent='⏳'; }
   const upd=$('upd'); if(upd) upd.textContent='Updating...';
   try{
-    await Promise.allSettled([fetchBias(), fetchAnalytics(), fetchMacro(), fetchAltcoins()]);
+    await Promise.allSettled([
+      fetchBias(), fetchAnalytics(), fetchMacro(), fetchAltcoins(), fetchOnchain()
+    ]);
   }catch(e){}
   if(btn){ btn.disabled=false; btn.textContent='⟳'; }
   const now=new Date();
