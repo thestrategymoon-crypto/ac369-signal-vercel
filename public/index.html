@@ -287,6 +287,27 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 .ob-bar-bg{flex:1;height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden}
 .ob-bar-fill{height:6px;border-radius:3px}
 .ob-usd{color:var(--dim);width:55px;flex-shrink:0;text-align:left;padding-left:4px}
+
+/* ── ALTCOIN TABS ───────────────────────────── */
+.atab{background:rgba(255,255,255,.04);border:1px solid var(--brd);color:var(--muted);
+  padding:5px 13px;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;
+  font-family:var(--m);transition:all .15s;white-space:nowrap}
+.atab.on{background:rgba(100,100,255,.15);border-color:rgba(100,100,255,.3);color:#b0b0ff}
+/* Exchange-style coin row */
+.ex-row{display:flex;align-items:center;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .1s}
+.ex-row:hover{background:rgba(255,255,255,.02)}
+.ex-row:last-child{border-bottom:none}
+.ex-rank{font-size:10px;color:var(--dim);width:22px;flex-shrink:0;text-align:right;padding-right:6px}
+.ex-sym{font-family:var(--m);font-size:12px;font-weight:800;min-width:52px;color:var(--txt)}
+.ex-sect{font-size:8px;padding:1px 4px;border-radius:3px;background:rgba(168,85,247,.1);color:var(--purple);margin-left:3px;flex-shrink:0}
+.ex-px{font-family:var(--m);font-size:11px;color:var(--muted);flex:1;text-align:right;padding:0 6px}
+.ex-chg{font-family:var(--m);font-size:11px;font-weight:700;min-width:58px;text-align:right;padding-right:4px}
+.ex-vol{font-size:10px;color:var(--dim);min-width:50px;text-align:right;padding-right:2px}
+.ex-vbar{display:flex;gap:1px;align-items:flex-end;margin-left:4px;flex-shrink:0}
+.ex-hdr{display:flex;align-items:center;padding:4px 4px 6px;border-bottom:1px solid rgba(255,255,255,.08);font-size:9px;color:var(--dim);letter-spacing:1px;margin-bottom:2px}
+/* RSI bar */
+.rsi-bar-wrap{width:48px;height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;margin-left:5px;flex-shrink:0}
+.rsi-bar-fill{height:5px;border-radius:3px}
 </style>
 </head>
 <body>
@@ -408,12 +429,14 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 
 <!-- ALTCOIN -->
 <h2>📊 Altcoin Momentum</h2>
-<div class="g3">
-  <div class="card" id="gain-c"><div class="ct">🚀 Top Gainers</div><div class="ld"><span class="ms"></span></div></div>
-  <div class="card" id="vol-c"><div class="ct">💥 Volume Breakout</div><div class="ld"><span class="ms"></span></div></div>
-  <div class="card" id="rsi-c"><div class="ct">📉 RSI Ekstrem</div><div class="ld"><span class="ms"></span></div></div>
-  <div class="card s2" id="an-c"><div class="ct">📋 Narasi Altcoin</div><div class="ld"><span class="ms"></span></div></div>
+<div id="alt-mkt" style="margin-bottom:8px"></div>
+<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px" id="alt-tabs">
+  <button onclick="showAltTab('gainers',this)" class="atab on">🚀 Gainers</button>
+  <button onclick="showAltTab('losers',this)" class="atab">📉 Losers</button>
+  <button onclick="showAltTab('rsi',this)" class="atab">📊 RSI</button>
+  <button onclick="showAltTab('vol',this)" class="atab">💥 Volume</button>
 </div>
+<div id="alt-body" class="card" style="padding:10px 11px;min-height:80px"></div>
 
 
 <!-- SMART MONEY ACCUMULATION SCANNER v12.2 -->
@@ -893,174 +916,271 @@ async function fetchMacro(){
 
 // ── ALTCOINS ──────────────────────────────────────────────────
 async function fetchAltcoins(){
+  var mkt=document.getElementById('alt-mkt');
+  var body=document.getElementById('alt-body');
+  var tabs=document.getElementById('alt-tabs');
+  if(body) body.innerHTML='<div style="color:var(--muted);font-size:11px;padding:16px;text-align:center"><span class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>Loading all altcoins...</div>';
+
   try{
-    const ctrl=new AbortController();setTimeout(()=>ctrl.abort(),18000);
+    const ctrl=new AbortController();
+    setTimeout(()=>ctrl.abort(),18000);
     const r=await fetch('/api/altcoins',{signal:ctrl.signal});
-    if(!r.ok)throw new Error('HTTP '+r.status);
+    if(!r.ok) throw new Error('HTTP '+r.status);
     const d=await r.json();
 
-    // ── Market summary bar ───────────────────────────────────────
-    const mkt=d.market||{};
-    const mktC=mkt.signal==='BULLISH'?'var(--g)':mkt.signal==='BEARISH'?'var(--red)':'var(--amber)';
-    const fmtV=n=>{if(!n)return'—';if(n>=1e9)return'$'+(n/1e9).toFixed(1)+'B';if(n>=1e6)return'$'+(n/1e6).toFixed(0)+'M';return'$'+(n/1e3).toFixed(0)+'K';};
-    const fmtPx=p=>{if(!p||p<=0)return'—';if(p>=10000)return p.toLocaleString('en-US',{maximumFractionDigits:0});if(p>=1000)return p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});if(p>=1)return p.toFixed(4);if(p>=0.001)return p.toFixed(6);return p.toFixed(9);};
-    const tierBars=t=>[1,2,3,4,5].map(i=>`<span style="display:inline-block;width:4px;height:${3+i}px;border-radius:1px;margin-right:1px;background:${i<=t?'var(--g)':'rgba(255,255,255,.1)'};vertical-align:bottom"></span>`).join('');
-    const rsiColor=v=>v<=30?'var(--g)':v<=45?'var(--amber)':v>=75?'var(--red)':v>=60?'var(--amber)':'var(--txt)';
+    // Store globally for tab switching
+    window._altData=d;
 
-    // Market pulse header
-    const mktBar=`<div style="display:flex;gap:6px;flex-wrap:wrap;background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:8px;padding:7px 11px;margin-bottom:10px">
-      <div style="text-align:center;flex:1;min-width:55px"><div style="font-family:var(--m);font-size:13px;font-weight:900;color:${mktC}">${mkt.signal||'—'}</div><div style="font-size:8px;color:var(--dim);letter-spacing:1px">MARKET</div></div>
-      <div style="text-align:center;flex:1;min-width:45px"><div style="font-family:var(--m);font-size:13px;font-weight:700;color:${(mkt.avg24h||0)>=0?'var(--g2)':'var(--red)'}">${(mkt.avg24h||0)>=0?'+':''}${mkt.avg24h||0}%</div><div style="font-size:8px;color:var(--dim)">AVG 24H</div></div>
-      <div style="text-align:center;flex:1;min-width:45px"><div style="font-family:var(--m);font-size:13px;font-weight:700;color:var(--g2)">${mkt.posCoins||0}</div><div style="font-size:8px;color:var(--dim)">▲ COINS</div></div>
-      <div style="text-align:center;flex:1;min-width:45px"><div style="font-family:var(--m);font-size:13px;font-weight:700;color:var(--red)">${mkt.negCoins||0}</div><div style="font-size:8px;color:var(--dim)">▼ COINS</div></div>
-      <div style="text-align:center;flex:1;min-width:45px"><div style="font-family:var(--m);font-size:13px;font-weight:700;color:var(--amber)">${mkt.bigMovers||0}</div><div style="font-size:8px;color:var(--dim)">>10% MOVE</div></div>
-      <div style="text-align:center;flex:1;min-width:55px"><div style="font-size:11px;font-weight:700;color:var(--muted)">${fmtV(mkt.totalVol)}</div><div style="font-size:8px;color:var(--dim)">TOTAL VOL</div></div>
-      <div style="text-align:center;flex:1;min-width:45px"><div style="font-size:11px;font-weight:700;color:var(--muted)">${d.realRSICoins||0}/${d.totalCoins||0}</div><div style="font-size:8px;color:var(--dim)">REAL RSI</div></div>
-    </div>`;
+    // ── Market pulse bar ─────────────────────────────────────────
+    var m=d.market||{};
+    var mc=m.signal==='BULLISH'?'var(--g)':m.signal==='BEARISH'?'var(--red)':'var(--amber)';
+    var fg=d.fg||50;
+    var fgC=fg<=25?'var(--g)':fg<=45?'var(--amber)':fg>=75?'var(--red)':'var(--muted)';
+    var fmtV=function(n){if(!n)return'—';if(n>=1e9)return'$'+(n/1e9).toFixed(1)+'B';if(n>=1e6)return'$'+(n/1e6).toFixed(0)+'M';return'$'+(n/1e3).toFixed(0)+'K';};
+    if(mkt) mkt.innerHTML='<div style="display:flex;gap:5px;flex-wrap:wrap;background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:8px;padding:7px 10px;margin-bottom:0">'+
+      '<div style="text-align:center;flex:1;min-width:60px"><div style="font-family:var(--m);font-size:12px;font-weight:800;color:'+mc+'">'+( m.signal||'—')+'</div><div style="font-size:8px;color:var(--dim)">SIGNAL</div></div>'+
+      '<div style="text-align:center;flex:1;min-width:45px"><div style="font-family:var(--m);font-size:12px;font-weight:700;color:'+((m.avg24h||0)>=0?'var(--g2)':'var(--red)')+'">'+(m.avg24h>=0?'+':'')+m.avg24h+'%</div><div style="font-size:8px;color:var(--dim)">AVG 24H</div></div>'+
+      '<div style="text-align:center;flex:1;min-width:40px"><div style="font-family:var(--m);font-size:12px;font-weight:700;color:var(--g2)">'+(m.pos||0)+'</div><div style="font-size:8px;color:var(--dim)">▲UP</div></div>'+
+      '<div style="text-align:center;flex:1;min-width:40px"><div style="font-family:var(--m);font-size:12px;font-weight:700;color:var(--red)">'+(m.neg||0)+'</div><div style="font-size:8px;color:var(--dim)">▼DOWN</div></div>'+
+      '<div style="text-align:center;flex:1;min-width:45px"><div style="font-family:var(--m);font-size:12px;font-weight:700;color:var(--amber)">'+(m.bigMove||0)+'</div><div style="font-size:8px;color:var(--dim)">›10%</div></div>'+
+      '<div style="text-align:center;flex:1;min-width:50px"><div style="font-size:11px;font-weight:700;color:var(--muted)">'+fmtV(m.totalVol)+'</div><div style="font-size:8px;color:var(--dim)">TOTAL VOL</div></div>'+
+      '<div style="text-align:center;flex:1;min-width:50px"><div style="font-size:11px;font-weight:700;color:'+(fgC)+'">'+fg+'</div><div style="font-size:8px;color:var(--dim)">F&G</div></div>'+
+      '<div style="text-align:center;flex:1;min-width:55px"><div style="font-size:11px;font-weight:700;color:var(--muted)">'+(d.realRSICount||0)+'/'+((d.gainers||d.topGainers||[]).length)+'</div><div style="font-size:8px;color:var(--dim)">REAL RSI</div></div>'+
+      '</div>';
 
-    // ── TOP GAINERS ──────────────────────────────────────────────
-    const gainers=d.topGainers||[];
-    const gHtml=gainers.slice(0,15).map((c,i)=>{
-      const up=c.ch24>=0;
-      const scoreC=c.quality==='HIGH'?'var(--g)':c.quality==='MEDIUM'?'var(--g2)':'var(--muted)';
-      return `<div onclick="clickCoin('${c.symbol}')" style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:8px 10px;margin-bottom:5px;cursor:pointer" onmouseover="this.style.borderColor='rgba(0,255,208,.2)'" onmouseout="this.style.borderColor='rgba(255,255,255,.05)'">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
-          <div>
-            <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
-              <span style="font-family:var(--m);font-size:13px;font-weight:900;color:var(--txt)">${c.symbol}</span>
-              ${c.sector?`<span style="font-size:8px;padding:1px 5px;background:rgba(168,85,247,.1);color:var(--purple);border-radius:3px;border:1px solid rgba(168,85,247,.15)">${c.sector}</span>`:''}
-              <span style="font-size:8px;color:${scoreC}">${tierBars(c.vt||1)}</span>
-            </div>
-            <div style="font-size:9px;color:var(--muted)">${c.catalyst||''}</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:13px;font-weight:900;color:var(--g2)">+${c.ch24.toFixed(2)}%</div>
-            <div style="font-size:9px;color:var(--muted)">$${fmtPx(c.price)}</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap;font-size:9px;color:var(--muted)">
-          <span>Vol: ${fmtV(c.vol)}</span>
-          <span>H: <span style="color:var(--g2)">$${fmtPx(c.high24h)}</span></span>
-          <span>L: <span style="color:var(--red)">$${fmtPx(c.low24h)}</span></span>
-          <span>Range: ${c.range24h}%</span>
-          ${c.pattern?`<span style="color:var(--amber)">${c.pattern}</span>`:''}
-          ${c.rsi?`<span>RSI: <span style="color:${rsiColor(c.rsi)}">${c.rsi}${c.hasRealRSI?'✓':''}</span></span>`:''}
-        </div>
-        ${c.quality==='HIGH'&&c.trade?`<div style="display:flex;gap:3px;margin-top:4px">
-          <div style="flex:1;background:rgba(255,68,100,.05);border-radius:3px;padding:3px;text-align:center;font-size:8px"><span style="color:var(--red)">SL -${c.trade.slPct}%</span></div>
-          <div style="flex:1;background:rgba(0,255,136,.05);border-radius:3px;padding:3px;text-align:center;font-size:8px"><span style="color:var(--g2)">TP1 +${c.trade.tp1Pct}%</span></div>
-          <div style="flex:1;background:rgba(0,255,136,.07);border-radius:3px;padding:3px;text-align:center;font-size:8px"><span style="color:var(--g2)">TP2 +${c.trade.tp2Pct}%</span></div>
-        </div>`:''}
-      </div>`;
-    }).join('')||'<div style="color:var(--muted);font-size:11px">—</div>';
-
-    H('gain-c', `<div class="ct">🚀 TOP GAINERS</div>${mktBar}${gHtml}`);
-
-    // ── VOLUME BREAKOUT ──────────────────────────────────────────
-    const volItems=d.volumeBreakouts||[];
-    const volHtml=volItems.slice(0,12).map((c,i)=>{
-      const scorePct=c.breakoutScore||0;
-      const scoreC=scorePct>=70?'var(--g)':scorePct>=50?'var(--amber)':'var(--muted)';
-      const typeC=c.breakoutColor==='bull'?'var(--g)':c.breakoutColor==='bear'?'var(--red)':'var(--amber)';
-      return `<div onclick="clickCoin('${c.symbol}')" style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:8px 10px;margin-bottom:5px;cursor:pointer" onmouseover="this.style.borderColor='rgba(0,255,208,.2)'" onmouseout="this.style.borderColor='rgba(255,255,255,.05)'">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
-          <div>
-            <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
-              <span style="font-family:var(--m);font-size:13px;font-weight:900;color:var(--txt)">${c.symbol}</span>
-              <span style="font-size:8px;padding:1px 6px;border-radius:4px;font-weight:700;color:${typeC};border:1px solid ${typeC.replace('var(','rgba(').replace(')',',0.25)')}">${c.breakoutType||'—'}</span>
-              ${c.sector?`<span style="font-size:8px;padding:1px 5px;background:rgba(168,85,247,.1);color:var(--purple);border-radius:3px">${c.sector}</span>`:''}
-            </div>
-            <div style="display:flex;align-items:center;gap:5px">
-              ${tierBars(c.vt||1)}
-              <span style="font-size:9px;color:var(--muted)">${fmtV(c.vol)}</span>
-              ${c.count?`<span style="font-size:8px;color:var(--dim)">${c.count>=1000?(c.count/1000).toFixed(0)+'K':c.count} trades</span>`:''}
-            </div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-family:var(--m);font-size:16px;font-weight:900;color:${scoreC}">${scorePct}</div>
-            <div style="font-size:8px;color:var(--dim)">SCORE</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap;font-size:9px;color:var(--muted);margin-bottom:3px">
-          <span>${fmtPx(c.price)}</span>
-          <span style="color:${c.ch24>=0?'var(--g2)':'var(--red)'};font-weight:700">${c.ch24>=0?'+':''}${c.ch24.toFixed(2)}%</span>
-          <span>Range: ${c.range24h}%</span>
-          <span>Pos: ${(c.rp*100).toFixed(0)}%</span>
-          ${c.body>0.5?`<span>Body: ${(c.body*100).toFixed(0)}%</span>`:''}
-          ${c.lw>0.2?`<span>Wick: ${(c.lw*100).toFixed(0)}%</span>`:''}
-        </div>
-        ${(c.signals||[]).length?`<div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:3px">${(c.signals||[]).map(s=>`<span style="font-size:8px;padding:1px 5px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:3px;color:var(--muted)">${s}</span>`).join('')}</div>`:''}
-        <div style="height:2px;background:rgba(255,255,255,.05);border-radius:1px;margin-bottom:3px"><div style="height:2px;border-radius:1px;width:${scorePct}%;background:${scoreC}"></div></div>
-        ${scorePct>=50&&c.trade?`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-bottom:3px">
-          <div style="background:rgba(255,68,100,.05);border-radius:3px;padding:3px;text-align:center;font-size:8px;color:var(--red)">SL -${c.trade.slPct}%</div>
-          <div style="background:rgba(0,255,136,.05);border-radius:3px;padding:3px;text-align:center;font-size:8px;color:var(--g2)">TP1 +${c.trade.tp1Pct}%</div>
-          <div style="background:rgba(0,255,136,.07);border-radius:3px;padding:3px;text-align:center;font-size:8px;color:var(--g2)">TP2 +${c.trade.tp2Pct}%</div>
-        </div>`:''}
-        <div style="font-size:9px;color:var(--dim);border-top:1px solid rgba(255,255,255,.04);padding-top:3px">→ ${c.reason||'Volume anomaly'}</div>
-      </div>`;
-    }).join('')||'<div style="color:var(--muted);font-size:11px">—</div>';
-
-    H('vol-c', `<div class="ct">💥 Volume Breakout</div><div style="font-size:8px;color:var(--dim);margin-bottom:8px;letter-spacing:1.5px">${volItems.length} ANOMALI · RANKED BY QUALITY</div>${volHtml}`);
-
-    // ── RSI EXTREMES ─────────────────────────────────────────────
-    const rsiItems=d.rsiExtremes||[];
-    const oversold=rsiItems.filter(c=>(c.rsi||50)<35);
-    const overbought=rsiItems.filter(c=>(c.rsi||50)>70);
-
-    const rsiHtml=(items,type)=>items.slice(0,8).map((c,i)=>{
-      const up=c.ch24>=0;
-      const rc=rsiColor(c.rsi||50);
-      const isReal=c.hasRealRSI;
-      return `<div onclick="clickCoin('${c.symbol}')" style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:7px 10px;margin-bottom:5px;cursor:pointer" onmouseover="this.style.borderColor='${type==='oversold'?'rgba(0,255,136,.2)':'rgba(255,68,100,.2)'}'" onmouseout="this.style.borderColor='rgba(255,255,255,.05)'">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:3px">
-          <div>
-            <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
-              <span style="font-family:var(--m);font-size:13px;font-weight:900;color:var(--txt)">${c.symbol}</span>
-              ${c.sector?`<span style="font-size:8px;padding:1px 5px;background:rgba(168,85,247,.1);color:var(--purple);border-radius:3px">${c.sector}</span>`:''}
-              <span style="font-size:7px;padding:1px 4px;background:${isReal?'rgba(0,255,136,.08)':'rgba(255,179,0,.08)'};color:${isReal?'var(--g)':'var(--amber)'};border-radius:3px">${isReal?'REAL 4H':'PROXY'}</span>
-            </div>
-            <div style="font-size:9px;color:var(--muted)">${fmtPx(c.price)} · Vol: ${fmtV(c.vol)}</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-family:var(--m);font-size:20px;font-weight:900;color:${rc}">${c.rsi||'—'}</div>
-            <div style="font-size:8px;color:var(--dim)">RSI 14</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap;font-size:9px;color:var(--muted);margin-bottom:3px">
-          <span style="color:${up?'var(--g2)':'var(--red)'};font-weight:700">${up?'+':''}${c.ch24.toFixed(2)}% 24H</span>
-          <span>Range: ${c.range24h}%</span>
-          <span>H: <span style="color:var(--g2)">$${fmtPx(c.high24h)}</span></span>
-          <span>L: <span style="color:var(--red)">$${fmtPx(c.low24h)}</span></span>
-          ${c.pattern?`<span style="color:var(--amber)">${c.pattern}</span>`:''}
-        </div>
-        <div style="height:4px;background:rgba(255,255,255,.06);border-radius:2px;margin-bottom:4px;overflow:hidden">
-          <div style="height:4px;border-radius:2px;width:${c.rsi||50}%;background:${rc}"></div>
-        </div>
-        ${type==='oversold'&&c.trade?`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px">
-          <div style="background:rgba(255,68,100,.05);border-radius:3px;padding:3px;text-align:center;font-size:8px;color:var(--red)">SL -${c.trade.slPct}%</div>
-          <div style="background:rgba(0,255,136,.05);border-radius:3px;padding:3px;text-align:center;font-size:8px;color:var(--g2)">TP1 +${c.trade.tp1Pct}%</div>
-          <div style="background:rgba(0,255,136,.07);border-radius:3px;padding:3px;text-align:center;font-size:8px;color:var(--g2)">TP2 +${c.trade.tp2Pct}%</div>
-        </div>`:''}
-        ${type==='overbought'?`<div style="font-size:8px;color:var(--red);margin-top:3px">⚠️ RSI overbought — caution, potential correction</div>`:''}
-      </div>`;
-    }).join('');
-
-    H('rsi-c', `<div class="ct">📉 RSI Ekstrem</div>
-      <div style="font-size:8px;color:var(--dim);margin-bottom:8px;letter-spacing:1.5px">${d.realRSICoins||0} REAL RSI (4H) · ${(d.totalCoins||0)-(d.realRSICoins||0)} PROXY</div>
-      ${oversold.length?`<div style="font-size:9px;font-weight:700;color:var(--g);margin-bottom:5px;letter-spacing:1px">⚡ OVERSOLD — RSI < 35 (${oversold.length} coins)</div>${rsiHtml(oversold,'oversold')}`:''}
-      ${overbought.length?`<div style="font-size:9px;font-weight:700;color:var(--red);margin:8px 0 5px;letter-spacing:1px">🔴 OVERBOUGHT — RSI > 70 (${overbought.length} coins)</div>${rsiHtml(overbought,'overbought')}`:''}
-      ${!oversold.length&&!overbought.length?'<div style="color:var(--muted);font-size:11px;padding:8px 0">Tidak ada RSI extreme — market sedang normal</div>':''}`
-    );
-
-    // Update source indicator
-    const ss=document.getElementById('acc-st');
-    if(ss&&d.dataSource)ss.textContent='Sumber: '+d.dataSource+' · '+d.totalCoins+' coins · Real RSI: '+d.realRSICoins+' · '+d.scanTime+'s';
+    // Show tabs, default to gainers
+    if(tabs) tabs.style.display='flex';
+    showAltTab('gainers', document.querySelector('.atab.on'));
 
   }catch(e){
-    H('gain-c',`<div class="ct">🚀 TOP GAINERS</div><div class="err">Error: ${e.message}</div>`);
-    H('vol-c',`<div class="ct">💥 Volume Breakout</div><div class="err">Error: ${e.message}</div>`);
-    H('rsi-c',`<div class="ct">📉 RSI Ekstrem</div><div class="err">Error: ${e.message}</div>`);
+    if(body) body.innerHTML='<div style="color:var(--red);font-size:11px;padding:12px">❌ '+e.message+'<br><button onclick="fetchAltcoins()" style="margin-top:8px;background:rgba(100,100,255,.1);border:1px solid rgba(100,100,255,.2);color:#b0b0ff;padding:5px 12px;border-radius:6px;font-size:10px;cursor:pointer">⟳ Retry</button></div>';
+    H('gain-c','<div class="ct">🚀 Top Gainers</div><div class="err">Error: '+e.message+'</div>');
+    H('rsi-c','<div class="ct">📉 RSI Ekstrem</div><div class="err">Error: '+e.message+'</div>');
+    H('vol-c','<div class="ct">💥 Volume Breakout</div><div class="err">Error: '+e.message+'</div>');
   }
+}
+
+// Tab switching for Altcoin Momentum
+function showAltTab(tab, el){
+  document.querySelectorAll('.atab').forEach(function(b){ b.classList.remove('on'); });
+  if(el) el.classList.add('on');
+  else { var btn=document.querySelector('.atab[onclick*="'+tab+'"]'); if(btn) btn.classList.add('on'); }
+  renderAltTab(tab);
+}
+
+// Format price like exchange (correct decimals)
+function fmtEx(p){
+  if(!p||p<=0) return '—';
+  if(p>=10000)  return p.toLocaleString('en-US',{maximumFractionDigits:0});
+  if(p>=1000)   return p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(p>=1)      return p.toFixed(4);
+  if(p>=0.01)   return p.toFixed(5);
+  if(p>=0.0001) return p.toFixed(6);
+  if(p>=0.000001) return p.toFixed(8);
+  return p.toExponential(3);
+}
+function fmtVol(n){if(!n)return'—';if(n>=1e9)return'$'+(n/1e9).toFixed(1)+'B';if(n>=1e6)return'$'+(n/1e6).toFixed(0)+'M';if(n>=1e3)return'$'+(n/1e3).toFixed(0)+'K';return'$'+n;}
+function vTier(t){ return [1,2,3,4,5].map(function(i){ return '<span style="display:inline-block;width:3px;height:'+(2+i*2)+'px;background:'+(i<=t?'var(--g)':'rgba(255,255,255,.1)')+';border-radius:1px;margin-right:1px;vertical-align:bottom"></span>'; }).join(''); }
+function rsiCol(v){ return v<=30?'var(--g)':v<=42?'#4af0a0':v>=80?'var(--red)':v>=65?'#ff7799':'var(--txt)'; }
+
+function renderAltTab(tab){
+  var d=window._altData;
+  var body=document.getElementById('alt-body');
+  if(!d||!body) return;
+
+  if(tab==='gainers') renderExchangeList(d.gainers||d.topGainers||[], body, 'gainers');
+  else if(tab==='losers') renderExchangeList(d.losers||d.topLosers||[], body, 'losers');
+  else if(tab==='rsi') renderRSITab(d.rsiList||d.rsiExtremes||[], body, d.realRSICount||0);
+  else if(tab==='vol') renderVolTab(d.volBreakouts||d.volumeBreakouts||[], body);
+}
+
+// ── EXCHANGE-STYLE LIST (Gainers / Losers) ────────────────────────
+function renderExchangeList(coins, body, mode){
+  if(!coins.length){ body.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;text-align:center">Tidak ada data</div>'; return; }
+  var isLoss=mode==='losers';
+  var h='';
+
+  // Header row
+  h+='<div class="ex-hdr">';
+  h+='<div style="width:22px"></div>';
+  h+='<div style="min-width:52px">COIN</div>';
+  h+='<div style="flex:1;text-align:right;padding-right:6px">PRICE</div>';
+  h+='<div style="min-width:58px;text-align:right;padding-right:4px">24H</div>';
+  h+='<div style="min-width:50px;text-align:right">VOLUME</div>';
+  h+='<div style="width:36px;margin-left:4px">RSI</div>';
+  h+='</div>';
+
+  coins.forEach(function(c, i){
+    var up=c.ch24>=0;
+    var chgC=up?'var(--g2)':'var(--red)';
+    var rsi=c.rsi||50;
+    var rc=rsiCol(rsi);
+    var rsiFill=Math.min(100,Math.max(0,rsi));
+    var sect=c.sector||'';
+    var sectHtml=sect?'<span class="ex-sect">'+sect+'</span>':'';
+    var rsiSource=c.rsiReal?'✓':'~';
+    var rsiSourceC=c.rsiReal?'var(--g)':'var(--dim)';
+
+    h+='<div class="ex-row" onclick="clickCoin(\''+c.symbol+'\')">'+
+      '<div class="ex-rank">'+( i+1)+'</div>'+
+      '<div style="display:flex;align-items:center;flex:0 0 auto">'+
+        '<span class="ex-sym">'+c.symbol+'</span>'+
+        sectHtml+
+      '</div>'+
+      '<div class="ex-px">'+fmtEx(c.price)+'</div>'+
+      '<div class="ex-chg" style="color:'+chgC+'">'+(up?'+':'')+c.ch24.toFixed(2)+'%</div>'+
+      '<div class="ex-vol">'+fmtVol(c.vol)+'</div>'+
+      '<div style="display:flex;align-items:center;margin-left:4px;flex-shrink:0">'+
+        '<div class="rsi-bar-wrap"><div class="rsi-bar-fill" style="width:'+rsiFill+'%;background:'+rc+'"></div></div>'+
+        '<span style="font-family:var(--m);font-size:10px;color:'+rc+';margin-left:3px;min-width:22px">'+rsi+'</span>'+
+        '<span style="font-size:7px;color:'+rsiSourceC+';margin-left:1px">'+rsiSource+'</span>'+
+      '</div>'+
+    '</div>';
+  });
+
+  // Count + source note
+  h+='<div style="font-size:9px;color:var(--dim);padding:7px 4px 3px;display:flex;justify-content:space-between">'+
+    '<span>'+coins.length+' coins · '+( isLoss?'sorted by loss magnitude':'sorted by quality momentum')+'</span>'+
+    '<span>✓=Real RSI (4H) · ~=Proxy RSI</span>'+
+  '</div>';
+  body.innerHTML=h;
+}
+
+// ── RSI TAB — all coins, sorted by RSI ascending ─────────────────
+function renderRSITab(rsiList, body, realCount){
+  // rsiList is all coins sorted by RSI ascending
+  // Split: oversold (≤42), normal, overbought (≥65)
+  var oversold=[], normal=[], overbought=[];
+  rsiList.forEach(function(c){
+    if((c.rsi||50)<=42) oversold.push(c);
+    else if((c.rsi||50)>=65) overbought.push(c);
+    else normal.push(c);
+  });
+
+  var h='';
+  // Stats bar
+  h+='<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">';
+  h+='<div style="background:rgba(0,255,136,.06);border:1px solid rgba(0,255,136,.15);border-radius:6px;padding:5px 10px;font-size:10px"><span style="color:var(--g);font-weight:700">'+oversold.length+'</span> <span style="color:var(--dim)">OVERSOLD ≤42</span></div>';
+  h+='<div style="background:rgba(255,255,255,.03);border:1px solid var(--brd);border-radius:6px;padding:5px 10px;font-size:10px"><span style="font-weight:700">'+normal.length+'</span> <span style="color:var(--dim)">NORMAL 43-64</span></div>';
+  h+='<div style="background:rgba(255,68,100,.06);border:1px solid rgba(255,68,100,.15);border-radius:6px;padding:5px 10px;font-size:10px"><span style="color:var(--red);font-weight:700">'+overbought.length+'</span> <span style="color:var(--dim)">OVERBOUGHT ≥65</span></div>';
+  h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:6px;padding:5px 10px;font-size:10px;color:var(--dim)">Real RSI: <span style="color:var(--g)">'+realCount+'</span> coins</div>';
+  h+='</div>';
+
+  // Header
+  h+='<div class="ex-hdr">';
+  h+='<div style="width:22px"></div>';
+  h+='<div style="min-width:52px">COIN</div>';
+  h+='<div style="flex:1;text-align:right;padding-right:6px">PRICE</div>';
+  h+='<div style="min-width:58px;text-align:right;padding-right:4px">24H</div>';
+  h+='<div style="min-width:50px;text-align:right">VOL</div>';
+  h+='<div style="min-width:60px;margin-left:4px;text-align:center">RSI 14</div>';
+  h+='</div>';
+
+  // Oversold section
+  if(oversold.length){
+    h+='<div style="font-size:9px;font-weight:700;color:var(--g);letter-spacing:1.5px;padding:6px 4px 4px">⚡ OVERSOLD / DIP (RSI ≤ 42) — '+oversold.length+' coins</div>';
+    oversold.forEach(function(c,i){
+      h+=rsiRow(c, i, 'oversold');
+    });
+  }
+
+  // Overbought section
+  if(overbought.length){
+    h+='<div style="font-size:9px;font-weight:700;color:var(--red);letter-spacing:1.5px;padding:10px 4px 4px">🔴 OVERBOUGHT (RSI ≥ 65) — '+overbought.length+' coins</div>';
+    overbought.forEach(function(c,i){
+      h+=rsiRow(c, i, 'overbought');
+    });
+  }
+
+  h+='<div style="font-size:9px;color:var(--dim);padding:7px 4px 2px">'+rsiList.length+' total coins scanned · ✓=Real RSI (4H klines) · ~=Proxy RSI (24h price data)</div>';
+  body.innerHTML=h;
+}
+
+function rsiRow(c, i, type){
+  var up=c.ch24>=0;
+  var rsi=c.rsi||50;
+  var rc=rsiCol(rsi);
+  var rsiFill=Math.min(100,Math.max(0,rsi));
+  var rsiSource=c.rsiReal?'✓':'~';
+  var rsiSourceC=c.rsiReal?'var(--g)':'rgba(255,255,255,.25)';
+  var sect=c.sector||'';
+  var sectHtml=sect?'<span class="ex-sect">'+sect+'</span>':'';
+  var rowBg=type==='oversold'?'rgba(0,255,136,.02)':type==='overbought'?'rgba(255,68,100,.02)':'';
+
+  // SL/TP hint for oversold
+  var tpHint='';
+  if(type==='oversold'&&c.tp1Pct){
+    tpHint='<span style="font-size:8px;color:var(--g);margin-left:4px">TP +'+c.tp1Pct+'%</span>';
+  }
+
+  return '<div class="ex-row" onclick="clickCoin(\''+c.symbol+'\')" style="background:'+rowBg+'">'+
+    '<div class="ex-rank">'+(i+1)+'</div>'+
+    '<div style="display:flex;align-items:center;flex:0 0 auto">'+
+      '<span class="ex-sym">'+c.symbol+'</span>'+sectHtml+
+    '</div>'+
+    '<div class="ex-px">'+fmtEx(c.price)+'</div>'+
+    '<div class="ex-chg" style="color:'+(up?'var(--g2)':'var(--red)')+'">'+(up?'+':'')+c.ch24.toFixed(2)+'%</div>'+
+    '<div class="ex-vol">'+fmtVol(c.vol)+'</div>'+
+    '<div style="display:flex;align-items:center;margin-left:4px;flex-shrink:0">'+
+      '<div class="rsi-bar-wrap"><div class="rsi-bar-fill" style="width:'+rsiFill+'%;background:'+rc+'"></div></div>'+
+      '<span style="font-family:var(--m);font-size:11px;font-weight:700;color:'+rc+';margin-left:3px;min-width:25px">'+rsi+'</span>'+
+      '<span style="font-size:7px;color:'+rsiSourceC+'">'+rsiSource+'</span>'+
+      tpHint+
+    '</div>'+
+  '</div>';
+}
+
+// ── VOLUME BREAKOUT TAB ───────────────────────────────────────────
+function renderVolTab(coins, body){
+  if(!coins.length){ body.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;text-align:center">Tidak ada volume breakout</div>'; return; }
+
+  var h='';
+  // Header
+  h+='<div class="ex-hdr">';
+  h+='<div style="width:22px"></div>';
+  h+='<div style="min-width:52px">COIN</div>';
+  h+='<div style="flex:1;text-align:right;padding-right:6px">PRICE</div>';
+  h+='<div style="min-width:56px;text-align:right;padding-right:4px">24H</div>';
+  h+='<div style="min-width:50px;text-align:right">VOLUME</div>';
+  h+='<div style="min-width:70px;margin-left:4px;text-align:center">TYPE / SCORE</div>';
+  h+='</div>';
+
+  var typeColors={
+    'BREAKOUT':'var(--g)', 'STEALTH':'var(--amber)', 'FAKE PUMP':'var(--red)',
+    'VOL BULL':'var(--g2)', 'VOL BEAR':'var(--red)', 'ACTIVE':'var(--muted)',
+  };
+
+  coins.forEach(function(c,i){
+    var up=c.ch24>=0;
+    var bType=c.bType||'ACTIVE';
+    var tc=typeColors[bType]||'var(--muted)';
+    var score=c.bScore||0;
+    var scoreC=score>=70?'var(--g)':score>=50?'var(--amber)':'var(--muted)';
+    var sect=c.sector||'';
+    var sectHtml=sect?'<span class="ex-sect">'+sect+'</span>':'';
+    var sigs=(c.sigs||[]).slice(0,2).join('·');
+
+    h+='<div class="ex-row" onclick="clickCoin(\''+c.symbol+'\')">'+
+      '<div class="ex-rank">'+(i+1)+'</div>'+
+      '<div style="display:flex;align-items:center;flex:0 0 auto;flex-direction:column;align-items:flex-start">'+
+        '<div style="display:flex;align-items:center"><span class="ex-sym">'+c.symbol+'</span>'+sectHtml+'</div>'+
+        (sigs?'<div style="font-size:8px;color:var(--dim)">'+sigs+'</div>':'')+
+      '</div>'+
+      '<div class="ex-px">'+fmtEx(c.price)+'</div>'+
+      '<div class="ex-chg" style="color:'+(up?'var(--g2)':'var(--red)')+'">'+(up?'+':'')+c.ch24.toFixed(2)+'%</div>'+
+      '<div class="ex-vol">'+fmtVol(c.vol)+'</div>'+
+      '<div style="margin-left:4px;flex-shrink:0">'+
+        '<div style="font-size:9px;font-weight:700;color:'+tc+'">'+bType+'</div>'+
+        '<div style="display:flex;align-items:center;gap:3px">'+
+          '<div style="width:38px;height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden"><div style="height:3px;width:'+score+'%;background:'+scoreC+'"></div></div>'+
+          '<span style="font-size:9px;color:'+scoreC+'">'+score+'</span>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  });
+
+  h+='<div style="font-size:9px;color:var(--dim);padding:7px 4px 2px">'+coins.length+' coins · scored by breakout quality</div>';
+  body.innerHTML=h;
 }
 
 
