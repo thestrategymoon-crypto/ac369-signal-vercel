@@ -59,7 +59,7 @@ export default async function handler(req, res) {
 
     const rawTickers = tickerRes.status === 'fulfilled' ? tickerRes.value : [];
     if (!Array.isArray(rawTickers) || rawTickers.length === 0) {
-      return res.status(500).json({ error: 'All ticker sources failed', results: [], totalScanned: 0 });
+      return res.status(200).json({ error: 'All ticker sources failed', results: [], totalScanned: 0 });
     }
 
     // ── DAILY MARKET BIAS ─────────────────────────────────────────
@@ -444,6 +444,6 @@ export default async function handler(req, res) {
     });
 
   } catch (e) {
-    return res.status(500).json({ error: e.message, results: [], totalScanned: 0, timestamp: Date.now() });
+    return res.status(200).json({ error: e.message, results: [], totalScanned: 0, timestamp: Date.now() });
   }
 }
