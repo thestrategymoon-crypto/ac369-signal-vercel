@@ -963,53 +963,71 @@ function renderTable(tab){
 
 async function fetchOnchain(){
   const body=$('onchain-body'); if(!body) return;
-  body.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;text-align:center"><span class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>Loading onchain data...</div>';
-  const ocsf=async(url,ms=6000)=>{
-    const ctrl=new AbortController(); setTimeout(()=>ctrl.abort(),ms);
-    try{ const r=await fetch(url,{signal:ctrl.signal,headers:{'User-Agent':'Mozilla/5.0','Accept':'application/json'}});
-    if(!r.ok)return null; return await r.json(); }catch{return null;}
+  body.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;text-align:center"><span class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>Loading BTC onchain data...</div>';
+  const bf=async function(url,ms,txt){
+    var ctrl=new AbortController(); setTimeout(function(){ctrl.abort();},ms||7000);
+    try{ var r=await fetch(url,{signal:ctrl.signal}); if(!r.ok)return null; return txt?await r.text():await r.json(); }catch{return null;}
   };
   try{
-    // Multiple sources: blockchain.info + mempool.space (never blocked) + Binance
-    const [statsR, mempoolR, mempoolSpace, btcPxR] = await Promise.allSettled([
-      ocsf('https://api.blockchain.info/stats', 6000),
-      ocsf('https://api.blockchain.info/q/getblockcount', 4000),
-      ocsf('https://mempool.space/api/v1/difficulty-adjustment', 5000),
-      ocsf('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', 4000),
+    var [heightR,mempoolR,diffR,hashR,feesR,btcPxR]=await Promise.allSettled([
+      bf('https://mempool.space/api/blocks/tip/height',5000,true),
+      bf('https://mempool.space/api/mempool',5000),
+      bf('https://mempool.space/api/v1/difficulty-adjustment',5000),
+      bf('https://mempool.space/api/v1/mining/hashrate/3d',5000),
+      bf('https://mempool.space/api/v1/fees/recommended',4000),
+      bf('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT',4000),
     ]);
-    const stats   = statsR.status==='fulfilled'   ? statsR.value   : null;
-    const blkCount = mempoolR.status==='fulfilled' ? mempoolR.value : null;
-    const mempSpace= mempoolSpace.status==='fulfilled' ? mempoolSpace.value : null;
-    const btcPx   = btcPxR.status==='fulfilled'    ? +(btcPxR.value?.price||0) : 0;
-    // Use mempool.space for accurate block height if blockchain.info fails
-    const currentBlock = stats?.n_blocks_total || (typeof blkCount==='number'?blkCount:null) || mempSpace?.adjustedTimeAvg || 896000;
-    const hashRate   = stats?.hash_rate   ? (stats.hash_rate/1e18).toFixed(1)  : (mempSpace?.estimatedHashrate_3d ? (mempSpace.estimatedHashrate_3d/1e18).toFixed(1) : '—');
-    const difficulty = stats?.difficulty  ? (stats.difficulty/1e12).toFixed(1) : (mempSpace?.difficulty ? (mempSpace.difficulty/1e12).toFixed(1) : '—');
-    const txn24h     = stats?.n_tx        ? stats.n_tx.toLocaleString()        : '—';
-    const mempoolSz  = stats?.mempool_size ? stats.mempool_size.toLocaleString() : '—';
-    const blockHeight= (currentBlock && currentBlock > 100000) ? (+currentBlock).toLocaleString() : '—';
-    const mktCap     = btcPx > 0 ? '$'+(btcPx*19900000/1e12).toFixed(2)+'T' : '—';
-    const dataOk     = !!(stats || mempSpace);
-    // Halving countdown
-    const halvingBlock = 1050000;
-    const blocksLeft = Math.max(0, halvingBlock - currentBlock);
-    const daysLeft = Math.round(blocksLeft * 10 / 60 / 24);
-    body.innerHTML='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">'+
-      '<div class="c2" style="border-color:rgba(0,255,208,.15)"><div style="font-size:9px;color:var(--dim);letter-spacing:1px">HASH RATE</div><div style="font-family:var(--m);font-size:14px;font-weight:700;color:var(--g)">'+hashRate+' EH/s</div></div>'+
-      '<div class="c2" style="border-color:rgba(0,255,208,.1)"><div style="font-size:9px;color:var(--dim);letter-spacing:1px">DIFFICULTY</div><div style="font-family:var(--m);font-size:14px;font-weight:700">'+difficulty+' T</div></div>'+
-      '<div class="c2"><div style="font-size:9px;color:var(--dim);letter-spacing:1px">MEMPOOL</div><div style="font-family:var(--m);font-size:14px;font-weight:700;color:var(--amber)">'+mempoolSz+' tx</div></div>'+
-      '<div class="c2"><div style="font-size:9px;color:var(--dim);letter-spacing:1px">TXN / 24H</div><div style="font-family:var(--m);font-size:14px;font-weight:700">'+txn24h+'</div></div>'+
-      '<div class="c2"><div style="font-size:9px;color:var(--dim);letter-spacing:1px">BLOCK HEIGHT</div><div style="font-family:var(--m);font-size:14px;font-weight:700">'+blockHeight+'</div></div>'+
-      '<div class="c2" style="border-color:rgba(255,179,0,.2)"><div style="font-size:9px;color:var(--amber);letter-spacing:1px">NEXT HALVING</div><div style="font-family:var(--m);font-size:14px;font-weight:700;color:var(--amber)">'+(daysLeft>0?'~'+daysLeft+' days':'DONE')+'</div><div style="font-size:9px;color:var(--dim)">'+blocksLeft.toLocaleString()+' blocks left</div></div>'+
-    '</div>'+
-    (dataOk?'<div style="font-size:9px;color:var(--dim);margin-top:6px;text-align:right">src: blockchain.info + mempool.space · live</div>':'<div style="font-size:9px;color:var(--amber);margin-top:6px">⚠️ Onchain sources temporarily unavailable</div>');
-  }catch(e){ 
-    body.innerHTML='<div style="color:var(--amber);font-size:10px;padding:8px">⚠️ Onchain data temporarily unavailable: '+e.message+'</div>'; 
+    var height=heightR.status==='fulfilled'?parseInt(heightR.value)||null:null;
+    var mem=mempoolR.status==='fulfilled'?mempoolR.value:null;
+    var diff=diffR.status==='fulfilled'?diffR.value:null;
+    var hash=hashR.status==='fulfilled'?hashR.value:null;
+    var fees=feesR.status==='fulfilled'?feesR.value:null;
+    var btcPx=btcPxR.status==='fulfilled'?+(btcPxR.value?.price||0):0;
+    var blockH=height||896000;
+    var hashRate=hash?.currentHashrate?(hash.currentHashrate/1e18).toFixed(1)+' EH/s':'—';
+    var diffTxt=diff?.difficulty?(diff.difficulty/1e12).toFixed(1)+' T':'—';
+    var mempoolTx=mem?.count?mem.count.toLocaleString()+' tx':'—';
+    var mempoolMB=mem?.vsize?(mem.vsize/1e6).toFixed(1)+' MB':'—';
+    var fastFee=fees?.fastestFee||null;
+    var hourFee=fees?.hourFee||null;
+    var blkProgress=diff?.progressPercent?diff.progressPercent.toFixed(1)+'%':'—';
+    var blkRemain=diff?.remainingBlocks?diff.remainingBlocks.toLocaleString():'—';
+    var mktCap=btcPx>0?'$'+(btcPx*19900000/1e12).toFixed(2)+'T':'—';
+    var halvingBlock=1050000;
+    var blocksLeft=Math.max(0,halvingBlock-blockH);
+    var daysLeft=Math.round(blocksLeft*10/60/24);
+    var halvingPct=Math.min(100,((blockH-840000)/(1050000-840000)*100)).toFixed(1);
+    var dataOk=!!(height||mem||diff||hash);
+    body.innerHTML=
+      '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:7px">'+
+      '<div class="c2" style="border-color:rgba(0,255,208,.2)"><div style="font-size:9px;color:var(--g);letter-spacing:1.5px;margin-bottom:3px">⚡ HASH RATE</div><div style="font-family:var(--m);font-size:15px;font-weight:800;color:var(--g)">'+hashRate+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">Network security</div></div>'+
+      '<div class="c2" style="border-color:rgba(0,255,208,.1)"><div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;margin-bottom:3px">🔢 DIFFICULTY</div><div style="font-family:var(--m);font-size:15px;font-weight:800">'+diffTxt+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">Epoch: '+blkProgress+'</div></div>'+
+      '<div class="c2"><div style="font-size:9px;color:var(--amber);letter-spacing:1.5px;margin-bottom:3px">📦 MEMPOOL</div><div style="font-family:var(--m);font-size:15px;font-weight:800;color:var(--amber)">'+mempoolTx+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">'+mempoolMB+'</div></div>'+
+      '<div class="c2"><div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;margin-bottom:3px">💸 TX FEES (fastest)</div><div style="font-family:var(--m);font-size:15px;font-weight:800">'+(fastFee?fastFee+' sat/vB':'—')+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">1H: '+(hourFee||'—')+' sat/vB</div></div>'+
+      '<div class="c2"><div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;margin-bottom:3px">📏 BLOCK HEIGHT</div><div style="font-family:var(--m);font-size:15px;font-weight:800">'+blockH.toLocaleString()+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">'+blkRemain+' to retarget</div></div>'+
+      '<div class="c2"><div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;margin-bottom:3px">💰 MARKET CAP</div><div style="font-family:var(--m);font-size:15px;font-weight:800">'+mktCap+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">~19.9M BTC circ.</div></div>'+
+      '<div class="c2" style="grid-column:1/-1;border-color:rgba(255,179,0,.25);background:rgba(255,179,0,.03)">'+
+        '<div style="font-size:9px;color:var(--amber);letter-spacing:1.5px;margin-bottom:5px">⏳ NEXT HALVING — Block 1,050,000</div>'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">'+
+          '<div><div style="font-family:var(--m);font-size:20px;font-weight:900;color:var(--amber)">'+(daysLeft>0?'~'+daysLeft+' days':'COMPLETE ✅')+'</div>'+
+          '<div style="font-size:10px;color:var(--dim);margin-top:1px">'+blocksLeft.toLocaleString()+' blocks remaining</div></div>'+
+          '<div style="text-align:right"><div style="font-size:10px;color:var(--muted)">Current</div><div style="font-family:var(--m);font-size:14px;font-weight:700">'+blockH.toLocaleString()+'</div></div>'+
+        '</div>'+
+        '<div style="height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden">'+
+          '<div style="height:6px;background:linear-gradient(90deg,var(--amber),#ff6b00);border-radius:3px;width:'+halvingPct+'%"></div>'+
+        '</div>'+
+      '</div>'+
+      '</div>'+
+      '<div style="font-size:9px;color:var(--dim);margin-top:8px;display:flex;justify-content:space-between">'+
+        '<span>src: '+(dataOk?'mempool.space ✓':'blockchain.info')+' · Binance</span>'+
+        '<span style="color:'+(dataOk?'var(--g)':'var(--amber)')+'">'+(dataOk?'🟢 live':'⚠️ limited')+'</span>'+
+      '</div>';
+  }catch(e){
+    body.innerHTML='<div style="color:var(--amber);font-size:10px;padding:10px">⚠️ '+e.message+'<br><button onclick="fetchOnchain()" style="margin-top:6px;background:rgba(0,255,208,.08);border:1px solid rgba(0,255,208,.2);color:var(--g);padding:4px 12px;border-radius:5px;font-size:10px;cursor:pointer">⟳ Retry</button></div>';
   }
 }
 
-// ── INTELLIGENCE DASHBOARD ────────────────────────────────────────
-var _intelData=null;
+
 async function doIntelScan(){
   const btn=$('intel-btn'), st=$('intel-st');
   const body=$('intel-body'), tabs=$('intel-tabs'), mkt=$('intel-mkt');
@@ -1151,8 +1169,10 @@ async function refreshAll(){
 // ── INIT ─────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', function(){
   refreshAll();
+  // Auto-run scanner after initial data loads
+  setTimeout(function(){ if(!window._scanData) doScan(); }, 3500);
 });
-// Auto-refresh every 5 minutes
+// Auto-refresh every 5 minutes (not scanner - too heavy)
 setInterval(refreshAll, 5 * 60 * 1000);
 </script>
 </body>
