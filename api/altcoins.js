@@ -104,16 +104,132 @@ export default async function handler(req, res) {
         change24h: +(+t.priceChangePercent).toFixed(2),
         volume: Math.round(+t.quoteVolume),
       }));
-      const volumeBreakouts = filtered
-        .filter(t => +(t.quoteVolume || 0) > 20000000 && Math.abs(+(t.priceChangePercent || 0)) > 3)
-        .sort((a, b) => +b.quoteVolume * Math.abs(+b.priceChangePercent) - +a.quoteVolume * Math.abs(+a.priceChangePercent))
-        .slice(0, 10).map(t => ({
-          symbol: t.symbol.replace('USDT', ''),
-          price: +(+t.lastPrice).toFixed(6),
-          change24h: +(+t.priceChangePercent).toFixed(2),
-          volumeUSD: Math.round(+t.quoteVolume),
-          signal: +(t.priceChangePercent) > 0 ? 'Bullish Breakout' : 'Bearish Breakdown',
-        }));
+      // ── VOLUME BREAKOUT ENGINE ─────────────────────────────────────
+      // Score every coin by volume quality, not just raw $ amount
+      const volScored = filtered
+        .filter(t => +(t.quoteVolume || 0) > 2000000) // min $2M
+        .map(t => {
+          const price   = +(t.lastPrice || 0);
+          const vol     = +(t.quoteVolume || 0);
+          const ch24    = +(t.priceChangePercent || 0);
+          const high    = +(t.highPrice || price);
+          const low     = +(t.lowPrice  || price);
+          const open    = +(t.openPrice || price);
+          const count   = +(t.count     || 0); // number of trades
+          const sym     = t.symbol.replace('USDT', '');
+
+          if (price <= 0) return null;
+
+          const range    = high > low ? (high - low) / price : 0.01;
+          const body     = Math.abs(price - open) / Math.max(high - low, price * 0.001);
+          const rp       = high > low ? (price - low) / (high - low) : 0.5; // 0=low, 1=high
+          const lw       = high > low ? (Math.min(price, open) - low) / (high - low) : 0; // lower wick
+
+          // Volume tiers (absolute)
+          const volTier  = vol >= 1e9 ? 5 : vol >= 200e6 ? 4 : vol >= 50e6 ? 3 : vol >= 10e6 ? 2 : 1;
+
+          // Trade intensity: count/vol = activity per dollar
+          const tradeIntensity = count > 0 && vol > 0 ? count / (vol / 1e6) : 0;
+
+          // Breakout scoring (0-100)
+          let bScore = 0;
+          const signals = [];
+
+          // 1. Volume magnitude
+          bScore += volTier * 8;
+
+          // 2. Price action quality
+          if (body > 0.6 && ch24 > 0)   { bScore += 20; signals.push('STRONG BULL CANDLE'); }
+          else if (body > 0.6 && ch24 < 0){ bScore += 12; signals.push('STRONG BEAR CANDLE'); }
+          else if (body < 0.25 && lw > 0.35) { bScore += 18; signals.push('REJECTION WICK'); }
+
+          // 3. Price position (where did it close?)
+          if (rp > 0.80 && ch24 > 0)   { bScore += 15; signals.push('CLOSED AT HIGH'); }
+          else if (rp < 0.20 && ch24 < 0) { bScore += 10; signals.push('SOLD TO LOW'); }
+
+          // 4. Volatility expansion
+          if (range > 0.08)  { bScore += 12; signals.push('RANGE EXPANSION +' + (range*100).toFixed(0) + '%'); }
+          else if (range > 0.04) { bScore += 6; }
+
+          // 5. Momentum
+          if (Math.abs(ch24) > 15) { bScore += 15; signals.push((ch24>0?'+':'') + ch24.toFixed(1) + '% EXPLOSIVE'); }
+          else if (Math.abs(ch24) > 8) { bScore += 10; signals.push((ch24>0?'+':'') + ch24.toFixed(1) + '% STRONG'); }
+          else if (Math.abs(ch24) > 3) { bScore += 6; }
+
+          // 6. Stealth accumulation (high vol, flat price)
+          if (volTier >= 3 && Math.abs(ch24) < 2) {
+            bScore += 18;
+            signals.push('STEALTH ACCUMULATION');
+          }
+
+          // 7. Liquidity sweep signal
+          if (lw > 0.45 && rp > 0.50)  { bScore += 12; signals.push('LIQUIDITY SWEEP'); }
+
+          // Breakout type classification
+          let breakoutType, breakoutColor;
+          if (volTier >= 3 && Math.abs(ch24) < 2) {
+            breakoutType = '🕵️ STEALTH ACCUM';
+            breakoutColor = 'amber';
+          } else if (volTier >= 3 && ch24 > 5 && body > 0.5) {
+            breakoutType = '🚀 REAL BREAKOUT';
+            breakoutColor = 'bull';
+          } else if (ch24 > 15 && volTier <= 2) {
+            breakoutType = '⚠️ FAKE PUMP';
+            breakoutColor = 'warn';
+          } else if (ch24 > 3 && volTier >= 2) {
+            breakoutType = '📈 VOL SURGE BULL';
+            breakoutColor = 'bull';
+          } else if (ch24 < -5 && volTier >= 2) {
+            breakoutType = '📉 VOL SURGE BEAR';
+            breakoutColor = 'bear';
+          } else if (Math.abs(ch24) < 3 && volTier >= 3) {
+            breakoutType = '🏗️ ACCUMULATION';
+            breakoutColor = 'neutral';
+          } else {
+            breakoutType = '📊 VOL ACTIVE';
+            breakoutColor = 'neutral';
+          }
+
+          // Entry/SL from 24h structure
+          const slPct  = Math.max(3, Math.min(10, range * 100 * 1.2));
+          const sl     = +(price * (1 - slPct / 100)).toFixed(8);
+          const tp1Pct = slPct * 1.5;
+          const tp2Pct = slPct * 3;
+          const tp1    = +(price * (1 + tp1Pct / 100)).toFixed(8);
+          const tp2    = +(price * (1 + tp2Pct / 100)).toFixed(8);
+
+          // Why it's notable
+          const reason = signals.length > 0
+            ? signals.slice(0, 2).join(' + ')
+            : (volTier >= 3 ? 'High volume activity' : 'Volume spike detected');
+
+          return {
+            symbol: sym,
+            price: +(price).toFixed(8),
+            change24h: +ch24.toFixed(2),
+            high24h: +high.toFixed(8),
+            low24h: +low.toFixed(8),
+            open24h: +open.toFixed(8),
+            volumeUSD: +vol.toFixed(0),
+            volTier,
+            tradeCount: count,
+            range24h: +(range * 100).toFixed(2),
+            body: +body.toFixed(2),
+            rp: +rp.toFixed(2),
+            lw: +lw.toFixed(2),
+            breakoutScore: Math.min(100, bScore),
+            breakoutType,
+            breakoutColor,
+            signals: signals.slice(0, 4),
+            reason,
+            direction: ch24 >= 0 ? 'LONG' : 'SHORT',
+            trade: { sl, slPct: +slPct.toFixed(1), tp1, tp1Pct: +tp1Pct.toFixed(1), tp2, tp2Pct: +tp2Pct.toFixed(1) },
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.breakoutScore - a.breakoutScore);
+
+      const volumeBreakouts = volScored.slice(0, 15);
 
       // RSI from klines for majors
       const MAJORS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT']; // Reduced to 5 for faster response
