@@ -900,7 +900,101 @@ async function fetchAltcoins(){
     const d=await r.json();
     const gRow=c=>{const chg=parseFloat(c.change24h)||0;return `<div class="ar" onclick="clickCoin('${c.symbol}')"><div><span class="asym">${c.symbol}</span> <span class="apx">${fP(c.price)}</span></div><span class="achg2 ${chg>=0?'up':'dn'}">${chg>=0?'+':''}${chg.toFixed(2)}%</span></div>`;};
     H('gain-c',`<div class="ct">🚀 Top Gainers</div>${(d.topGainers||[]).slice(0,12).map(gRow).join('')||'<div style="color:var(--muted);font-size:11px">—</div>'}`);
-    H('vol-c',`<div class="ct">💥 Volume Breakout</div>${(d.volumeBreakouts||[]).slice(0,10).map(c=>{const chg=parseFloat(c.change24h)||0;return `<div class="ar" onclick="clickCoin('${c.symbol}')"><div><span class="asym">${c.symbol}</span> <span class="apx">${fV(c.volumeUSD||0)}</span></div><div style="text-align:right"><span class="achg2 ${chg>=0?'up':'dn'}">${chg>=0?'+':''}${chg.toFixed(2)}%</span><div style="font-size:9px;color:${chg>=0?'var(--g)':'var(--red)'}">${c.signal||''}</div></div></div>`;}).join('')||'<div style="color:var(--muted);font-size:11px">—</div>'}`);
+    H('vol-c', (function(){
+      const items = (d.volumeBreakouts||[]);
+      if(!items.length) return '<div class="ct">💥 Volume Breakout</div><div style="color:var(--muted);font-size:11px;padding:8px 0">Tidak ada volume breakout terdeteksi</div>';
+      
+      const fmtV = (n) => {
+        if(!n) return '—';
+        if(n>=1e9) return '$'+(n/1e9).toFixed(1)+'B';
+        if(n>=1e6) return '$'+(n/1e6).toFixed(0)+'M';
+        return '$'+(n/1e3).toFixed(0)+'K';
+      };
+      const tierBar = (t) => {
+        const pct = t * 20;
+        return '<div style="display:flex;gap:1px;align-items:center">' +
+          [1,2,3,4,5].map(i=>`<div style="width:6px;height:${4+i*1.5}px;border-radius:1px;background:${i<=t?'var(--g)':'rgba(255,255,255,.1)'};opacity:${i<=t?0.8+i*0.04:1}"></div>`).join('') +
+          '</div>';
+      };
+      
+      let h = '<div class="ct">💥 Volume Breakout</div>';
+      h += '<div style="font-size:8px;color:var(--dim);margin-bottom:8px;letter-spacing:1.5px">' + items.length + ' ANOMALI TERDETEKSI · RANKED BY QUALITY</div>';
+      
+      items.slice(0,12).forEach((c,i) => {
+        const chg = c.change24h || 0;
+        const up = chg >= 0;
+        const typeC = c.breakoutColor==='bull'?'var(--g)':c.breakoutColor==='bear'?'var(--red)':c.breakoutColor==='warn'?'var(--red)':'var(--amber)';
+        const scorePct = c.breakoutScore || 0;
+        const scoreC = scorePct>=70?'var(--g)':scorePct>=50?'var(--amber)':'var(--muted)';
+        
+        h += `<div onclick="clickCoin('${c.symbol}')" style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:9px;padding:9px 11px;margin-bottom:6px;cursor:pointer;transition:border-color .2s" onmouseover="this.style.borderColor='rgba(0,255,208,.2)'" onmouseout="this.style.borderColor='rgba(255,255,255,.05)'">`;
+        
+        // Row 1: symbol + type + score
+        h += `<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">`;
+        h += `<div>`;
+        h += `<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">`;
+        h += `<span style="font-family:var(--m);font-size:14px;font-weight:900;color:var(--txt)">${c.symbol}</span>`;
+        h += `<span style="font-size:8px;padding:1px 6px;border-radius:4px;font-weight:700;color:${typeC};border:1px solid ${typeC.replace(')',',0.25)').replace('var(--','rgba(0,')};">${c.breakoutType||'—'}</span>`;
+        h += `</div>`;
+        h += `<div style="display:flex;align-items:center;gap:5px">`;
+        h += tierBar(c.volTier||1);
+        h += `<span style="font-size:9px;color:var(--muted)">${fmtV(c.volumeUSD)}</span>`;
+        if(c.tradeCount) h += `<span style="font-size:8px;color:var(--dim)">${c.tradeCount>=1e6?(c.tradeCount/1e6).toFixed(1)+'M':c.tradeCount>=1e3?(c.tradeCount/1e3).toFixed(0)+'K':c.tradeCount} trades</span>`;
+        h += `</div>`;
+        h += `</div>`;
+        // Score
+        h += `<div style="text-align:right">`;
+        h += `<div style="font-family:var(--m);font-size:18px;font-weight:900;color:${scoreC}">${scorePct}</div>`;
+        h += `<div style="font-size:8px;color:var(--dim)">SCORE</div>`;
+        h += `</div></div>`;
+        
+        // Row 2: price + changes
+        h += `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">`;
+        h += `<span style="font-family:var(--m);font-size:11px;font-weight:700;color:var(--g)">$${c.price>=1?c.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4}):c.price.toFixed(c.price>=0.001?6:9)}</span>`;
+        h += `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:${up?'rgba(0,255,136,.08)':'rgba(255,61,87,.08)'};color:${up?'var(--g2)':'var(--red)'}">${up?'+':''}${chg.toFixed(2)}% 24H</span>`;
+        if(c.range24h) h += `<span style="font-size:9px;color:var(--muted)">Range ${c.range24h}%</span>`;
+        if(c.rp!==undefined) h += `<span style="font-size:9px;color:var(--muted)">Pos ${(c.rp*100).toFixed(0)}%</span>`;
+        h += `</div>`;
+        
+        // Row 3: signals
+        if(c.signals && c.signals.length) {
+          h += `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px">`;
+          c.signals.forEach(sig => {
+            h += `<span style="font-size:8px;padding:1px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:3px;color:var(--muted)">${sig}</span>`;
+          });
+          h += `</div>`;
+        }
+        
+        // Row 4: high/low/body context
+        h += `<div style="display:flex;gap:8px;font-size:9px;color:var(--muted);margin-bottom:5px">`;
+        if(c.high24h) h += `<span>H: <span style="color:var(--g2)">$${c.high24h>=1?c.high24h.toLocaleString('en-US',{maximumFractionDigits:2}):c.high24h.toFixed(6)}</span></span>`;
+        if(c.low24h)  h += `<span>L: <span style="color:var(--red)">$${c.low24h>=1?c.low24h.toLocaleString('en-US',{maximumFractionDigits:2}):c.low24h.toFixed(6)}</span></span>`;
+        if(c.body!==undefined) h += `<span>Body: <span style="color:var(--txt)">${(c.body*100).toFixed(0)}%</span></span>`;
+        if(c.lw!==undefined && c.lw > 0.1) h += `<span>Wick: <span style="color:var(--amber)">${(c.lw*100).toFixed(0)}%</span></span>`;
+        h += `</div>`;
+        
+        // Score bar
+        h += `<div style="height:2px;background:rgba(255,255,255,.06);border-radius:1px;margin-bottom:5px;overflow:hidden">`;
+        h += `<div style="height:2px;border-radius:1px;width:${scorePct}%;background:${scoreC};transition:width .8s"></div>`;
+        h += `</div>`;
+        
+        // Entry/SL/TP (only if score >= 50)
+        if(scorePct >= 50 && c.trade) {
+          const t = c.trade;
+          h += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px">`;
+          h += `<div style="background:rgba(255,68,100,.05);border-radius:4px;padding:4px;text-align:center"><div style="font-size:7px;color:var(--red)">STOP</div><div style="font-family:var(--m);font-size:8px;font-weight:700;color:var(--red)">-${t.slPct}%</div></div>`;
+          h += `<div style="background:rgba(0,255,136,.05);border-radius:4px;padding:4px;text-align:center"><div style="font-size:7px;color:var(--g2)">TP1</div><div style="font-family:var(--m);font-size:8px;font-weight:700;color:var(--g2)">+${t.tp1Pct}%</div></div>`;
+          h += `<div style="background:rgba(0,255,136,.07);border-radius:4px;padding:4px;text-align:center"><div style="font-size:7px;color:var(--g2)">TP2</div><div style="font-family:var(--m);font-size:8px;font-weight:700;color:var(--g2)">+${t.tp2Pct}%</div></div>`;
+          h += `</div>`;
+        }
+        
+        // Reason
+        h += `<div style="font-size:9px;color:var(--dim);margin-top:4px;border-top:1px solid rgba(255,255,255,.04);padding-top:4px">→ ${c.reason||'Volume anomaly detected'}</div>`;
+        h += `</div>`;
+      });
+      
+      return h;
+    })());
     H('rsi-c',`<div class="ct">📉 RSI Ekstrem</div>${(d.rsiExtremes||[]).map(r=>{const rv=parseFloat(r.rsi||50);const cls=rv<35?'ros':rv>65?'rob':'rne';const chg=parseFloat(r.change24h)||0;return `<div class="ar" onclick="clickCoin('${r.symbol}')"><div><span class="asym">${r.symbol}</span> <span class="apx">${fP(r.price)}</span></div><div style="display:flex;align-items:center;gap:4px"><span class="achg2 ${chg>=0?'up':'dn'}">${chg>=0?'+':''}${chg.toFixed(2)}%</span><span class="rb ${cls}">RSI ${rv}</span></div></div><div style="font-size:10px;color:var(--muted);padding:1px 0 3px">${r.condition||''}</div>`;}).join('')||'<div style="color:var(--muted);font-size:11px">—</div>'}`);
     H('an-c',`<div class="ct">📋 Narasi Altcoin</div><div class="narr">${d.narrative||'—'}</div>`);
   }catch(e){H('gain-c',`<div class="ct">🚀 Gainers</div><div class="err">Error: ${e.message}</div>`);}
