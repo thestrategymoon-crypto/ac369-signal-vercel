@@ -529,23 +529,40 @@ async function fetchBias(){
     const r=await fetch('/api/bias',{signal:ctrl.signal});
     if(!r.ok) throw new Error('HTTP '+r.status);
     const d=await r.json();
-    const bar=$('bias-bar'); if(!bar) return;
-    const bias=d.bias||{};
-    const bc=bias.direction==='BULLISH'?'bb-bull':bias.direction==='BEARISH'?'bb-bear':'bb-ne';
-    bar.className='bias-bar '+bc;
-    H('bias-label','<span style="font-size:16px;font-weight:800">'+(bias.emoji||'')+'</span> '+(bias.direction||'NEUTRAL')+' <span style="font-size:12px;color:var(--muted)">'+(bias.strength||'')+'</span>');
-    H('bias-rec','<div style="font-size:11px;color:var(--muted);margin-top:4px">'+(bias.recommendation||'')+'</div>');
-    if(d.fearGreed) H('bias-fg','<span style="font-family:var(--m);font-size:11px">F&G: '+d.fearGreed.value+' ('+d.fearGreed.classification+')</span>');
-    if(d.btcDominance) H('bias-dom','<span style="font-size:11px;color:var(--muted)">BTC Dom: '+d.btcDominance.toFixed(1)+'%</span>');
-    if(d.btcPrice) H('bias-btc','<span style="font-family:var(--m);font-size:11px">BTC $'+d.btcPrice.toLocaleString('en-US',{maximumFractionDigits:0})+'</span>');
-    if(d.chips&&bar){
-      const chips=(d.chips||[]).map(c=>'<span class="bchip">'+c+'</span>').join('');
-      H('bias-chips',chips);
+    // d.bias = STRING: 'BULLISH','BEARISH','NEUTRAL','STRONG_BULL','STRONG_BEAR'
+    const biasStr  = d.bias || 'NEUTRAL';
+    const biasLabel= d.biasLabel || '⚖️ NEUTRAL';
+    const biasScore= d.biasScore || 0;
+    const rec      = d.recommendation || '';
+    const fgVal    = d.fgValue || 50;
+    const btcDom   = d.btcDom || 0;
+    const btcTrend = d.btcTrend || 'NEUTRAL';
+    const astro    = d.astro || {};
+    const isBull   = biasStr.includes('BULL');
+    const isBear   = biasStr.includes('BEAR');
+    const biasColor= isBull?'var(--g)':isBear?'var(--red)':'var(--amber)';
+
+    const bar=$('bias-bar');
+    if(bar) bar.className='bias-bar '+(isBull?'bb-bull':isBear?'bb-bear':'bb-ne');
+    H('bias-label','<span style="font-size:18px;font-weight:900;color:'+biasColor+'">'+biasLabel+'</span>');
+    H('bias-rec','<div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5">'+rec+'</div>');
+    H('bias-fg','<span style="font-family:var(--m);font-size:11px;color:'+(fgVal<=30?'var(--g)':fgVal>=70?'var(--red)':'var(--amber)')+'">F&G: '+fgVal+'</span>');
+    if(btcDom) H('bias-dom','<span style="font-size:11px;color:var(--muted)">BTC Dom: '+btcDom.toFixed(1)+'%</span>');
+    // Details chips from d.details array
+    const details = d.details || [];
+    if(details.length){
+      const chips = details.slice(0,6).map(function(det){
+        const txt = typeof det==='object' ? (det.label||det.text||det.factor||JSON.stringify(det)) : String(det);
+        return '<span class="bchip">'+txt+'</span>';
+      }).join('');
+      H('bias-chips', chips);
     }
-    // Strip items
-    if(bias.direction) H('s-bias','<span style="color:'+(bias.direction==='BULLISH'?'var(--g)':bias.direction==='BEARISH'?'var(--red)':'var(--amber)')+'">'+bias.direction+'</span>');
-    if(d.moonPhase) H('s-moon',d.moonPhase.emoji||'🌙');
-  }catch(e){ H('bias-label','<span style="color:var(--muted)">Bias unavailable</span>'); }
+    // Strip bar updates
+    H('s-bias','<span style="color:'+biasColor+'">'+biasStr+'</span>');
+    H('s-fg','<span style="color:'+(fgVal<=30?'var(--g)':fgVal>=70?'var(--red)':'var(--amber)')+'">'+fgVal+'</span>');
+    if(btcDom) H('s-dom', btcDom.toFixed(1)+'%');
+    if(astro.moonEmoji) H('s-moon', astro.moonEmoji+'<span style="font-size:9px;color:var(--dim);margin-left:3px">'+(astro.moonPhase||'')+'</span>');
+  }catch(e){ H('bias-label','<span style="color:var(--red);font-size:11px">❌ Bias: '+e.message+'</span>'); }
 }
 
 // ── ANALYTICS ─────────────────────────────────────────────────────
@@ -622,17 +639,24 @@ async function fetchMacro(){
       H('mv-c','<div class="ct">📈 MVRV Z-Score</div><div class="mv" style="color:'+mc+'">'+( +mval).toFixed(2)+'</div><div style="font-size:10px;color:var(--muted)">'+msig+'</div>');
       H('s-mv','<span style="color:'+mc+'">'+( +mval).toFixed(1)+'</span>');
     }
-    if(d.cycleSummary){ H('cyc-c','<div class="ct">🔄 Cycle Summary</div><div class="narr">'+d.cycleSummary+'</div>'); }
+    if(d.cycleSummary){
+      // cycleSummary can be array or string
+      const cycTxt = Array.isArray(d.cycleSummary) ? d.cycleSummary.join(' ') : String(d.cycleSummary);
+      H('cyc-c','<div class="ct">🔮 Ringkasan Siklus</div><div class="narr" style="font-size:10px;line-height:1.7;color:var(--muted)">'+cycTxt+'</div>');
+    }
     // Altcoin season
     if(d.altcoinSeason){
-      const as=d.altcoinSeason;
-      const asVal=typeof as==='object'?as.value:+as;
-      const asSig=typeof as==='object'?(as.signal||as.season||''):'';
-      const asC=asVal>60?'var(--g)':asVal<40?'var(--amber)':'var(--muted)';
+      // altcoinSeason = {index:number, season:string, label:string, detail:string}
+      const as   = d.altcoinSeason;
+      const asVal= typeof as==='object' ? (as.index||as.value||50) : +as;
+      const asSig= typeof as==='object' ? (as.label||as.season||'') : '';
+      const asDet= typeof as==='object' ? (as.detail||'') : '';
+      const asC  = asVal>60?'var(--g)':asVal<40?'var(--amber)':'var(--muted)';
       H('alt-c','<div class="ct">🔄 Altcoin Season</div>'+
         '<div class="mv" style="color:'+asC+'">'+asVal+'</div>'+
         '<div class="pbar"><div class="pfill" style="width:'+Math.min(100,asVal)+'%;background:'+asC+'"></div></div>'+
-        '<div style="font-size:10px;color:var(--muted)">'+asSig+'</div>');
+        '<div style="font-size:10px;color:var(--muted)">'+asSig+'</div>'+
+        (asDet?'<div style="font-size:9px;color:var(--dim);margin-top:3px">'+asDet+'</div>':''));
     }
   }catch(e){ H('fg-c','<div class="ct">😨 Fear & Greed</div><div class="err">Error: '+e.message+'</div>'); }
 }
@@ -823,80 +847,120 @@ function clickCoin(sym){
 
 // ── SCANNER ───────────────────────────────────────────────────────
 async function doScan(){
-  const btn=$('sc-btn'), st=$('sc-st');
+  const btn=$('sc-btn'),st=$('sc-st');
+  const tbl=$('sc-tbl'),body=$('sc-body');
+  const chips=$('sc-chips'),tabs=$('sc-tabs');
   if(!btn||btn.disabled) return;
-  btn.disabled=true; btn.textContent='⏳ Scanning...';
-  if(st) st.textContent='Running institutional scanner...';
-  H('sc-tabs',''); H('sc-prog','');
+  btn.disabled=true; btn.textContent='⏳ Memindai...';
+  if(st) st.textContent='Menganalisis SMC+EW+Vol...';
+  if(tbl) tbl.style.display='none';
+  if(body) body.innerHTML='';
+  if(chips){ chips.style.display='none'; chips.innerHTML=''; }
+  if(tabs) tabs.style.display='none';
+  const t0=Date.now();
   try{
     const ctrl=new AbortController(); setTimeout(()=>ctrl.abort(),25000);
     const r=await fetch('/api/scanner-full',{signal:ctrl.signal});
     if(!r.ok) throw new Error('HTTP '+r.status);
-    const d=await r.json();
-    renderScanResults(d);
-    if(st) st.textContent='v11: '+(d.totalScanned||0)+' scanned · '+(d.totalQualified||0)+' qualified · '+d.scanTime+'s';
+    const data=await r.json();
+    if(data.error&&!data.results?.length) throw new Error(data.error);
+    window._scanData=data;
+    const elapsed=((Date.now()-t0)/1000).toFixed(1);
+    const mkt=data.marketOverview||{};
+    const totalQ=data.totalQualified||data.results?.length||0;
+    if(chips){
+      chips.style.display='flex';
+      chips.innerHTML=[
+        '<div class="mc"><span class="ml">DIPINDAI</span><strong>'+(data.totalScanned||0)+'</strong></div>',
+        '<div class="mc"><span class="ml">LOLOS</span><strong style="color:var(--g)">'+totalQ+'</strong></div>',
+        '<div class="mc"><span class="ml">BULLISH</span><strong style="color:var(--g)">'+(mkt.bullishCount||0)+'</strong></div>',
+        '<div class="mc"><span class="ml">BEARISH</span><strong style="color:var(--red)">'+(mkt.bearishCount||0)+'</strong></div>',
+        '<div class="mc"><span class="ml">AVG 24H</span><strong style="color:'+((mkt.avgChange24h||0)>=0?'var(--g)':'var(--red)')+'">'+((mkt.avgChange24h||0)>=0?'+':'')+((mkt.avgChange24h)||0).toFixed(2)+'%</strong></div>',
+        '<div class="mc"><span class="ml">BIAS</span><strong style="color:'+((mkt.marketMood||'').includes('BULL')?'var(--g)':(mkt.marketMood||'').includes('BEAR')?'var(--red)':'var(--amber)')+'">'+( mkt.marketMood||'NEUTRAL')+'</strong></div>',
+        '<div class="mc"><span class="ml">WAKTU</span><strong>'+elapsed+'s</strong></div>',
+      ].join('');
+    }
+    if(tabs) tabs.style.display='flex';
+    var curTab=document.querySelector('.tab.on')?.getAttribute('onclick')?.match(/'(\w+)'/)?.[1]||'institutional';
+    renderTable(curTab);
+    if(tbl) tbl.style.display='table';
+    var astro=data.astroContext||{};
+    if(st) st.textContent='✅ '+totalQ+' lolos filter · '+(astro.moonEmoji||'')+(astro.moonPhase?' '+astro.moonPhase:'');
   }catch(e){
-    H('sc-prog','<div style="color:var(--red);font-size:11px;padding:10px">❌ '+e.message+'</div>');
     if(st) st.textContent='❌ '+e.message;
+    if(body) body.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--red);padding:16px;font-size:11px">❌ '+e.message+'</td></tr>';
+    if(tbl) tbl.style.display='table';
   }
-  btn.disabled=false; btn.textContent='🚀 Run Scanner';
+  btn.disabled=false; btn.textContent='🚀 Scan Institusional';
 }
 
-function renderScanResults(d){
-  // scanner-full returns: d.topSetups.{institutional, bullish, fullSend, highProbBull, smcSetups, ewSetups, volumeBreakout, strongSell}
-  window._scanData = d.topSetups||{};
-  window._scanResults = d.results||[];
-  // Show tabs
-  const tabs=$('sc-tabs');
-  if(tabs) tabs.style.display='flex';
-  // Update status
-  const st=$('sc-st');
-  if(st) st.textContent='v11: '+(d.totalScanned||0)+' scanned · '+(d.totalQualified||0)+' qualified · '+(d.scanDuration||d.scanTime||'?')+'s';
-  // Render default tab
-  showTab('institutional', document.querySelector('.tab.on'));
-}
-
-function showTab(tab, el){
-  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
+function showTab(tab,el){
+  document.querySelectorAll('.tab').forEach(function(b){b.classList.remove('on');});
   if(el) el.classList.add('on');
-  const data = window._scanData||{};
-  const coins = tab==='bullish' ? (window._scanResults||[]).filter(r=>r.score>0).slice(0,60)
-              : tab==='bearish' ? (window._scanResults||[]).filter(r=>r.score<0).slice(0,40)
-              : (data[tab]||[]);
-  const tbody=$('sc-body');
-  if(!tbody){ return; }
+  renderTable(tab);
+}
+
+function renderTable(tab){
+  var data=window._scanData; if(!data) return;
+  var ts=data.topSetups||{};
+  var coins={
+    'institutional':(ts.institutional||[]).slice(0,60),
+    'fullSend':(ts.fullSend||[]).slice(0,60),
+    'highProbBull':(ts.highProbBull||[]).slice(0,60),
+    'smcSetups':(ts.smcSetups||[]).slice(0,60),
+    'ewSetups':(ts.ewSetups||[]).slice(0,60),
+    'volumeBreakout':(ts.volumeBreakout||[]).slice(0,60),
+    'strongSell':(ts.strongSell||[]).slice(0,60),
+    'bullish':(data.results||[]).filter(function(r){return r.score>0;}).slice(0,100),
+  }[tab]||(data.results||[]).slice(0,60);
+
+  var body=$('sc-body'); if(!body) return;
   if(!coins.length){
-    tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);font-size:11px;padding:16px">No setups for this tab</td></tr>';
+    body.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--muted);font-size:11px;padding:16px">Tidak ada setup untuk tab ini</td></tr>';
     return;
   }
-  tbody.innerHTML = coins.slice(0,40).map((c,i)=>buildScanRow(c,i)).join('');
+  body.innerHTML=coins.map(function(c,i){
+    var chg=parseFloat(c.change24h||0), up=chg>=0;
+    var prob=c.probability||50;
+    var pcls=prob>=82?'pp-premium':prob>=73?'pp-high':prob>=62?'pp-good':c.score<0?'pp-bear':'pp-watch';
+    var ta=c.trendAlignment||'⚖️ SIDEWAYS';
+    var taCls=c.taColor==='full-bull'?'ta-fs':c.taColor==='bull'?'ta-sb':c.taColor==='bear'?'ta-ss':c.taColor==='full-bear'?'ta-fs-bear':'ta-ne';
+    var rowCls=c.taColor==='full-bull'?'ta-full-bull':c.taColor==='bull'?'ta-bull':c.taColor==='full-bear'?'ta-full-bear':c.taColor==='bear'?'ta-bear':'ta-neutral';
+    var smc=c.smc||{};
+    var smcSig=typeof smc==='string'?smc:(smc.signal||'—');
+    var smcColor=smcSig==='Bullish'?'var(--g)':smcSig==='Bearish'?'var(--red)':'var(--muted)';
+    var smcDetail=smc.hasBOS?'BOS':smc.hasCHoCH?'CHoCH':smc.inBullOB?'Bull OB':smc.inBearOB?'Bear OB':smc.inBullFVG?'FVG ✓':smcSig;
+    var ew=c.elliottWave||{};
+    var ewWave=typeof ew==='string'?ew:(ew.wave||'—');
+    var ewColor=ewWave.includes('Wave 3')||ewWave.includes('Impulse')?'var(--g)':ewWave.includes('Bear')||ewWave.includes('Wave C')?'var(--red)':'var(--muted)';
+    var ewConf=typeof ew==='object'?(ew.confidence||0):0;
+    var pats=c.chartPatterns||[];
+    var patHtml=pats.slice(0,1).map(function(p){
+      return '<span style="font-size:10px;color:'+(p.signal==='bullish'?'var(--g)':p.signal==='bearish'?'var(--red)':'var(--muted)')+'">'+p.name+'</span>';
+    }).join('')||'<span style="color:var(--dim)">—</span>';
+    var ast=c.astrology||{};
+    var astTxt=typeof ast==='string'?ast.split('\n')[0]:((ast.moonEmoji||'')+' '+(ast.moonPhase||'—'));
+    var vol=c.volume24h||0;
+    var volTxt=vol>=1e9?'$'+(vol/1e9).toFixed(1)+'B':vol>=1e6?'$'+(vol/1e6).toFixed(0)+'M':vol>=1e3?'$'+(vol/1e3).toFixed(0)+'K':'—';
+    var sigs=(c.signals||[]).slice(0,2);
+    return '<tr class="'+rowCls+'" onclick="clickCoin(\''+c.symbol+'\')" style="cursor:pointer">'+
+      '<td><span class="rkb '+(i<5?'top':'')+'">'+( c.rank||i+1)+'</span></td>'+
+      '<td><div class="sc-sym">'+c.symbol+'</div></td>'+
+      '<td style="font-family:var(--m);font-size:11px">'+fP(c.price)+'</td>'+
+      '<td class="'+(up?'chgu':'chgd')+'">'+(up?'+':'')+chg.toFixed(2)+'%</td>'+
+      '<td>'+volTxt+((c.volume||{}).isBreakout?' 🔥':'')+'</td>'+
+      '<td><span class="ta '+taCls+'">'+ta+'</span><div style="font-size:9px;color:var(--muted);margin-top:1px">'+(c.trend1h||'-')+'/'+(c.trend4h||'-')+'/'+(c.trend1d||'-')+'</div></td>'+
+      '<td style="font-size:11px;color:'+smcColor+'">'+smcDetail+'</td>'+
+      '<td style="font-size:11px;color:'+ewColor+'">'+ewWave+(ewConf?' <span style="font-size:9px;color:var(--muted)">('+ewConf+'%)</span>':'')+'</td>'+
+      '<td>'+patHtml+'</td>'+
+      '<td style="font-size:10px;color:'+(ast.chaotic?'var(--amber)':'var(--purple)')+'">'+astTxt+'</td>'+
+      '<td><span class="pp '+pcls+'">'+prob+'%</span></td>'+
+      '<td>'+sigs.map(function(sg){return '<div style="font-size:10px;color:var(--muted)">• '+sg+'</div>';}).join('')+'</td>'+
+    '</tr>';
+  }).join('')||'<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:16px">—</td></tr>';
 }
 
-function buildScanRow(c,i){
-  const score=c.score||c.probability||50;
-  const sc=score>=75?'var(--g)':score>=60?'var(--g2)':score>=45?'var(--amber)':'var(--muted)';
-  const ch=+(c.change24h||c.ch24||0);
-  const px=c.price||c.currentPrice||0;
-  const ep=c.ict?.entryPkg||{};
-  const sl=ep.sl||c.rr?.slPrice||0;
-  const tp1=ep.tp1||c.rr?.tp1||0;
-  const tp2=ep.tp2||c.rr?.tp2||0;
-  const signal=c.confluenceSignal||c.action||c.taLabel||'—';
-  const sigC=signal.includes('BULL')||signal==='BUY'?'var(--g)':signal.includes('BEAR')||signal==='SELL'?'var(--red)':'var(--amber)';
-  const sigs=(c.smc?.signals||c.signals||[]).slice(0,3).join(' ');
-  return '<tr onclick="clickCoin(\''+c.symbol+'\')" style="cursor:pointer" onmouseover="this.style.background=\'rgba(255,255,255,.03)\'" onmouseout="this.style.background=\'\'">'+
-    '<td style="font-family:var(--m);font-weight:800;color:var(--txt)">'+c.symbol+'</td>'+
-    '<td style="font-family:var(--m);color:var(--g)">$'+fP(px)+'</td>'+
-    '<td style="font-family:var(--m);color:'+(ch>=0?'var(--g2)':'var(--red)')+'">'+(ch>=0?'+':'')+ch.toFixed(2)+'%</td>'+
-    '<td style="font-family:var(--m);font-weight:700;color:'+sc+'">'+score+'</td>'+
-    '<td style="font-size:10px;color:'+sigC+'">'+signal+'</td>'+
-    '<td style="font-family:var(--m);font-size:10px;color:var(--red)">$'+fP(sl)+'</td>'+
-    '<td style="font-family:var(--m);font-size:10px;color:var(--g2)">$'+fP(tp1)+'</td>'+
-    '<td style="font-size:9px;color:var(--muted)">'+sigs+'</td>'+
-  '</tr>';
-}
 
-// ── ONCHAIN ───────────────────────────────────────────────────────
 async function fetchOnchain(){
   const body=$('onchain-body'); if(!body) return;
   body.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;text-align:center"><span class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>Loading onchain data...</div>';
