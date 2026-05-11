@@ -166,6 +166,6 @@ export default async function handler(req, res) {
       astro: { moonPhase, moonEmoji, halvingPhase, daysSinceHalving, inMercuryRetrograde: inMR, inMercuryShadow: inMRShadow, mercuryWarning, daysSinceNM: +dnm.toFixed(1) },
     });
   } catch (e) {
-    return res.status(500).json({ error: e.message, bias: 'NEUTRAL', biasLabel: '⚖️ NEUTRAL', biasScore: 0, details: [] });
+    return res.status(200).json({ error: e.message, bias: 'NEUTRAL', biasLabel: '⚖️ NEUTRAL', biasScore: 0, details: [] });
   }
 }
