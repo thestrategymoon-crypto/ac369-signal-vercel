@@ -489,6 +489,10 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 
 <script>
 'use strict';
+// ── GLOBAL STATE ──────────────────────────────────────────────────
+var _intelData = null;   // Intelligence Dashboard data
+var _scanData  = null;   // Scanner results
+// _altData declared in fetchAltcoins section
 // ── UTILITIES ─────────────────────────────────────────────────────
 function $(id){ return document.getElementById(id); }
 function H(id, html){ const el=$(id); if(el) el.innerHTML=html; }
@@ -603,7 +607,7 @@ async function fetchAnalytics(){
     if(d.smartMoneyNarrative) H('narr-sm', d.smartMoneyNarrative||'—');
     // Update strip
     if(bpx) H('s-btc','$'+(bpx/1000).toFixed(1)+'K');
-    if(epx) H('s-eth','$'+epx.toLocaleString('en-US',{maximumFractionDigits:0}));
+    H('s-eth', epx>0 ? '$'+epx.toLocaleString('en-US',{maximumFractionDigits:0}) : '—');
   }catch(e){
     H('btc-c','<div style="color:var(--red);font-size:11px">❌ '+e.message+'</div>');
     H('eth-c','<div style="color:var(--red);font-size:11px">❌ '+e.message+'</div>');
@@ -1229,67 +1233,100 @@ function renderTable(tab){
 
 async function fetchOnchain(){
   const body=$('onchain-body'); if(!body) return;
-  body.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;text-align:center"><span class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>Loading BTC onchain data...</div>';
-  const bf=async function(url,ms,txt){
-    var ctrl=new AbortController(); setTimeout(function(){ctrl.abort();},ms||7000);
-    try{ var r=await fetch(url,{signal:ctrl.signal}); if(!r.ok)return null; return txt?await r.text():await r.json(); }catch{return null;}
-  };
+  body.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;text-align:center">'+
+    '<span class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>'+
+    'Loading BTC onchain data...</div>';
   try{
-    var [heightR,mempoolR,diffR,hashR,feesR,btcPxR]=await Promise.allSettled([
-      bf('https://mempool.space/api/blocks/tip/height',5000,true),
-      bf('https://mempool.space/api/mempool',5000),
-      bf('https://mempool.space/api/v1/difficulty-adjustment',5000),
-      bf('https://mempool.space/api/v1/mining/hashrate/3d',5000),
-      bf('https://mempool.space/api/v1/fees/recommended',4000),
-      bf('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT',4000),
-    ]);
-    var height=heightR.status==='fulfilled'?parseInt(heightR.value)||null:null;
-    var mem=mempoolR.status==='fulfilled'?mempoolR.value:null;
-    var diff=diffR.status==='fulfilled'?diffR.value:null;
-    var hash=hashR.status==='fulfilled'?hashR.value:null;
-    var fees=feesR.status==='fulfilled'?feesR.value:null;
-    var btcPx=btcPxR.status==='fulfilled'?+(btcPxR.value?.price||0):0;
-    var blockH=height||896000;
-    var hashRate=hash?.currentHashrate?(hash.currentHashrate/1e18).toFixed(1)+' EH/s':'—';
-    var diffTxt=diff?.difficulty?(diff.difficulty/1e12).toFixed(1)+' T':'—';
-    var mempoolTx=mem?.count?mem.count.toLocaleString()+' tx':'—';
-    var mempoolMB=mem?.vsize?(mem.vsize/1e6).toFixed(1)+' MB':'—';
-    var fastFee=fees?.fastestFee||null;
-    var hourFee=fees?.hourFee||null;
-    var blkProgress=diff?.progressPercent?diff.progressPercent.toFixed(1)+'%':'—';
-    var blkRemain=diff?.remainingBlocks?diff.remainingBlocks.toLocaleString():'—';
-    var mktCap=btcPx>0?'$'+(btcPx*19900000/1e12).toFixed(2)+'T':'—';
-    var halvingBlock=1050000;
-    var blocksLeft=Math.max(0,halvingBlock-blockH);
-    var daysLeft=Math.round(blocksLeft*10/60/24);
-    var halvingPct=Math.min(100,((blockH-840000)/(1050000-840000)*100)).toFixed(1);
-    var dataOk=!!(height||mem||diff||hash);
+    const ctrl=new AbortController(); setTimeout(function(){ctrl.abort();},12000);
+    const r=await fetch('/api/onchain',{signal:ctrl.signal});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d=await r.json();
+
+    var blockH      = d.blockH || 896000;
+    var hashRate    = d.hashRate   ? d.hashRate+' EH/s' : '—';
+    var diffTxt     = d.diffTxt    ? d.diffTxt+' T'     : '—';
+    var epochPct    = d.epochPct   ? d.epochPct+'%'     : '—';
+    var blkRemain   = d.blkRemain  ? d.blkRemain.toLocaleString() : '—';
+    var mempoolTx   = d.mempoolTx  ? d.mempoolTx.toLocaleString()+' tx' : '—';
+    var mempoolMB   = d.mempoolMB  ? d.mempoolMB+' MB'  : '—';
+    var fastFee     = d.fastFee    ? d.fastFee+' sat/vB' : '—';
+    var hourFee     = d.hourFee    ? d.hourFee+' sat/vB' : '—';
+    var txn24h      = d.txn24h     ? (+d.txn24h).toLocaleString() : '—';
+    var mktCap      = d.mktCap     ? '$'+d.mktCap+'T'   : '—';
+    var blocksLeft  = d.blocksLeft || 154000;
+    var daysLeft    = d.daysLeft   || 1069;
+    var halvingPct  = d.halvingPct || 26.7;
+    var dataOk      = d.dataOk;
+    var src         = d.source     || 'mempool.space';
+
     body.innerHTML=
       '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:7px">'+
-      '<div class="c2" style="border-color:rgba(0,255,208,.2)"><div style="font-size:9px;color:var(--g);letter-spacing:1.5px;margin-bottom:3px">⚡ HASH RATE</div><div style="font-family:var(--m);font-size:15px;font-weight:800;color:var(--g)">'+hashRate+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">Network security</div></div>'+
-      '<div class="c2" style="border-color:rgba(0,255,208,.1)"><div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;margin-bottom:3px">🔢 DIFFICULTY</div><div style="font-family:var(--m);font-size:15px;font-weight:800">'+diffTxt+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">Epoch: '+blkProgress+'</div></div>'+
-      '<div class="c2"><div style="font-size:9px;color:var(--amber);letter-spacing:1.5px;margin-bottom:3px">📦 MEMPOOL</div><div style="font-family:var(--m);font-size:15px;font-weight:800;color:var(--amber)">'+mempoolTx+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">'+mempoolMB+'</div></div>'+
-      '<div class="c2"><div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;margin-bottom:3px">💸 TX FEES (fastest)</div><div style="font-family:var(--m);font-size:15px;font-weight:800">'+(fastFee?fastFee+' sat/vB':'—')+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">1H: '+(hourFee||'—')+' sat/vB</div></div>'+
-      '<div class="c2"><div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;margin-bottom:3px">📏 BLOCK HEIGHT</div><div style="font-family:var(--m);font-size:15px;font-weight:800">'+blockH.toLocaleString()+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">'+blkRemain+' to retarget</div></div>'+
-      '<div class="c2"><div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;margin-bottom:3px">💰 MARKET CAP</div><div style="font-family:var(--m);font-size:15px;font-weight:800">'+mktCap+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">~19.9M BTC circ.</div></div>'+
+
+      '<div class="c2" style="border-color:rgba(0,255,208,.2)">'+
+        '<div style="font-size:9px;color:var(--g);letter-spacing:1.5px;margin-bottom:3px">⚡ HASH RATE</div>'+
+        '<div style="font-family:var(--m);font-size:15px;font-weight:800;color:var(--g)">'+hashRate+'</div>'+
+        '<div style="font-size:9px;color:var(--dim);margin-top:2px">Network security</div>'+
+      '</div>'+
+
+      '<div class="c2" style="border-color:rgba(0,255,208,.1)">'+
+        '<div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;margin-bottom:3px">🔢 DIFFICULTY</div>'+
+        '<div style="font-family:var(--m);font-size:15px;font-weight:800">'+diffTxt+'</div>'+
+        '<div style="font-size:9px;color:var(--dim);margin-top:2px">Epoch: '+epochPct+'</div>'+
+      '</div>'+
+
+      '<div class="c2">'+
+        '<div style="font-size:9px;color:var(--amber);letter-spacing:1.5px;margin-bottom:3px">📦 MEMPOOL</div>'+
+        '<div style="font-family:var(--m);font-size:15px;font-weight:800;color:var(--amber)">'+mempoolTx+'</div>'+
+        '<div style="font-size:9px;color:var(--dim);margin-top:2px">'+mempoolMB+'</div>'+
+      '</div>'+
+
+      '<div class="c2">'+
+        '<div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;margin-bottom:3px">💸 TX FEES</div>'+
+        '<div style="font-family:var(--m);font-size:15px;font-weight:800">'+fastFee+'</div>'+
+        '<div style="font-size:9px;color:var(--dim);margin-top:2px">1H: '+hourFee+'</div>'+
+      '</div>'+
+
+      '<div class="c2">'+
+        '<div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;margin-bottom:3px">📏 BLOCK HEIGHT</div>'+
+        '<div style="font-family:var(--m);font-size:15px;font-weight:800">'+blockH.toLocaleString()+'</div>'+
+        '<div style="font-size:9px;color:var(--dim);margin-top:2px">'+blkRemain+' to retarget</div>'+
+      '</div>'+
+
+      '<div class="c2">'+
+        '<div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;margin-bottom:3px">💰 MARKET CAP</div>'+
+        '<div style="font-family:var(--m);font-size:15px;font-weight:800">'+mktCap+'</div>'+
+        '<div style="font-size:9px;color:var(--dim);margin-top:2px">TXN/24H: '+txn24h+'</div>'+
+      '</div>'+
+
       '<div class="c2" style="grid-column:1/-1;border-color:rgba(255,179,0,.25);background:rgba(255,179,0,.03)">'+
         '<div style="font-size:9px;color:var(--amber);letter-spacing:1.5px;margin-bottom:5px">⏳ NEXT HALVING — Block 1,050,000</div>'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">'+
-          '<div><div style="font-family:var(--m);font-size:20px;font-weight:900;color:var(--amber)">'+(daysLeft>0?'~'+daysLeft+' days':'COMPLETE ✅')+'</div>'+
-          '<div style="font-size:10px;color:var(--dim);margin-top:1px">'+blocksLeft.toLocaleString()+' blocks remaining</div></div>'+
-          '<div style="text-align:right"><div style="font-size:10px;color:var(--muted)">Current</div><div style="font-family:var(--m);font-size:14px;font-weight:700">'+blockH.toLocaleString()+'</div></div>'+
+          '<div>'+
+            '<div style="font-family:var(--m);font-size:22px;font-weight:900;color:var(--amber)">'+(daysLeft>0?'~'+daysLeft+' days':'✅ COMPLETE')+'</div>'+
+            '<div style="font-size:10px;color:var(--dim);margin-top:1px">'+blocksLeft.toLocaleString()+' blocks remaining</div>'+
+          '</div>'+
+          '<div style="text-align:right">'+
+            '<div style="font-size:10px;color:var(--muted)">Current</div>'+
+            '<div style="font-family:var(--m);font-size:14px;font-weight:700">'+blockH.toLocaleString()+'</div>'+
+          '</div>'+
         '</div>'+
-        '<div style="height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden">'+
-          '<div style="height:6px;background:linear-gradient(90deg,var(--amber),#ff6b00);border-radius:3px;width:'+halvingPct+'%"></div>'+
+        '<div style="height:7px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden">'+
+          '<div style="height:7px;background:linear-gradient(90deg,#ff8c00,var(--amber));border-radius:4px;width:'+halvingPct+'%;transition:width 1s"></div>'+
         '</div>'+
+        '<div style="font-size:9px;color:var(--dim);margin-top:4px;text-align:right">'+halvingPct+'% of epoch complete</div>'+
       '</div>'+
+
       '</div>'+
       '<div style="font-size:9px;color:var(--dim);margin-top:8px;display:flex;justify-content:space-between">'+
-        '<span>src: '+(dataOk?'mempool.space ✓':'blockchain.info')+' · Binance</span>'+
-        '<span style="color:'+(dataOk?'var(--g)':'var(--amber)')+'">'+(dataOk?'🟢 live':'⚠️ limited')+'</span>'+
+        '<span>src: '+src+(dataOk?' ✓':' ⚠️')+'</span>'+
+        '<span style="color:'+(dataOk?'var(--g)':'var(--amber)')+'">'+(dataOk?'🟢 live':'⚠️ limited — coba refresh')+'</span>'+
       '</div>';
+
   }catch(e){
-    body.innerHTML='<div style="color:var(--amber);font-size:10px;padding:10px">⚠️ '+e.message+'<br><button onclick="fetchOnchain()" style="margin-top:6px;background:rgba(0,255,208,.08);border:1px solid rgba(0,255,208,.2);color:var(--g);padding:4px 12px;border-radius:5px;font-size:10px;cursor:pointer">⟳ Retry</button></div>';
+    body.innerHTML='<div style="color:var(--amber);font-size:10px;padding:10px">'+
+      '⚠️ '+e.message+'<br>'+
+      '<button onclick="fetchOnchain()" style="margin-top:6px;background:rgba(0,255,208,.08);border:1px solid rgba(0,255,204,.2);color:var(--g);padding:4px 12px;border-radius:5px;font-size:10px;cursor:pointer">⟳ Retry</button>'+
+    '</div>';
   }
 }
 
