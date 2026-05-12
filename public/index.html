@@ -1430,9 +1430,9 @@ function renderOnchain(d){
 
   // Funding
   h+='<div class="c2" style="border-color:rgba(255,255,255,.06)">'+
-    '<div style="font-size:9px;color:var(--dim);letter-spacing:1px;margin-bottom:2px">💸 FUNDING RATE</div>'+
-    '<div style="font-family:var(--m);font-size:16px;font-weight:800;color:'+frC+'">'+(d.frPct!=null?d.frPct+'%':'—')+'</div>'+
-    (d.frAnn!=null?'<div style="font-size:9px;color:var(--dim)">Annualized: '+(d.frAnn>0?'+':'')+d.frAnn+'%</div>':'')+
+    '<div style="font-size:9px;color:var(--dim);letter-spacing:1px;margin-bottom:2px">💸 FUNDING RATE (8H)</div>'+
+    '<div style="font-family:var(--m);font-size:16px;font-weight:800;color:'+frC+'">'+(d.frPct!=null?d.frPct+'%':'⏳ Loading...')+'</div>'+
+    (d.frAnn!=null?'<div style="font-size:9px;color:var(--dim)">Ann: '+(d.frAnn>0?'+':'')+d.frAnn+'%</div>':'')+
     '<div style="font-size:9px;color:var(--muted);margin-top:2px">'+(d.frSig||'—')+'</div>'+
   '</div>';
 
@@ -1444,10 +1444,12 @@ function renderOnchain(d){
   '</div>';
 
   // MVRV
+  var mvrvC=d.mvrvProxy?( d.mvrvProxy<1.2?'var(--g)':d.mvrvProxy<1.8?'var(--g2)':d.mvrvProxy<2.5?'var(--amber)':'var(--red)'):'var(--muted)';
   h+='<div class="c2" style="border-color:rgba(255,255,255,.06)">'+
     '<div style="font-size:9px;color:var(--dim);letter-spacing:1px;margin-bottom:2px">📊 MVRV PROXY</div>'+
-    '<div style="font-family:var(--m);font-size:20px;font-weight:900">'+(d.mvrvProxy||'—')+'</div>'+
-    '<div style="font-size:9px;color:var(--muted);margin-top:2px">'+(d.mvrvLabel||'—')+'</div>'+
+    '<div style="font-family:var(--m);font-size:20px;font-weight:900;color:'+mvrvC+'">'+(d.mvrvProxy||'—')+'</div>'+
+    (d.realizedPx?'<div style="font-size:9px;color:var(--dim)">Realized: $'+d.realizedPx.toLocaleString()+'</div>':'')+
+    '<div style="font-size:9px;color:var(--muted);margin-top:1px">'+(d.mvrvLabel||'—')+'</div>'+
   '</div>';
 
   h+='</div>'; // end grid
@@ -1468,16 +1470,18 @@ function renderOnchain(d){
     '<div style="font-size:9px;color:var(--muted);margin-top:2px">'+(( d.vol24hPct||0)<2?'LOW — accumulation':( d.vol24hPct||0)<5?'NORMAL':'HIGH — volatile')+'</div>'+
   '</div>';
 
+  var nuplC=d.nuplProxy!=null?(d.nuplProxy<0?'var(--g)':d.nuplProxy<0.25?'#a0e040':d.nuplProxy<0.5?'var(--amber)':'var(--red)'):'var(--muted)';
   h+='<div class="c2" style="border-color:rgba(255,255,255,.06)">'+
     '<div style="font-size:9px;color:var(--dim);letter-spacing:1px;margin-bottom:2px">💎 NUPL PROXY</div>'+
-    '<div style="font-family:var(--m);font-size:14px;font-weight:800">'+(d.nuplProxy||'—')+'</div>'+
-    '<div style="font-size:9px;color:var(--muted);margin-top:2px">'+(d.nuplLabel||'—')+'</div>'+
+    '<div style="font-family:var(--m);font-size:16px;font-weight:800;color:'+nuplC+'">'+(d.nuplProxy!=null?d.nuplProxy:'—')+'</div>'+
+    '<div style="font-size:9px;color:'+nuplC+';margin-top:2px;font-weight:700">'+(d.nuplLabel||'—')+'</div>'+
   '</div>';
 
+  var soprC=d.soprProxy!=null?(d.soprProxy>=1.01?'var(--red)':d.soprProxy>=0.99?'var(--amber)':'var(--g)'):'var(--muted)';
   h+='<div class="c2" style="border-color:rgba(255,255,255,.06)">'+
     '<div style="font-size:9px;color:var(--dim);letter-spacing:1px;margin-bottom:2px">📉 SOPR PROXY</div>'+
-    '<div style="font-family:var(--m);font-size:14px;font-weight:800">'+(d.soprProxy||'—')+'</div>'+
-    '<div style="font-size:9px;color:var(--muted);margin-top:2px">'+(d.soprLabel||'—')+'</div>'+
+    '<div style="font-family:var(--m);font-size:16px;font-weight:800;color:'+soprC+'">'+(d.soprProxy!=null?d.soprProxy:'—')+'</div>'+
+    '<div style="font-size:9px;color:'+soprC+';margin-top:2px">'+(d.soprLabel||'—')+'</div>'+
   '</div>';
 
   h+='<div class="c2" style="grid-column:1/-1;border-color:rgba(168,85,247,.2)">'+
