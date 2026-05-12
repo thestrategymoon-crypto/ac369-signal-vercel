@@ -30,6 +30,9 @@
     },
     "api/intelligence.js": {
       "maxDuration": 25
+    },
+    "api/onchain.js": {
+      "maxDuration": 12
     }
   },
   "headers": [
