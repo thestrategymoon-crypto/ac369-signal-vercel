@@ -852,6 +852,6 @@ export default async function handler(req, res) {
       astrology: astro, timestamp: Date.now(),
     });
   } catch (e) {
-    return res.status(500).json({ error: e.message, symbol: sym });
+    return res.status(200).json({ error: e.message, symbol: sym, price: 0, change24h: 0 });
   }
 }
