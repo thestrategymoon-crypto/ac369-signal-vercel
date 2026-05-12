@@ -490,9 +490,13 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 </div>
 <div id="intel-mkt" style="display:none;margin-bottom:8px"></div>
 <div class="intel-tabs" id="intel-tabs" style="display:none">
-  <button onclick="showIntelTab('all',this)"     class="itab on">📊 ALL</button>
+  <button onclick="showIntelTab('all',this)"      class="itab on">📊 ALL</button>
   <button onclick="showIntelTab('highprob',this)" class="itab">🎯 HIGH PROB</button>
-  <button onclick="showIntelTab('squeeze',this)"  class="i
+  <button onclick="showIntelTab('squeeze',this)"  class="itab">🔥 SQUEEZE</button>
+  <button onclick="showIntelTab('diverge',this)"  class="itab">⭐ DIVERGENCE</button>
+</div>
+<div id="intel-body"></div>
+
 <script>
 'use strict';
 // ── GLOBAL STATE ──────────────────────────────────────────────────
