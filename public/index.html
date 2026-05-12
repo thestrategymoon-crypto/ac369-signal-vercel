@@ -332,6 +332,17 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 .corr-val{font-family:var(--m);font-size:15px;font-weight:900}
 /* Score ring */
 .score-ring{font-family:var(--m);font-size:20px;font-weight:900;min-width:42px;text-align:right}
+
+/* ── ALTCOIN COMPACT ROWS ───────────────────────────── */
+.alt-row{display:flex;align-items:center;padding:7px 2px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .1s;gap:5px}
+.alt-row:hover{background:rgba(255,255,255,.02)}
+.alt-row:last-child{border-bottom:none}
+.alt-rank{font-size:10px;color:var(--dim);min-width:16px;text-align:right;flex-shrink:0}
+.alt-sym{font-family:var(--m);font-size:13px;font-weight:800;color:var(--txt)}
+.alt-sym-wrap{display:flex;flex-direction:column;flex:0 0 auto}
+.alt-px{font-size:10px;color:var(--muted);margin-top:1px}
+.alt-chg{font-family:var(--m);font-size:13px;font-weight:800;margin-left:auto;flex-shrink:0}
+.alt-footer{font-size:9px;color:var(--dim);padding-top:5px;text-align:right;border-top:1px solid rgba(255,255,255,.04);margin-top:2px}
 </style>
 </head>
 <body>
@@ -468,9 +479,13 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
     <div class="ld"><span class="ms"></span></div>
   </div>
 </div>
-<div class="card" style="margin-top:7px" id="alt-losers-wrap" style="display:none">
+<div class="card" style="margin-top:7px;display:none" id="alt-losers-wrap">
   <div class="ct">📉 TOP LOSERS</div>
   <div id="alt-losers"><div class="ld"><span class="ms"></span></div></div>
+</div>
+<div class="card" style="margin-top:7px" id="alt-narasi">
+  <div class="ct">📋 NARASI ALTCOIN</div>
+  <div class="ld"><span class="ms"></span></div>
 </div>
 
 
@@ -723,111 +738,187 @@ function renderAltAll(){
   renderAltVol(d.volBreakouts||d.volumeBreakouts||[]);
   renderAltRSI(d.rsiList||d.rsiExtremes||[], d.realRSICount||0);
   renderAltLosers(d.losers||d.topLosers||[]);
+  renderAltNarasi(d);
 }
 
+// ── TOP GAINERS ── Clean: Rank · Symbol · Price · Change ──────────
 function renderAltGainers(coins){
   var el=document.getElementById('alt-gainers'); if(!el) return;
-  if(!coins.length){ el.innerHTML='<div class="ct">🏆 TOP GAINERS</div><div style="color:var(--muted);font-size:11px;padding:8px;text-align:center">Loading...</div>'; return; }
+  // Filter: must have real gain > 0.5% and real volume
+  var filtered = coins.filter(function(c){ return c.ch24 >= 0.5 && c.vol > 500000; });
+  if(!filtered.length){ filtered = coins.filter(function(c){ return c.ch24 > 0; }); }
   var h='<div class="ct">🏆 TOP GAINERS</div>';
-  coins.slice(0,15).forEach(function(coin,i){
-    var up=coin.ch24>=0;
-    var rsi=coin.rsi||50;
-    var rc=rsiCol(rsi);
-    h+='<div onclick="clickCoin(\''+coin.symbol+'\')" style="display:flex;align-items:center;justify-content:space-between;padding:7px 2px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" onmouseover="this.style.background=\'rgba(255,255,255,.02)\'" onmouseout="this.style.background=\'\'">'+
-      '<div style="display:flex;align-items:center;gap:6px">'+
-        '<span style="font-size:10px;color:var(--dim);min-width:16px;text-align:right">'+(i+1)+'</span>'+
-        '<div>'+
-          '<div style="font-family:var(--m);font-size:13px;font-weight:800;color:var(--txt)">'+coin.symbol+'</div>'+
-          '<div style="font-size:10px;color:var(--muted)">$'+fmtEx(coin.price)+'</div>'+
-        '</div>'+
+  filtered.slice(0,15).forEach(function(coin,i){
+    var up=coin.ch24>0;
+    h+='<div onclick="clickCoin(\''+coin.symbol+'\')" class="alt-row">'+
+      '<span class="alt-rank">'+(i+1)+'</span>'+
+      '<div class="alt-sym-wrap">'+
+        '<span class="alt-sym">'+coin.symbol+'</span>'+
+        '<span class="alt-px">$'+fmtEx(coin.price)+'</span>'+
       '</div>'+
-      '<div style="text-align:right">'+
-        '<div style="font-family:var(--m);font-size:14px;font-weight:900;color:'+(up?'var(--g2)':'var(--red)')+'">'+(up?'+':'')+coin.ch24.toFixed(2)+'%</div>'+
-        '<div style="font-size:9px;color:'+rc+'">RSI '+rsi+'</div>'+
-      '</div>'+
+      '<span class="alt-chg" style="color:var(--g2)">+'+coin.ch24.toFixed(2)+'%</span>'+
     '</div>';
   });
-  h+='<div style="font-size:9px;color:var(--dim);padding-top:5px;text-align:right">'+coins.length+' coins total</div>';
+  h+='<div class="alt-footer">'+filtered.length+' gainers today</div>';
   el.innerHTML=h;
 }
 
+// ── VOLUME BREAKOUT ── Symbol · Volume · Change · Type ───────────
 function renderAltVol(coins){
   var el=document.getElementById('alt-vol'); if(!el) return;
-  if(!coins.length){ el.innerHTML='<div class="ct">📊 VOLUME BREAKOUT</div><div style="color:var(--muted);font-size:11px;padding:8px;text-align:center">Loading...</div>'; return; }
+  // Filter for REAL breakouts: vol > $10M, clear direction
+  var breakouts = coins.filter(function(c){
+    return c.vol >= 10e6 && (c.bType==='BREAKOUT'||c.bType==='VOL BULL'||c.bType==='VOL BEAR'||c.bType==='STEALTH'||c.bType==='FAKE PUMP');
+  });
+  // Fallback: any coin with vol > 50M
+  if(breakouts.length < 5){
+    breakouts = coins.filter(function(c){ return c.vol >= 50e6; });
+  }
   var h='<div class="ct">📊 VOLUME BREAKOUT</div>';
-  coins.slice(0,15).forEach(function(coin,i){
+  breakouts.slice(0,15).forEach(function(coin,i){
     var up=coin.ch24>=0;
-    var bType=coin.bType||'ACTIVE';
-    var label=bType==='BREAKOUT'||bType==='VOL BULL'?'Bullish Breakout':
-              bType==='VOL BEAR'||bType==='FAKE PUMP'?'Bearish Breakdown':
-              bType==='STEALTH'?'Stealth Accum':'Active';
-    var lc=label.includes('Bull')||label.includes('Stealth')?'var(--g)':
-           label.includes('Bear')?'var(--red)':'var(--amber)';
-    h+='<div onclick="clickCoin(\''+coin.symbol+'\')" style="display:flex;align-items:center;justify-content:space-between;padding:7px 2px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" onmouseover="this.style.background=\'rgba(255,255,255,.02)\'" onmouseout="this.style.background=\'\'">'+
-      '<div>'+
-        '<div style="font-family:var(--m);font-size:13px;font-weight:800;color:var(--txt)">'+coin.symbol+'</div>'+
-        '<div style="font-size:10px;color:var(--muted)">'+fmtVol(coin.vol)+'</div>'+
+    var isBull=up&&(coin.bType==='BREAKOUT'||coin.bType==='VOL BULL');
+    var isBear=!up||(coin.bType==='VOL BEAR'||coin.bType==='FAKE PUMP');
+    var label=isBull?'Bullish Breakout':isBear?'Bearish Breakdown':'Stealth Accum';
+    var lc=isBull?'var(--g)':isBear?'var(--red)':'var(--amber)';
+    h+='<div onclick="clickCoin(\''+coin.symbol+'\')" class="alt-row">'+
+      '<div class="alt-sym-wrap" style="flex:1">'+
+        '<span class="alt-sym">'+coin.symbol+'</span>'+
+        '<span style="font-size:10px;color:var(--muted);margin-left:3px">'+fmtVol(coin.vol)+'</span>'+
       '</div>'+
       '<div style="text-align:right">'+
-        '<div style="font-family:var(--m);font-size:13px;font-weight:800;color:'+(up?'var(--g2)':'var(--red)')+'">'+(up?'+':'')+coin.ch24.toFixed(2)+'%</div>'+
+        '<div style="font-family:var(--m);font-size:12px;font-weight:700;color:'+(up?'var(--g2)':'var(--red)')+'">'+(up?'+':'')+coin.ch24.toFixed(2)+'%</div>'+
         '<div style="font-size:9px;color:'+lc+'">'+label+'</div>'+
       '</div>'+
     '</div>';
   });
-  h+='<div style="font-size:9px;color:var(--dim);padding-top:5px;text-align:right">'+coins.length+' coins total</div>';
+  h+='<div class="alt-footer">'+breakouts.length+' volume events</div>';
   el.innerHTML=h;
 }
 
+// ── RSI EKSTREM ── Shows REAL RSI values, filters proxy artifacts ──
 function renderAltRSI(rsiList, realCount){
   var el=document.getElementById('alt-rsi'); if(!el) return;
-  if(!rsiList.length){ el.innerHTML='<div class="ct">📉 RSI EKSTREM</div><div style="color:var(--muted);font-size:11px;padding:8px;text-align:center">Loading...</div>'; return; }
-  var sorted=[].concat(rsiList).sort(function(a,b){ return (a.rsi||50)-(b.rsi||50); });
+  // Filter out RSI=5 or RSI=95 proxy artifacts (proxy RSI with 0% change)
+  // Only show coins with vol > 1M to filter noise
+  var meaningful = rsiList.filter(function(c){
+    return c.vol >= 1e6 && c.rsi > 5 && c.rsi < 95;
+  });
+  // If not enough, include RSI 5/95 only if rsiReal=true
+  if(meaningful.length < 5){
+    meaningful = rsiList.filter(function(c){
+      return c.vol >= 500000 && (c.rsiReal || (c.rsi > 8 && c.rsi < 92));
+    });
+  }
+  var sorted = [].concat(meaningful).sort(function(a,b){ return (a.rsi||50)-(b.rsi||50); });
   var h='<div class="ct">📉 RSI EKSTREM</div>';
   sorted.slice(0,15).forEach(function(coin,i){
     var rsi=coin.rsi||50;
     var rc=rsiCol(rsi);
     var up=coin.ch24>=0;
-    var zone=rsi<=30?'Oversold':rsi<=42?'Oversold Zone':rsi>=80?'Overbought':rsi>=65?'Overbought Zone':rsi>55?'Bullish Zone':rsi<45?'Bearish Zone':'Neutral';
-    h+='<div onclick="clickCoin(\''+coin.symbol+'\')" style="display:flex;align-items:center;justify-content:space-between;padding:7px 2px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" onmouseover="this.style.background=\'rgba(255,255,255,.02)\'" onmouseout="this.style.background=\'\'">'+
-      '<div>'+
-        '<div style="font-family:var(--m);font-size:13px;font-weight:800;color:var(--txt)">'+coin.symbol+'</div>'+
-        '<div style="font-size:10px;color:'+(up?'var(--g2)':'var(--red)')+'">'+(up?'+':'')+coin.ch24.toFixed(2)+'% &nbsp;$'+fmtEx(coin.price)+'</div>'+
+    var zone=rsi<=30?'Oversold':rsi<=42?'Bearish Zone':rsi>=75?'Overbought':rsi>=65?'Bullish Zone':rsi>55?'Bullish Zone':'Bearish Zone';
+    h+='<div onclick="clickCoin(\''+coin.symbol+'\')" class="alt-row">'+
+      '<div class="alt-sym-wrap" style="flex:1">'+
+        '<span class="alt-sym">'+coin.symbol+'</span>'+
+        '<span style="font-size:10px;color:'+(up?'var(--g2)':'var(--red)')+';margin-left:4px">'+(up?'+':'')+coin.ch24.toFixed(2)+'%</span>'+
+        '<span style="font-size:9px;color:var(--dim);margin-left:3px">$'+fmtEx(coin.price)+'</span>'+
       '</div>'+
       '<div style="text-align:right">'+
-        '<div style="font-family:var(--m);font-size:15px;font-weight:900;color:'+rc+'">RSI '+rsi+'</div>'+
+        '<div style="font-family:var(--m);font-size:13px;font-weight:800;color:'+rc+'">RSI '+(coin.rsiReal?rsi.toFixed(2):rsi)+(coin.rsiReal?'':'~')+'</div>'+
         '<div style="font-size:9px;color:var(--dim)">'+zone+'</div>'+
       '</div>'+
     '</div>';
   });
-  h+='<div style="font-size:9px;color:var(--dim);padding-top:5px;text-align:right">'+rsiList.length+' coins · Real: '+realCount+'</div>';
+  h+='<div class="alt-footer">'+sorted.length+' coins · Real RSI: '+realCount+'</div>';
   el.innerHTML=h;
 }
 
+// ── TOP LOSERS ── Rank · Symbol · Price · Vol · Change · RSI ───────
 function renderAltLosers(coins){
   var el=document.getElementById('alt-losers');
   var wrap=document.getElementById('alt-losers-wrap');
   if(!el) return;
-  if(!coins.length){ if(wrap) wrap.style.display='none'; return; }
+  // Filter: real losers only (> -0.5% down, real volume)
+  var real = coins.filter(function(c){ return c.ch24 <= -0.5 && c.vol > 500000; });
+  if(!real.length){ real = coins.filter(function(c){ return c.ch24 < 0; }); }
+  if(!real.length){ if(wrap) wrap.style.display='none'; return; }
   if(wrap) wrap.style.display='block';
   var h='';
-  coins.slice(0,10).forEach(function(coin,i){
-    var rsi=coin.rsi||50;
-    var rc=rsiCol(rsi);
-    h+='<div onclick="clickCoin(\''+coin.symbol+'\')" style="display:flex;align-items:center;justify-content:space-between;padding:7px 2px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" onmouseover="this.style.background=\'rgba(255,255,255,.02)\'" onmouseout="this.style.background=\'\'">'+
-      '<div style="display:flex;align-items:center;gap:6px">'+
-        '<span style="font-size:10px;color:var(--dim);min-width:16px;text-align:right">'+(i+1)+'</span>'+
-        '<div>'+
-          '<div style="font-family:var(--m);font-size:13px;font-weight:800;color:var(--txt)">'+coin.symbol+'</div>'+
-          '<div style="font-size:10px;color:var(--muted)">$'+fmtEx(coin.price)+' · '+fmtVol(coin.vol)+'</div>'+
-        '</div>'+
+  real.slice(0,15).forEach(function(coin,i){
+    var rsi=coin.rsi||50; var rc=rsiCol(rsi);
+    h+='<div onclick="clickCoin(\''+coin.symbol+'\')" class="alt-row">'+
+      '<span class="alt-rank">'+(i+1)+'</span>'+
+      '<div class="alt-sym-wrap" style="flex:1">'+
+        '<span class="alt-sym">'+coin.symbol+'</span>'+
+        '<span class="alt-px">$'+fmtEx(coin.price)+' · '+fmtVol(coin.vol)+'</span>'+
       '</div>'+
       '<div style="text-align:right">'+
-        '<div style="font-family:var(--m);font-size:14px;font-weight:900;color:var(--red)">'+coin.ch24.toFixed(2)+'%</div>'+
+        '<div style="font-family:var(--m);font-size:13px;font-weight:800;color:var(--red)">'+coin.ch24.toFixed(2)+'%</div>'+
         '<div style="font-size:9px;color:'+rc+'">RSI '+rsi+'</div>'+
       '</div>'+
     '</div>';
   });
-  h+='<div style="font-size:9px;color:var(--dim);padding-top:5px;text-align:right">'+coins.length+' coins total</div>';
+  h+='<div class="alt-footer">'+real.length+' losers today</div>';
+  el.innerHTML=h;
+}
+
+// ── NARASI ALTCOIN ── Market narrative summary ────────────────────
+function renderAltNarasi(d){
+  var el=document.getElementById('alt-narasi'); if(!el) return;
+  var m=d.market||{};
+  var gainers=d.gainers||d.topGainers||[];
+  var losers=d.losers||d.topLosers||[];
+  var vols=d.volBreakouts||d.volumeBreakouts||[];
+
+  // Build narrative
+  var signal=m.signal||'NEUTRAL';
+  var avg=m.avg24h||0;
+  var bigMoves=vols.filter(function(c){return Math.abs(c.ch24)>10 && c.vol>50e6;}).length;
+  var topGainer=gainers[0];
+  var bigVol=vols.filter(function(c){return c.vol>=100e6;}).slice(0,3);
+
+  var mood=signal==='BULLISH'?'🟢 Bullish':signal==='BEARISH'?'🔴 Bearish':'🟡 Mixed';
+  var moodC=signal==='BULLISH'?'var(--g)':signal==='BEARISH'?'var(--red)':'var(--amber)';
+
+  var h='<div class="ct">📋 NARASI ALTCOIN</div>';
+  h+='<div style="background:rgba(0,0,0,.15);border-radius:7px;padding:8px 10px;margin-bottom:6px">';
+  h+='<div style="font-size:12px;font-weight:700;color:'+moodC+'">'+mood+' — Avg 24H: '+(avg>=0?'+':'')+avg.toFixed(2)+'%</div>';
+  h+='<div style="font-size:10px;color:var(--muted);margin-top:3px;line-height:1.6">';
+  h+=(m.pos||0)+' koin hijau · '+(m.neg||0)+' koin merah';
+  if(m.bigMove) h+=' · '+(m.bigMove||0)+' koin >10% move';
+  h+='</div>';
+  h+='</div>';
+
+  if(topGainer){
+    h+='<div style="font-size:10px;color:var(--muted);padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)">'+
+      '🏆 Top Gainer: <strong style="color:var(--g2)">'+topGainer.symbol+'</strong> +'+topGainer.ch24.toFixed(2)+'% ($'+fmtEx(topGainer.price)+')'+
+    '</div>';
+  }
+
+  if(bigVol.length){
+    h+='<div style="font-size:10px;color:var(--muted);padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)">'+
+      '💥 Volume terbesar: '+bigVol.map(function(c){
+        return '<strong>'+c.symbol+'</strong> '+fmtVol(c.vol);
+      }).join(' · ')+
+    '</div>';
+  }
+
+  // Market bias narrative
+  var narrative='';
+  if(signal==='BULLISH' && avg>3){
+    narrative='Market altcoin dalam momentum bullish. Mayoritas koin bergerak naik dengan volume solid. Peluang long terbuka pada setups berkualitas tinggi.';
+  } else if(signal==='BEARISH' && avg<-3){
+    narrative='Tekanan jual dominan. Altcoin mayoritas melemah. Prioritaskan cash/BTC, hindari beli pada panic sell kecuali dengan setup RSI oversold yang valid.';
+  } else if(bigVol.length >= 3){
+    narrative='Volume breakout terdeteksi pada beberapa koin besar. Potensi akumulasi institusional. Monitor untuk konfirmasi trend.';
+  } else {
+    narrative='Market altcoin sedang konsolidasi. Aksi harga terbatas, tunggu breakout dengan volume konfirmasi sebelum masuk posisi.';
+  }
+
+  if(narrative){
+    h+='<div style="font-size:10px;color:var(--dim);padding:6px 0;line-height:1.6">'+narrative+'</div>';
+  }
+
   el.innerHTML=h;
 }
 
