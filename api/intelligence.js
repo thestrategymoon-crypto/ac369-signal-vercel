@@ -314,18 +314,20 @@ export default async function handler(req, res) {
 
     // Fetch BTC ticker + Fear & Greed first
     const [tickerR, fngR] = await Promise.allSettled([
-      sf('https://api.binance.com/api/v3/ticker/24hr', 8000)
-        .then(d => Array.isArray(d) && d.length > 100 ? d :
-          sf('https://fapi.binance.com/fapi/v1/ticker/24hr', 6000)
-            .then(d2 => Array.isArray(d2) && d2.length > 50 ? d2 :
-              sf('https://api.bybit.com/v5/market/tickers?category=spot', 6000)
-                .then(by => by?.result?.list?.length > 50 ? by.result.list.map(t => ({
-                  symbol: t.symbol||'', lastPrice: t.lastPrice||'0',
-                  priceChangePercent: t.price24hPcnt?(parseFloat(t.price24hPcnt)*100).toFixed(4):'0',
-                  quoteVolume: t.turnover24h||'0',
-                })) : null)
-            )
-        ),
+      (async () => {
+        // Try sources sequentially with timeout
+        const b1 = await sf('https://api.binance.com/api/v3/ticker/24hr', 8000);
+        if (Array.isArray(b1) && b1.length > 100) return b1;
+        const b2 = await sf('https://fapi.binance.com/fapi/v1/ticker/24hr', 7000);
+        if (Array.isArray(b2) && b2.length > 50) return b2;
+        const by = await sf('https://api.bybit.com/v5/market/tickers?category=spot', 7000);
+        if (by?.result?.list?.length > 50) return by.result.list.map(t => ({
+          symbol: t.symbol||'', lastPrice: t.lastPrice||'0',
+          priceChangePercent: t.price24hPcnt?(parseFloat(t.price24hPcnt)*100).toFixed(4):'0',
+          quoteVolume: t.turnover24h||'0',
+        }));
+        return null;
+      })(),
       sf('https://api.alternative.me/fng/?limit=1&format=json', 4000),
     ]);
 
