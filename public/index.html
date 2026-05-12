@@ -959,7 +959,7 @@ function buildSearchCard(d){
   if(vp&&vp.poc){
     var priceAbovePOC=p>vp.poc;
     var vpSig=vp.interpretation||( priceAbovePOC?'📈 Harga di atas POC ('+fP(vp.poc)+') — bullish, POC = support':'📉 Harga di bawah POC ('+fP(vp.poc)+') — bearish, POC = resistance');
-    html+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'+
+    h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'+
       '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;margin-bottom:6px">📊 VOLUME PROFILE (POC)</div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:10px;margin-bottom:5px">'+
         '<div><span style="color:var(--dim)">POC </span><span style="font-family:var(--m);font-weight:700;color:var(--amber)">$'+fP(vp.poc)+'</span></div>'+
