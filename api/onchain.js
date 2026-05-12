@@ -1,95 +1,105 @@
-// api/onchain.js — AC369 FUSION BTC ONCHAIN INTELLIGENCE v2.1
-// Comprehensive: BTC onchain + derivatives + market + block data
-// Sources: Binance, Alternative.me, CoinGecko, mempool.space
+// api/onchain.js — AC369 FUSION BTC ONCHAIN v3.0
+// ══════════════════════════════════════════════════════════════════
+// Comprehensive BTC Intelligence: Price + Derivatives + Metrics + Block
+// Sources: Binance Spot → Bybit (price fallback)
+//          fapi.binance.com (derivatives)
+//          Alternative.me (F&G)
+//          CoinGecko Global (dominance)
+//          mempool.space (block data)
+// ══════════════════════════════════════════════════════════════════
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Cache-Control', 's-maxage=30');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const sf = async (url, ms = 7000) => {
+  const sf = async (url, ms = 8000) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), ms);
     try {
       const r = await fetch(url, {
         signal: ctrl.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json,text/plain,*/*' }
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AC369/3.0)', Accept: 'application/json' }
       });
       clearTimeout(timer);
       if (!r.ok) return null;
-      const ct = r.headers.get('content-type') || '';
-      if (ct.includes('json')) return await r.json();
-      const txt = await r.text();
-      try { return JSON.parse(txt); } catch { return txt; }
+      return await r.json();
     } catch { clearTimeout(timer); return null; }
   };
 
   try {
     const t0 = Date.now();
 
-    // ── PARALLEL FETCH ─────────────────────────────────────────────
-    const [
-      btcTickerR,    // BTC 24hr ticker from Binance SPOT
-      fngR,          // Fear & Greed
-      domR,          // BTC dominance from CoinGecko global
-      premiumR,      // Funding rate + mark price
-      oiR,           // Open Interest
-      lsR,           // Long/Short Ratio
-      lsTopR,        // Top Trader L/S (fallback)
-      takerR,        // Taker buy/sell volume (for L/S proxy)
-      heightR,       // Block height
-      mempoolR,      // Mempool stats
-      diffR,         // Difficulty adjustment
-      hashR,         // Hash rate
-      feesR,         // Fee recommendations
-    ] = await Promise.allSettled([
-      sf('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT', 6000),
-      sf('https://api.alternative.me/fng/?limit=3&format=json', 5000),
-      sf('https://api.coingecko.com/api/v3/global', 7000),
-      sf('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT', 5000),
-      sf('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT', 5000),
-      sf('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=5m&limit=1', 5000),
-      sf('https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=BTCUSDT&period=5m&limit=1', 5000),
-      sf('https://fapi.binance.com/futures/data/takerbuybasevol?symbol=BTCUSDT&contractType=PERPETUAL&period=5m&limit=12', 5000),
-      sf('https://mempool.space/api/blocks/tip/height', 5000),
-      sf('https://mempool.space/api/mempool', 5000),
-      sf('https://mempool.space/api/v1/difficulty-adjustment', 5000),
-      sf('https://mempool.space/api/v1/mining/hashrate/3d', 6000),
-      sf('https://mempool.space/api/v1/fees/recommended', 4000),
+    // ── WAVE 1: Core data (most reliable) ─────────────────────────
+    const [spotR, fngR, globalR] = await Promise.allSettled([
+      sf('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT', 7000),
+      sf('https://api.alternative.me/fng/?limit=1&format=json', 6000),
+      sf('https://api.coingecko.com/api/v3/global', 8000),
     ]);
 
-    const ok  = s => s.status === 'fulfilled' && s.value != null;
-    const val = s => s.status === 'fulfilled' ? s.value : null;
+    const spot   = spotR.status   === 'fulfilled' ? spotR.value   : null;
+    const fng    = fngR.status    === 'fulfilled' ? fngR.value    : null;
+    const global = globalR.status === 'fulfilled' ? globalR.value : null;
 
-    const btcT   = ok(btcTickerR) ? val(btcTickerR) : null;
-    const fng    = ok(fngR)       ? val(fngR)       : null;
-    const domData= ok(domR)       ? val(domR)       : null;
-    const prem   = ok(premiumR)   ? val(premiumR)   : null;
-    const oiData = ok(oiR)        ? val(oiR)        : null;
-    const ls     = ok(lsR)        ? (Array.isArray(val(lsR)) ? val(lsR)[0] : val(lsR)) : null;
-    const lsTop  = ok(lsTopR)     ? (Array.isArray(val(lsTopR)) ? val(lsTopR)[0] : val(lsTopR)) : null;
-    const taker  = ok(takerR)     ? val(takerR)     : null;
-    const mem    = ok(mempoolR)   ? val(mempoolR)   : null;
-    const diff   = ok(diffR)      ? val(diffR)      : null;
-    const hash   = ok(hashR)      ? val(hashR)      : null;
-    const fees   = ok(feesR)      ? val(feesR)      : null;
+    // BTC price from spot ticker
+    let btcPrice  = spot ? +(spot.lastPrice  || 0) : 0;
+    let btcChg24h = spot ? +(spot.priceChangePercent || 0) : 0;
+    let btcHigh   = spot ? +(spot.highPrice  || 0) : 0;
+    let btcLow    = spot ? +(spot.lowPrice   || 0) : 0;
+    let btcVol    = spot ? +(spot.quoteVolume || 0) : 0;
 
-    // Block height (text response)
-    const heightRaw = ok(heightR) ? val(heightR) : null;
-    const blockH = typeof heightRaw === 'number' ? heightRaw
-                 : typeof heightRaw === 'string' ? (parseInt(heightRaw) || 896000) : 896000;
+    // Fallback: if Binance spot fails, try Bybit
+    if (!btcPrice) {
+      const bybit = await sf('https://api.bybit.com/v5/market/tickers?category=spot&symbol=BTCUSDT', 6000);
+      const bt = bybit?.result?.list?.[0];
+      if (bt) {
+        btcPrice  = +(bt.lastPrice   || 0);
+        btcChg24h = bt.price24hPcnt ? +(bt.price24hPcnt) * 100 : 0;
+        btcHigh   = +(bt.highPrice24h || 0);
+        btcLow    = +(bt.lowPrice24h  || 0);
+        btcVol    = +(bt.turnover24h  || 0);
+      }
+    }
 
-    // ── BTC PRICE ──────────────────────────────────────────────────
-    const btcPrice  = btcT ? +(btcT.lastPrice || 0) : 0;
-    const btcChg24h = btcT ? +(btcT.priceChangePercent || 0) : 0;
-    const btcHigh   = btcT ? +(btcT.highPrice || btcPrice) : btcPrice;
-    const btcLow    = btcT ? +(btcT.lowPrice  || btcPrice) : btcPrice;
-    const btcVol24h = btcT ? +(btcT.quoteVolume || 0) : 0;
-    // Intraday price range % (volatility proxy)
     const vol24hPct = btcPrice > 0 && btcHigh > btcLow
       ? +((btcHigh - btcLow) / btcPrice * 100).toFixed(2) : 0;
 
-    // ── FEAR & GREED ───────────────────────────────────────────────
+    // ── WAVE 2: Derivatives (fapi.binance.com) ─────────────────────
+    const [premR, oiR, lsGlobalR, lsTopR, takerR] = await Promise.allSettled([
+      sf('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT', 6000),
+      sf('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT', 6000),
+      sf('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=5m&limit=1', 6000),
+      sf('https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=BTCUSDT&period=5m&limit=1', 6000),
+      sf('https://fapi.binance.com/futures/data/takerbuybasevol?symbol=BTCUSDT&contractType=PERPETUAL&period=5m&limit=12', 6000),
+    ]);
+
+    const prem    = premR.status    === 'fulfilled' ? premR.value    : null;
+    const oiData  = oiR.status      === 'fulfilled' ? oiR.value      : null;
+    const lsGlob  = lsGlobalR.status === 'fulfilled' ? (Array.isArray(lsGlobalR.value) ? lsGlobalR.value[0] : lsGlobalR.value) : null;
+    const lsTop   = lsTopR.status   === 'fulfilled' ? (Array.isArray(lsTopR.value)  ? lsTopR.value[0]  : lsTopR.value)  : null;
+    const taker   = takerR.status   === 'fulfilled' ? takerR.value   : null;
+
+    // ── WAVE 3: Block data ──────────────────────────────────────────
+    const [heightR, mempoolR, diffR, hashR, feesR] = await Promise.allSettled([
+      sf('https://mempool.space/api/blocks/tip/height', 6000),
+      sf('https://mempool.space/api/mempool', 6000),
+      sf('https://mempool.space/api/v1/difficulty-adjustment', 6000),
+      sf('https://mempool.space/api/v1/mining/hashrate/3d', 7000),
+      sf('https://mempool.space/api/v1/fees/recommended', 5000),
+    ]);
+
+    const mem   = mempoolR.status === 'fulfilled' ? mempoolR.value : null;
+    const diff  = diffR.status    === 'fulfilled' ? diffR.value    : null;
+    const hash  = hashR.status    === 'fulfilled' ? hashR.value    : null;
+    const fees  = feesR.status    === 'fulfilled' ? feesR.value    : null;
+
+    // Block height
+    const heightVal = heightR.status === 'fulfilled' ? heightR.value : null;
+    const blockH = typeof heightVal === 'number' ? heightVal
+                 : typeof heightVal === 'string' ? parseInt(heightVal) || 896000 : 896000;
+
+    // ── FEAR & GREED ────────────────────────────────────────────────
     const fgVal   = fng?.data?.[0] ? parseInt(fng.data[0].value) : 50;
     const fgLabel = fng?.data?.[0]?.value_classification || 'Neutral';
     const fgStatus = fgVal <= 25 ? 'Extreme Fear — potential buy zone'
@@ -97,50 +107,50 @@ export default async function handler(req, res) {
                    : fgVal >= 75 ? 'Extreme Greed — consider reducing'
                    : fgVal >= 55 ? 'Greed — momentum continues' : 'Neutral';
 
-    // ── BTC DOMINANCE ──────────────────────────────────────────────
-    const btcDomPct = domData?.data?.market_cap_percentage?.btc
-      ? +domData.data.market_cap_percentage.btc.toFixed(1) : 58;
+    // ── BTC DOMINANCE ───────────────────────────────────────────────
+    const btcDomPct = global?.data?.market_cap_percentage?.btc
+      ? +global.data.market_cap_percentage.btc.toFixed(1) : 58.0;
 
-    // ── FUNDING RATE ───────────────────────────────────────────────
+    // ── FUNDING RATE ────────────────────────────────────────────────
     const fr    = prem?.lastFundingRate != null ? parseFloat(prem.lastFundingRate) : null;
     const markPx = prem?.markPrice ? +prem.markPrice : btcPrice;
     const frPct = fr != null ? +(fr * 100).toFixed(4) : null;
     const frAnn = fr != null ? +(fr * 100 * 3 * 365).toFixed(1) : null;
-    const frSig = fr == null ? 'N/A'
-                : fr < -0.01  ? '⚡ Short Squeeze Setup — shorts losing money'
-                : fr < -0.003 ? '⚡ Negative — squeeze potential'
-                : fr < 0.003  ? '⚖️ Netral'
-                : fr < 0.02   ? '⚠️ Long Bias'
-                : fr < 0.05   ? '⚠️ Overleveraged Longs'
-                :               '🔴 Extreme Long Bias — danger';
+    const frSig = fr == null     ? 'Memuat...'
+                : fr < -0.01    ? '⚡ Short Squeeze Setup!'
+                : fr < -0.003   ? '🟢 Negative — squeeze potential'
+                : fr < 0.003    ? '⚖️ Netral'
+                : fr < 0.02     ? '⚠️ Long Bias'
+                : fr < 0.05     ? '⚠️ Overleveraged Longs'
+                :                 '🔴 Extreme — danger zone';
 
-    // ── OPEN INTEREST ──────────────────────────────────────────────
-    // openInterest is in BTC contracts
-    let oiVal = null, oiLabel = 'N/A';
+    // ── OPEN INTEREST ───────────────────────────────────────────────
+    let oiVal = null, oiLabel = 'Memuat...';
     if (oiData?.openInterest && btcPrice > 0) {
-      oiVal = +(parseFloat(oiData.openInterest) * btcPrice / 1e9).toFixed(2);
-      oiLabel = oiVal > 20 ? 'HIGH — crowded market' : oiVal > 10 ? 'NORMAL' : 'LOW — accumulation phase';
+      oiVal  = +(parseFloat(oiData.openInterest) * btcPrice / 1e9).toFixed(2);
+      oiLabel = oiVal > 20 ? 'HIGH — crowded market'
+              : oiVal > 10 ? 'NORMAL'
+              : oiVal > 5  ? 'LOW — accumulation'
+              : 'VERY LOW';
     }
 
-    // ── LONG/SHORT RATIO ───────────────────────────────────────────
-    // Try global L/S first, then top trader, then derive from taker flow
-    let lsRatio = null, longPct = null, shortPct = null, lsSig = 'N/A';
+    // ── LONG / SHORT RATIO ──────────────────────────────────────────
+    let lsRatio = null, longPct = null, shortPct = null, lsSig = 'Memuat...';
+    const lsSrc = lsGlob?.longShortRatio ? lsGlob : lsTop?.longShortRatio ? lsTop : null;
 
-    if (ls?.longShortRatio) {
-      lsRatio = +parseFloat(ls.longShortRatio).toFixed(3);
-      // longAccount is a decimal: 0.4312 = 43.12%
-      const la = parseFloat(ls.longAccount || 0);
-      const sa = parseFloat(ls.shortAccount || 0);
-      longPct  = la > 0 ? +(la * 100).toFixed(1) : +(lsRatio / (1 + lsRatio) * 100).toFixed(1);
-      shortPct = sa > 0 ? +(sa * 100).toFixed(1) : +(100 - longPct).toFixed(1);
-    } else if (lsTop?.longShortRatio) {
-      // Top trader fallback
-      lsRatio = +parseFloat(lsTop.longShortRatio).toFixed(3);
-      const la = parseFloat(lsTop.longAccount || 0);
-      longPct  = la > 0 ? +(la * 100).toFixed(1) : +(lsRatio / (1 + lsRatio) * 100).toFixed(1);
-      shortPct = +(100 - longPct).toFixed(1);
-    } else if (taker && Array.isArray(taker) && taker.length > 0) {
-      // Derive from taker flow if L/S endpoint unavailable
+    if (lsSrc) {
+      lsRatio = +parseFloat(lsSrc.longShortRatio).toFixed(3);
+      const la = parseFloat(lsSrc.longAccount || 0);
+      const sa = parseFloat(lsSrc.shortAccount || 0);
+      if (la > 0 && la < 1) {
+        longPct  = +(la * 100).toFixed(1);
+        shortPct = +(sa > 0 ? sa * 100 : 100 - la * 100).toFixed(1);
+      } else {
+        longPct  = +(lsRatio / (1 + lsRatio) * 100).toFixed(1);
+        shortPct = +(100 - longPct).toFixed(1);
+      }
+    } else if (Array.isArray(taker) && taker.length >= 3) {
+      // Taker flow proxy
       const totalBuy  = taker.reduce((s, r) => s + parseFloat(r.buyVol  || 0), 0);
       const totalSell = taker.reduce((s, r) => s + parseFloat(r.sellVol || 0), 0);
       const total = totalBuy + totalSell;
@@ -152,132 +162,143 @@ export default async function handler(req, res) {
     }
 
     if (lsRatio != null) {
-      lsSig = lsRatio < 0.6  ? 'Short overloaded — squeeze pending ⚡'
-            : lsRatio < 0.85 ? 'Slight short bias — watch for reversal'
+      lsSig = lsRatio < 0.65 ? 'Short overloaded — squeeze pending ⚡'
+            : lsRatio < 0.9  ? 'Slight short bias'
             : lsRatio > 1.8  ? 'Long overloaded — potential dump ⚠️'
-            : lsRatio > 1.2  ? 'Slight long bias — caution on longs'
+            : lsRatio > 1.2  ? 'Slight long bias — caution'
             :                  'Balanced';
     }
 
-    // ── MVRV PROXY ─────────────────────────────────────────────────
-    // Real MVRV needs on-chain data. Proxy: current vs estimated realized price
-    // Realized price proxy ≈ 55% of ATH (rough historical average)
-    const cgMktCap = domData?.data?.total_market_cap?.btc
-      ? btcPrice * 19900000 : btcPrice * 19900000;
-    const realizedPxProxy = 45000; // ~historical BTC realized price estimate
-    const mvrvProxy = btcPrice > 0 ? +(btcPrice / realizedPxProxy).toFixed(2) : 1.5;
-    const mvrvLabel = mvrvProxy < 0.8 ? 'Undervalued — accumulate (rare)'
-                    : mvrvProxy < 1.5 ? 'Fair value zone'
-                    : mvrvProxy < 2.5 ? 'Overheated — caution'
-                    :                   'Bubble risk zone';
+    // ── MVRV PROXY ──────────────────────────────────────────────────
+    // BTC ATH ~$108,800. Realized price ≈ ATH × 0.50–0.55
+    // At BTC ~$80K: realized ≈ $54K–60K, MVRV ≈ 1.3–1.5 (fair value)
+    const btcAth      = 108800; // last known ATH
+    const realizedPx  = Math.round(btcAth * 0.52); // ≈ $56,576
+    const mvrvProxy   = btcPrice > 0 ? +(btcPrice / realizedPx).toFixed(2) : null;
+    const mvrvLabel   = !mvrvProxy    ? 'N/A'
+                      : mvrvProxy < 0.8  ? 'Undervalued — accumulate'
+                      : mvrvProxy < 1.3  ? 'Fair value (cheap zone)'
+                      : mvrvProxy < 1.8  ? 'Fair value zone'
+                      : mvrvProxy < 2.5  ? 'Caution — extended'
+                      :                    'Bubble risk';
 
-    // ── NUPL & SOPR PROXIES ────────────────────────────────────────
-    // NUPL proxy: how much of market cap is unrealized profit
-    const nupl = +Math.min(0.95, Math.max(-0.3, (btcPrice - realizedPxProxy) / btcPrice)).toFixed(3);
-    const nuplLabel = nupl < -0.1 ? 'CAPITULATION' : nupl < 0.1 ? 'HOPE'
-                    : nupl < 0.3  ? 'OPTIMISM' : nupl < 0.55 ? 'BELIEF' : 'EUPHORIA';
+    // ── NUPL PROXY ──────────────────────────────────────────────────
+    // (marketPrice - realizedPrice) / marketPrice
+    const nupl = btcPrice > 0
+      ? +Math.min(0.95, Math.max(-0.5, (btcPrice - realizedPx) / btcPrice)).toFixed(3)
+      : null;
+    const nuplLabel = nupl == null ? 'N/A'
+                    : nupl < -0.2  ? 'CAPITULATION (buy zone)'
+                    : nupl < 0.0   ? 'HOPE (early recovery)'
+                    : nupl < 0.25  ? 'OPTIMISM'
+                    : nupl < 0.5   ? 'BELIEF'
+                    : nupl < 0.75  ? 'THRILL / EUPHORIA'
+                    :                'EUPHORIA (reduce)';
 
-    // SOPR proxy: today's price vs yesterday
-    const sopr = +(1 + btcChg24h / 100).toFixed(3);
-    const soprLabel = sopr >= 1.01 ? 'PROFIT TAKING' : sopr >= 0.99 ? 'BREAKEVEN' : 'LOSS SELLING';
+    // ── SOPR PROXY ──────────────────────────────────────────────────
+    const sopr = btcChg24h !== 0 ? +(1 + btcChg24h / 100).toFixed(3) : 1.000;
+    const soprLabel = sopr >= 1.015 ? 'PROFIT TAKING'
+                    : sopr >= 1.003 ? 'MILD PROFIT'
+                    : sopr >= 0.99  ? 'BREAKEVEN'
+                    : sopr >= 0.97  ? 'MILD LOSS'
+                    :                 'LOSS SELLING';
 
     // ── BLOCK DATA ──────────────────────────────────────────────────
     const hashRate  = hash?.currentHashrate ? +(hash.currentHashrate / 1e18).toFixed(1) : null;
     const diffTxt   = diff?.difficulty ? +(diff.difficulty / 1e12).toFixed(1) : null;
     const epochPct  = diff?.progressPercent ? +diff.progressPercent.toFixed(1) : null;
-    const blkRemain = diff?.remainingBlocks || null;
-    const mempoolTx = mem?.count || null;
+    const blkRemain = diff?.remainingBlocks  ? diff.remainingBlocks : null;
+    const mempoolTx = mem?.count    || null;
+    const mempoolMB = mem?.vsize    ? +(mem.vsize / 1e6).toFixed(1) : null;
     const fastFee   = fees?.fastestFee || null;
     const HALVING   = 1050000;
     const bLeft     = Math.max(0, HALVING - blockH);
     const dLeft     = Math.round(bLeft * 10 / 60 / 24);
     const halvPct   = +Math.min(100, ((blockH - 840000) / (HALVING - 840000) * 100)).toFixed(1);
 
-    // ── BULL/BEAR SCORING ──────────────────────────────────────────
+    // ── BULL / BEAR SCORING ─────────────────────────────────────────
     let bull = 0, bear = 0;
-    // F&G
     if (fgVal <= 25) bull += 25; else if (fgVal <= 40) bull += 15;
     else if (fgVal >= 75) bear += 20; else if (fgVal >= 60) bear += 10;
-    // Funding
     if (fr != null) {
       if (fr < -0.005) bull += 20; else if (fr < 0) bull += 10;
       else if (fr > 0.05) bear += 20; else if (fr > 0.02) bear += 10;
     }
-    // L/S
     if (lsRatio != null) {
       if (lsRatio < 0.7) bull += 15; else if (lsRatio > 1.5) bear += 15;
     }
-    // Price momentum
     if (btcChg24h > 3) bull += 10; else if (btcChg24h > 0) bull += 5;
     else if (btcChg24h < -3) bear += 10; else if (btcChg24h < 0) bear += 5;
-    // MVRV
-    if (mvrvProxy < 1.5) bull += 10; else if (mvrvProxy > 3) bear += 10;
+    if (mvrvProxy && mvrvProxy < 1.5) bull += 10;
+    else if (mvrvProxy && mvrvProxy > 2.5) bear += 10;
 
-    const total   = bull + bear;
+    const total    = bull + bear;
     const bullBias = total > 0 ? Math.round(bull / total * 100) : 50;
-    const overallSignal = bullBias >= 70 ? '📈 BULLISH' : bullBias >= 60 ? '🟢 MILD BULLISH'
-                        : bullBias <= 30 ? '📉 BEARISH' : bullBias <= 40 ? '🔴 MILD BEARISH' : '⚖️ NEUTRAL';
+    const overallSignal = bullBias >= 70 ? '📈 BULLISH'
+                        : bullBias >= 60 ? '🟢 MILD BULLISH'
+                        : bullBias <= 30 ? '📉 BEARISH'
+                        : bullBias <= 40 ? '🔴 MILD BEARISH' : '⚖️ NEUTRAL';
 
-    // ── WEEKLY OUTLOOK ─────────────────────────────────────────────
+    // ── WEEKLY OUTLOOK ──────────────────────────────────────────────
     const sentimentNote = fgVal <= 35
       ? `F&G ${fgVal}/100 (Fear).\nNeutral — tunggu signal lebih kuat.`
       : fgVal >= 65
       ? `F&G ${fgVal}/100 (Greed).\nHati-hati — momentum bisa berbalik.`
-      : `F&G ${fgVal}/100 (Neutral).\nMarket ranging — butuh katalis baru.`;
+      : `F&G ${fgVal}/100 (${fgLabel}).\nMarket ranging — butuh katalis baru.`;
 
     const derivNote = frPct != null
-      ? `Funding ${frPct}% | L/S ${longPct || '—'}% / ${shortPct || '—'}%.\n${lsSig}.`
-      : `Funding data unavailable.`;
+      ? `Funding ${frPct}% | L/S ${longPct || '?'}% / ${shortPct || '?'}%.\n${lsSig}.`
+      : `Funding data: cek fapi.binance.com · L/S: ${longPct || '?'}% / ${shortPct || '?'}%.`;
 
-    const domNote = `${btcDomPct}% — ${btcDomPct > 55 ? 'BTC season aktif.\nHold altcoins minimal.'
-      : btcDomPct < 45 ? 'Alt season brewing.\nAltcoin risk/reward meningkat.'
-      : 'Transisi BTC/Alt.\nSelektif pilih altcoin.'}`;
+    const domNote = `${btcDomPct}% — ${btcDomPct > 55 ? 'BTC season aktif.'
+      : btcDomPct < 45 ? 'Alt season potential.'
+      : 'Transisi BTC/Alt.'}\n${btcDomPct > 55 ? 'Altcoin hold minimal.' : btcDomPct < 45 ? 'Altcoin risk/reward meningkat.' : 'Selektif pilih altcoin.'}`;
 
     const trendNote = `${btcChg24h >= 0 ? '+' : ''}${btcChg24h.toFixed(2)}% hari ini.\n${
       Math.abs(btcChg24h) < 1 ? 'Sideways — patience mode.'
       : btcChg24h > 3 ? 'Momentum bullish — trailing stop.'
       : btcChg24h > 0 ? 'Mild bullish — monitor resistance.'
-      : btcChg24h < -3 ? 'Downtrend — risk off.'
+      : btcChg24h < -3 ? 'Downtrend aktif — risk off.'
       : 'Mild bearish — support watch.'}`;
 
-    // ── AI PROMPT ──────────────────────────────────────────────────
-    const aiPrompt = `Analisa seluruh data BTC onchain di bawah secara profesional seperti hedge fund crypto intelligence dashboard.
-
-DATA AKTUAL:
-- BTC Price: $${btcPrice.toLocaleString('en-US',{maximumFractionDigits:0})} | 24H: ${btcChg24h>=0?'+':''}${btcChg24h.toFixed(2)}% | Vol: $${(btcVol24h/1e9).toFixed(1)}B
-- F&G: ${fgVal}/100 (${fgLabel})
-- Funding Rate: ${frPct!=null?frPct+'%':'N/A'} | Annualized: ${frAnn!=null?frAnn+'%':'N/A'}
-- L/S Ratio: ${lsRatio||'N/A'} | Long: ${longPct||'—'}% | Short: ${shortPct||'—'}%
-- OI: ${oiVal!=null?'$'+oiVal+'B':'N/A'} (${oiLabel})
-- MVRV Proxy: ${mvrvProxy} (${mvrvLabel})
-- NUPL Proxy: ${nupl} (${nuplLabel})
-- SOPR Proxy: ${sopr} (${soprLabel})
-- BTC Dominance: ${btcDomPct}%
-- Volatility 24H: ${vol24hPct}% range
-- Hash Rate: ${hashRate||'—'} EH/s
-- Bull Score: ${bull}pts | Bear Score: ${bear}pts | Bias: ${bullBias}%
-
-Fokus: sentimen, squeeze potential, arah 24H-7D, buyer vs seller strength, continuation probability.
-
-Berikan output:
-1. Summary market
-2. Smart money interpretation
-3. Danger zone
-4. Best scenario
-5. Worst scenario
-6. Trading bias
-7. Scalping insight
-8. Swing insight
-9. Altcoin risk level
-10. Final conclusion`;
+    // ── AI PROMPT ───────────────────────────────────────────────────
+    const aiPrompt = [
+      'Analisa BTC onchain data di bawah seperti hedge fund crypto analyst.',
+      '',
+      '=== DATA AKTUAL ===',
+      `BTC Price: $${btcPrice.toLocaleString('en-US',{maximumFractionDigits:0})} | 24H: ${btcChg24h>=0?'+':''}${btcChg24h.toFixed(2)}% | Vol: $${(btcVol/1e9).toFixed(1)}B`,
+      `F&G: ${fgVal}/100 (${fgLabel}) | ${fgStatus}`,
+      `Funding Rate: ${frPct != null ? frPct+'%' : 'N/A'} | Annualized: ${frAnn != null ? frAnn+'%' : 'N/A'}`,
+      `L/S Ratio: ${lsRatio || 'N/A'} | Long: ${longPct || '—'}% | Short: ${shortPct || '—'}%`,
+      `OI: ${oiVal != null ? '$'+oiVal+'B' : 'N/A'} | Volatility 24H: ${vol24hPct}%`,
+      `MVRV Proxy: ${mvrvProxy || 'N/A'} (${mvrvLabel}) | NUPL: ${nupl || 'N/A'} (${nuplLabel})`,
+      `SOPR: ${sopr} (${soprLabel}) | BTC Dom: ${btcDomPct}%`,
+      `Hash Rate: ${hashRate || '—'} EH/s | Block: ${blockH.toLocaleString()}`,
+      `Bull Score: ${bull}pts | Bear Score: ${bear}pts | Bias: ${bullBias}%`,
+      '',
+      '=== ANALISA REQUEST ===',
+      'Berikan:',
+      '1. Summary market (2-3 kalimat)',
+      '2. Smart money interpretation',
+      '3. Danger zone (level & kondisi)',
+      '4. Best scenario (24H-7D)',
+      '5. Worst scenario (24H-7D)',
+      '6. Trading bias (LONG/SHORT/WAIT)',
+      '7. Scalping insight',
+      '8. Swing insight',
+      '9. Altcoin risk level (1-10)',
+      '10. Final conclusion',
+      '',
+      'Gaya: profesional, data-driven, tajam, tanpa disclaimer lemah.',
+    ].join('\n');
 
     return res.status(200).json({
       timestamp: Date.now(),
-      scanTime: ((Date.now()-t0)/1000).toFixed(1),
-      dataOk: !!(btcT || prem || fng),
-      sources: ['Binance','Alternative.me','CoinGecko','mempool.space'],
+      scanTime: ((Date.now() - t0) / 1000).toFixed(1),
+      dataOk: !!(btcPrice && btcPrice > 0),
+      sources: ['Binance', 'Alternative.me', 'CoinGecko', 'mempool.space'],
       // Price
-      btcPrice, btcChg24h:+btcChg24h.toFixed(2), btcVol24h, vol24hPct,
+      btcPrice, btcChg24h: +btcChg24h.toFixed(2), btcVol, vol24hPct,
       btcHigh, btcLow, markPx: +markPx.toFixed(2),
       // F&G
       fgVal, fgLabel, fgStatus,
@@ -295,7 +316,7 @@ Berikan output:
       overallSignal,
       // Block
       blockH, hashRate, diffTxt, epochPct, blkRemain,
-      mempoolTx, fastFee,
+      mempoolTx, mempoolMB, fastFee,
       blocksLeft: bLeft, daysLeft: dLeft, halvingPct: halvPct,
       // Outlook
       weeklyOutlook: { sentimentNote, derivNote, domNote, trendNote },
@@ -305,10 +326,11 @@ Berikan output:
   } catch (e) {
     return res.status(200).json({
       timestamp: Date.now(), dataOk: false, error: e.message,
-      btcPrice: 0, fgVal: 50, fgLabel: 'Neutral',
+      btcPrice: 0, fgVal: 50, fgLabel: 'Neutral', fgStatus: 'Neutral',
       overallSignal: '⚖️ NEUTRAL', bullBias: 50, bullPts: 0, bearPts: 0,
-      btcDomPct: 58, mvrvProxy: 1.5, mvrvLabel: 'Fair value zone',
-      nuplProxy: 0.2, nuplLabel: 'HOPE', soprProxy: 1.0, soprLabel: 'BREAKEVEN',
+      btcDomPct: 58, mvrvProxy: null, mvrvLabel: 'N/A',
+      nuplProxy: null, nuplLabel: 'N/A', soprProxy: 1, soprLabel: 'BREAKEVEN',
+      frSig: 'Data unavailable', lsSig: 'Data unavailable', oiLabel: 'N/A',
       blockH: 896000, blocksLeft: 154000, daysLeft: 1069, halvingPct: 26.7,
       weeklyOutlook: {}, aiPrompt: '',
     });
