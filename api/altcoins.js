@@ -77,7 +77,8 @@ function proxyRSI(price, high, low, open, wap, ch24) {
   if (lw > 0.3 && rp > 0.5) rsi += 8;
   if (body > 0.6) rsi += ch24 > 0 ? 6 : -6;
 
-  return Math.max(5, Math.min(95, Math.round(rsi)));
+  // Proxy RSI: clamp to 20-80 range (extremes only from real klines RSI)
+  return Math.max(20, Math.min(80, Math.round(rsi)));
 }
 
 // Build a standardized coin object from ticker
