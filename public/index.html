@@ -562,6 +562,8 @@ async function fetchBias(){
     H('s-fg','<span style="color:'+(fgVal<=30?'var(--g)':fgVal>=70?'var(--red)':'var(--amber)')+'">'+fgVal+'</span>');
     if(btcDom) H('s-dom', btcDom.toFixed(1)+'%');
     if(astro.moonEmoji) H('s-moon', astro.moonEmoji+'<span style="font-size:9px;color:var(--dim);margin-left:3px">'+(astro.moonPhase||'')+'</span>');
+    // bias-btc: show BTC trend from bias context
+    if(btcTrend) H('bias-btc','<span style="font-size:11px;color:var(--muted)">BTC 4H: <span style="color:'+(btcTrend.includes('BULL')||btcTrend==='UP'?'var(--g)':btcTrend.includes('BEAR')||btcTrend==='DOWN'?'var(--red)':'var(--amber)')+'">'+btcTrend+'</span></span>');
   }catch(e){ H('bias-label','<span style="color:var(--red);font-size:11px">❌ Bias: '+e.message+'</span>'); }
 }
 
@@ -616,7 +618,7 @@ async function fetchMacro(){
     if(!r.ok) throw new Error('HTTP '+r.status);
     const d=await r.json();
     const fg=d.fearGreed||{value:50,classification:'Neutral'};
-    const fgc=fg.value<=25?'var(--red)':fg.value<=45?'var(--amber)':fg.value<=55?'var(--txt)':fg.value<=75?'#a0e040':'var(--g)';
+    const fgc=fg.value<=25?'var(--g)':fg.value<=45?'#a0e040':fg.value<=55?'var(--txt)':fg.value<=75?'var(--amber)':'var(--red)'; // Extreme Fear=green(buy), Extreme Greed=red(sell)
     H('s-fg','<span style="color:'+fgc+';font-weight:700">'+fg.value+'</span>');
     H('fg-c','<div class="ct">😨 Fear & Greed</div><div class="mv" style="color:'+fgc+'">'+fg.value+'</div><div style="font-size:11px;color:var(--muted)">'+fg.classification+'</div>'+
       '<div class="fbar"><div class="fmk" style="left:'+fg.value+'%"></div></div>'+
