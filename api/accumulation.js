@@ -411,7 +411,7 @@ export default async function handler(req, res) {
     });
 
   } catch (e) {
-    return res.status(500).json({
+    return res.status(200).json({
       error: e.message, version: 'v13.1',
       totalScanned: 0, totalQualified: 0, regularSetups: [], memeSetups: [],
     });
