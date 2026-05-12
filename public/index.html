@@ -823,149 +823,263 @@ async function doSearch(){
 }
 
 function buildSearchCard(d){
-  if(d.error&&!d.price) return '<div style="color:var(--red);font-size:11px;padding:12px;background:rgba(255,68,100,.06);border-radius:8px">❌ '+d.error+'</div>';
-  const p=d.price||0, ch=d.change24h||0, up=ch>=0;
-  const rec=d.recommendation||{}, conf=d.confluence||{};
-  const setup=d.tradeSetup||{};
-  const ms=d.marketStructure?.['4H']||{};
+  if(d.error&&!d.price) return '<div style="color:var(--red);font-size:11px;padding:12px;background:rgba(255,68,100,.06);border:1px solid rgba(255,68,100,.15);border-radius:8px">❌ '+d.error+'</div>';
+  const p=d.price||0, ch=+(d.change24h||0), up=ch>=0;
+  const rec=d.recommendation||{};
+  const conf=d.confluence||{};
+  const sum=d.summary||{};
+  const setup=d.tradeSetup;
+  const ms4h=d.marketStructure?.['4H']||{};
   const smc4h=d.smc?.['4H']||{};
   const ew4h=d.elliottWave?.['4H']||{};
   const tf1h=d.timeframes?.['1H']||{};
   const tf4h=d.timeframes?.['4H']||{};
   const tf1d=d.timeframes?.['1D']||{};
-  const kl=d.keyLevels||{};
-  const liq=d.liquidationMap||{};
+  const pivots=d.pivotPoints?.['4H']||{};
+  const liq=d.liquidationMap;
   const deriv=d.derivatives||{};
+  const kl=d.keyLevels||{};
+  const astro=d.astrology||{};
   const prob=conf.probability||rec.score||50;
   const probC=prob>=75?'var(--g)':prob>=60?'var(--g2)':prob>=45?'var(--amber)':'var(--red)';
-  const biasC=rec.action?.includes('🟢')?'var(--g)':rec.action?.includes('🔴')?'var(--red)':'var(--amber)';
+  const rc=rec.action?.includes('🟢')?'var(--g)':rec.action?.includes('🔴')?'var(--red)':'var(--amber)';
+  const atr=d.atr4h||0;
+  const fmtR=function(v,p){ return v&&v>0&&p>0?'('+(((v-p)/p)*100).toFixed(2)+'%)':''; };
 
-  let html='<div class="src">';
+  var h='<div class="src">';
 
-  // ── HEADER ──────────────────────────────────────────────────────
-  html+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'+
+  // ── HEADER ─────────────────────────────────────────────────────
+  h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'+
     '<div>'+
-      '<div style="font-family:var(--m);font-size:22px;font-weight:900;color:var(--txt)">'+d.symbol+'</div>'+
-      '<div style="font-size:10px;color:var(--muted)">'+(d.name||d.symbol)+' · '+( d.dataSource||'Binance')+'</div>'+
+      '<div style="font-family:var(--m);font-size:22px;font-weight:900;color:var(--txt)">'+d.symbol+
+        ' <span style="font-size:12px;font-weight:400;color:var(--dim)">— '+(d.name||d.symbol)+'</span></div>'+
+      '<div style="font-size:9px;color:var(--dim);margin-top:1px">src: '+(d.dataSource||'Binance')+(atr>0?' · ATR 4H: $'+fP(atr):'')+'</div>'+
     '</div>'+
     '<div style="text-align:right">'+
-      '<div style="font-family:var(--m);font-size:20px;font-weight:800;color:var(--g)">$'+fP(p)+'</div>'+
+      '<div style="font-family:var(--m);font-size:22px;font-weight:900;color:var(--g)">$'+fP(p)+'</div>'+
       '<span class="achg '+(up?'up':'dn')+'">'+(up?'+':'')+ch.toFixed(2)+'%</span>'+
     '</div>'+
   '</div>';
 
-  // ── VERDICT BAR ──────────────────────────────────────────────────
-  html+='<div style="background:rgba(0,0,0,.2);border-left:4px solid '+biasC+';border-radius:0 8px 8px 0;padding:9px 12px;margin-bottom:10px">'+
-    '<div style="font-size:14px;font-weight:900;color:'+biasC+';">'+(rec.action||conf.bias||'—')+'</div>'+
-    '<div style="font-size:10px;color:var(--muted);margin-top:3px;line-height:1.5">'+(rec.explanation||d.summary?.oneLiner||'')+'</div>'+
-    '<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">'+
-      '<span style="font-size:9px;background:rgba(255,255,255,.05);border-radius:4px;padding:2px 7px;color:'+probC+'">Prob: '+prob+'%</span>'+
-      '<span style="font-size:9px;background:rgba(255,255,255,.05);border-radius:4px;padding:2px 7px;color:var(--muted)">'+(rec.confidence||'—')+'</span>'+
-      (ew4h.wave?'<span style="font-size:9px;background:rgba(168,85,247,.1);border-radius:4px;padding:2px 7px;color:var(--purple)">'+ew4h.wave+'</span>':'')+
-      (ms.structure?'<span style="font-size:9px;background:rgba(0,255,136,.06);border-radius:4px;padding:2px 7px;color:var(--g2)">'+ms.structure+'</span>':'')+
+  // ── KESIMPULAN BOX ──────────────────────────────────────────────
+  h+='<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:9px 12px;margin-bottom:9px">'+
+    '<div style="font-size:10px;color:var(--muted);letter-spacing:1.5px;margin-bottom:3px">📋 KESIMPULAN</div>'+
+    '<div style="font-size:13px;font-weight:700;color:'+rc+'">'+( sum.oneLiner||sum.bias+': '+sum.signal+' ('+prob+'%)')+'</div>'+
+  '</div>';
+
+  // ── CONFLUENCE SCORE ────────────────────────────────────────────
+  h+='<div style="margin-bottom:10px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'+
+      '<span style="font-size:11px;color:var(--muted)">CONFLUENCE SCORE</span>'+
+      '<span style="font-family:var(--m);font-size:17px;font-weight:900;color:'+probC+'">'+prob+'%</span>'+
+    '</div>'+
+    '<div style="height:7px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden">'+
+      '<div style="height:7px;background:linear-gradient(90deg,'+probC+','+probC+'88);border-radius:4px;width:'+prob+'%;transition:width .8s"></div>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;margin-top:5px;font-size:10px">'+
+      '<span style="color:var(--muted)">'+( rec.action||'—')+'</span>'+
+      (conf.bullPoints!==undefined?'<span style="color:var(--g)">Bull: '+conf.bullPoints+'pts</span>':'  ')+
+      (conf.bearPoints!==undefined?'<span style="color:var(--red)">Bear: '+conf.bearPoints+'pts</span>':'')+
     '</div>'+
   '</div>';
 
-  // ── MULTI-TF ALIGNMENT ────────────────────────────────────────────
-  html+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:8px;padding:8px 10px;margin-bottom:8px">'+
-    '<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:5px">📊 MULTI-TIMEFRAME BIAS</div>'+
-    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">';
+  // ── RECOMMENDATION ──────────────────────────────────────────────
+  h+='<div style="background:'+(rc==='var(--g)'?'rgba(0,255,200,.06)':rc==='var(--red)'?'rgba(255,68,102,.06)':'rgba(255,179,0,.06)')+
+    ';border-left:4px solid '+rc+';border-radius:0 9px 9px 0;padding:10px 13px;margin-bottom:10px">'+
+    '<div style="font-size:9px;color:var(--dim);margin-bottom:3px">REKOMENDASI</div>'+
+    '<div style="font-size:15px;font-weight:900;color:'+rc+'">'+(rec.action||'—')+'</div>'+
+    (rec.explanation?'<div style="font-size:10px;color:var(--muted);margin-top:3px;line-height:1.5">'+rec.explanation+'</div>':'')+
+    '<div style="font-size:9px;color:var(--dim);margin-top:2px">Confidence: '+(rec.confidence||'—')+'</div>'+
+    (rec.reasons?.length?'<div style="margin-top:5px">'+(rec.reasons||[]).slice(0,4).map(function(r){return '<div style="font-size:10px;color:var(--muted);padding:1px 0">→ '+r+'</div>';}).join('')+'</div>':'')+
+  '</div>';
+
+  // ── MARKET STRUCTURE (4H) ───────────────────────────────────────
+  h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'+
+    '<div style="font-size:10px;font-weight:700;color:var(--amber);letter-spacing:1px;margin-bottom:6px">🏗️ MARKET STRUCTURE (4H)</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:10px">'+
+      '<div><span style="color:var(--dim)">Struktur: </span><span style="color:var(--muted)">'+(ms4h.structure||'—')+'</span></div>'+
+      '<div style="color:var(--muted)">'+(ms4h.bos?'✅ BOS: '+ms4h.bos.type:ms4h.choch?'⚡ CHoCH: '+ms4h.choch.type:'Tidak ada BOS/CHoCH — pasar ranging')+'</div>'+
+    '</div>'+
+  '</div>';
+
+  // ── SMC / ICT ───────────────────────────────────────────────────
+  h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'+
+    '<div style="font-size:10px;font-weight:700;color:var(--g);letter-spacing:1px;margin-bottom:6px">📦 SMC — OB / FVG / LIQUIDITY</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:10px">'+
+      '<div><span style="color:var(--dim)">Signal: </span><span style="color:var(--muted)">'+(smc4h.signal||'Neutral')+'</span></div>'+
+      '<div><span style="color:var(--dim)">Equilibrium: </span><span style="color:var(--muted)">'+(smc4h.equilibrium?'$'+fP(smc4h.equilibrium):'—')+'</span></div>'+
+    '</div>'+
+    '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px">'+
+      (smc4h.inBullOB?'<span style="font-size:9px;background:rgba(0,255,136,.08);color:var(--g);padding:2px 6px;border-radius:3px">Bull OB</span>':'')+
+      (smc4h.inBearOB?'<span style="font-size:9px;background:rgba(255,68,100,.08);color:var(--red);padding:2px 6px;border-radius:3px">Bear OB</span>':'')+
+      (smc4h.inBullFVG||smc4h.hasBullFVG?'<span style="font-size:9px;background:rgba(0,255,136,.08);color:var(--g);padding:2px 6px;border-radius:3px">Bull FVG</span>':'')+
+      (smc4h.inBearFVG||smc4h.hasBearFVG?'<span style="font-size:9px;background:rgba(255,68,100,.08);color:var(--red);padding:2px 6px;border-radius:3px">Bear FVG</span>':'')+
+      (smc4h.hasBOS?'<span style="font-size:9px;background:rgba(0,229,255,.08);color:var(--blue);padding:2px 6px;border-radius:3px">BOS</span>':'')+
+      (smc4h.hasCHoCH?'<span style="font-size:9px;background:rgba(255,179,0,.08);color:var(--amber);padding:2px 6px;border-radius:3px">CHoCH</span>':'')+
+    '</div>'+
+  '</div>';
+
+  // ── ELLIOTT WAVE ────────────────────────────────────────────────
+  h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'+
+    '<div style="font-size:10px;font-weight:700;color:var(--purple);letter-spacing:1px;margin-bottom:6px">🌊 ELLIOTT WAVE (4H)</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:10px;margin-bottom:5px">'+
+      '<div><span style="color:var(--dim)">Wave: </span><span style="color:var(--muted)">'+(ew4h.wave||'—')+' ('+(ew4h.confidence||0)+'%)</span></div>'+
+      '<div><span style="color:var(--dim)">Targets: </span><span style="color:var(--g2)">'+(ew4h.nextBullTarget?'$'+fP(ew4h.nextBullTarget):'—')+'</span></div>'+
+    '</div>'+
+    (ew4h.fibonacci?'<div style="font-size:9px;color:var(--dim)">FIB — 0.382: '+(ew4h.fibonacci.fib382?'$'+fP(ew4h.fibonacci.fib382):'—')+' · 0.500: '+(ew4h.fibonacci.fib500?'$'+fP(ew4h.fibonacci.fib500):'—')+' · 0.618: '+(ew4h.fibonacci.fib618?'$'+fP(ew4h.fibonacci.fib618):'—')+'</div>':'')+
+  '</div>';
+
+  // ── DERIVATIVES ─────────────────────────────────────────────────
+  if(deriv&&(deriv.sentiment||deriv.fundingRate!==undefined)){
+    var fr=deriv.fundingRate;
+    var frVal=fr!=null&&!isNaN(fr)?(fr*100).toFixed(4)+'%':'—';
+    var frC=fr<0?'var(--g)':fr>0.03?'var(--red)':'var(--muted)';
+    var lsr=deriv.longShortRatio;
+    h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'+
+      '<div style="font-size:10px;font-weight:700;color:var(--blue);letter-spacing:1px;margin-bottom:6px">📡 DERIVATIVES REAL-TIME</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:10px">'+
+        '<div><div style="font-size:9px;color:var(--dim)">Funding Rate ('+( deriv.src||'Binance')+')</div>'+
+          '<div style="font-family:var(--m);font-weight:700;color:'+frC+'">'+frVal+'</div>'+
+          '<div style="font-size:9px;color:var(--dim)">'+(deriv.fundingSignal||( fr<-0.005?'⚡ Short Squeeze':fr>0.05?'⚠️ Overleveraged':'⚖️ Netral'))+'</div>'+
+        '</div>'+
+        '<div><div style="font-size:9px;color:var(--dim)">OI Change 6H</div>'+
+          '<div style="font-family:var(--m);font-weight:700">'+(deriv.oiChange6h!=null?(+deriv.oiChange6h>=0?'+':'')+deriv.oiChange6h+'%':'+0%')+'</div>'+
+          '<div style="font-size:9px;color:var(--dim)">OI dari '+(deriv.src||'OKX')+'</div>'+
+        '</div>'+
+        '<div><div style="font-size:9px;color:var(--dim)">Long/Short Ratio</div>'+
+          '<div style="font-family:var(--m);font-weight:700">'+(lsr?lsr.toFixed(2):'N/A')+'</div>'+
+          '<div style="font-size:9px;color:var(--dim)">'+(deriv.lsLabel||'L: —% / S: —%')+'</div>'+
+        '</div>'+
+        '<div><div style="font-size:9px;color:var(--dim)">Smart Money (Top Trader)</div>'+
+          '<div style="font-family:var(--m);font-weight:700">N/A</div>'+
+          '<div style="font-size:9px;color:var(--dim)">—</div>'+
+        '</div>'+
+      '</div></div>';
+  }
+
+  // ── LIQUIDATION MAP ─────────────────────────────────────────────
+  if(liq&&(liq.longLiq||liq.shortLiq)){
+    h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'+
+      '<div style="font-size:10px;font-weight:700;color:var(--amber);letter-spacing:1px;margin-bottom:6px">🐋 LIQUIDATION MAP</div>';
+    if(liq.shortLiq?.length){
+      h+='<div style="font-size:9px;color:var(--g2);font-weight:700;letter-spacing:1px;margin-bottom:3px">SHORT LIQ (atas)</div>';
+      (liq.shortLiq||[]).slice(0,3).forEach(function(z){
+        h+='<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0">'+
+          '<span style="color:var(--g2)">$'+fP(z.level)+'</span>'+
+          '<span style="color:var(--dim);font-size:9px">'+( z.desc||'')+'</span>'+
+          '<span style="color:var(--muted)">'+( z.probability||'—')+'%</span></div>';
+      });
+    }
+    if(liq.longLiq?.length){
+      h+='<div style="font-size:9px;color:var(--red);font-weight:700;letter-spacing:1px;margin:5px 0 3px">LONG LIQ (bawah)</div>';
+      (liq.longLiq||[]).slice(0,3).forEach(function(z){
+        h+='<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0">'+
+          '<span style="color:var(--red)">$'+fP(z.level)+'</span>'+
+          '<span style="color:var(--dim);font-size:9px">'+( z.desc||'')+'</span>'+
+          '<span style="color:var(--muted)">'+( z.probability||'—')+'%</span></div>';
+      });
+    }
+    h+='</div>';
+  }
+
+  // ── PIVOT POINTS ────────────────────────────────────────────────
+  if(pivots&&(pivots.R1||pivots.S1)){
+    h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'+
+      '<div style="font-size:10px;font-weight:700;color:var(--dim);letter-spacing:1px;margin-bottom:6px">📐 PIVOT POINTS (4H)</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:10px">'+
+        (pivots.R2?'<div><span style="color:var(--red)">R2 </span><span style="font-family:var(--m);font-weight:700;color:var(--red)">$'+fP(pivots.R2)+'</span></div>':'')+
+        (pivots.R1?'<div><span style="color:var(--red)">R1 </span><span style="font-family:var(--m);font-weight:700;color:var(--red)">$'+fP(pivots.R1)+'</span></div>':'')+
+        (pivots.P?'<div><span style="color:var(--muted)">Pivot </span><span style="font-family:var(--m);font-weight:700">$'+fP(pivots.P)+'</span></div>':'')+
+        (pivots.S1?'<div><span style="color:var(--g)">S1 </span><span style="font-family:var(--m);font-weight:700;color:var(--g)">$'+fP(pivots.S1)+'</span></div>':'')+
+        (pivots.S2?'<div><span style="color:var(--g)">S2 </span><span style="font-family:var(--m);font-weight:700;color:var(--g)">$'+fP(pivots.S2)+'</span></div>':'')+
+      '</div>'+
+      // Key levels from keyLevels
+      (kl.resistance?'<div style="border-top:1px solid rgba(255,255,255,.05);margin-top:5px;padding-top:5px;display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:10px">'+
+        '<div><span style="color:var(--red)">RES 2 </span><span style="font-family:var(--m);font-weight:700;color:var(--red)">$'+fP(kl.resistance2||kl.resistance)+'</span></div>'+
+        '<div><span style="color:var(--red)">RESISTANCE </span><span style="font-family:var(--m);font-weight:700;color:var(--red)">$'+fP(kl.resistance)+'</span></div>'+
+        '<div><span style="color:var(--g)">SUPPORT </span><span style="font-family:var(--m);font-weight:700;color:var(--g)">$'+fP(kl.support)+'</span></div>'+
+        '<div><span style="color:var(--g)">SUP 2 </span><span style="font-family:var(--m);font-weight:700;color:var(--g)">$'+fP(kl.support2||kl.support)+'</span></div>'+
+      '</div>':'')+
+    '</div>';
+  }
+
+  // ── TRADE SETUP ─────────────────────────────────────────────────
+  if(setup&&(setup.sl||setup.entry)){
+    var dir=setup.direction||'LONG';
+    var entLow=setup.entryLow||setup.entry||p, entHigh=setup.entryHigh||setup.entry||p;
+    var sl=setup.sl||0, tp1=setup.tp1||0, tp2=setup.tp2||0, tp3=setup.tp3||0;
+    var slPct=setup.slPct||(sl&&p?(Math.abs(p-sl)/p*100).toFixed(1):'—');
+    var tp1Pct=setup.tp1Pct||(tp1&&p?((tp1-p)/p*100).toFixed(2):'—');
+    h+='<div style="background:rgba(0,255,136,.03);border:1px solid rgba(0,255,136,.12);border-radius:9px;padding:9px 11px;margin-bottom:8px">'+
+      '<div style="font-size:10px;font-weight:700;color:var(--g);letter-spacing:1px;margin-bottom:6px">📐 TRADE SETUP — '+dir+'</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px">'+
+        '<div style="background:rgba(255,255,255,.03);border-radius:5px;padding:5px">'+
+          '<div style="font-size:8px;color:var(--g)">Entry Zone</div>'+
+          '<div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--g2)">'+
+            (entLow!==entHigh?'$'+fP(entLow)+'–$'+fP(entHigh):'$'+fP(setup.entry||p))+
+          '</div>'+
+        '</div>'+
+        '<div style="background:rgba(255,68,100,.06);border-radius:5px;padding:5px">'+
+          '<div style="font-size:8px;color:var(--red)">Stop Loss</div>'+
+          '<div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--red)">$'+fP(sl)+
+            (slPct?' (-'+slPct+'%)':'')+
+          '</div>'+
+        '</div>'+
+        (tp1?'<div style="background:rgba(0,255,136,.05);border-radius:5px;padding:5px">'+
+          '<div style="font-size:8px;color:var(--g)">TP1 (1:2)</div>'+
+          '<div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--g2)">$'+fP(tp1)+(tp1Pct&&tp1Pct!=='—'?' (+'+tp1Pct+'%)':'')+
+          '</div></div>':'')+
+        (tp2?'<div style="background:rgba(0,255,136,.07);border-radius:5px;padding:5px">'+
+          '<div style="font-size:8px;color:var(--g)">TP2 (1:3.5)</div>'+
+          '<div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--g2)">$'+fP(tp2)+'</div></div>':'')+
+        (tp3?'<div style="background:rgba(0,255,136,.09);border-radius:5px;padding:5px">'+
+          '<div style="font-size:8px;color:var(--g)">TP3</div>'+
+          '<div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--g2)">$'+fP(tp3)+'</div></div>':'')+
+      '</div>'+
+      (setup.basis?'<div style="font-size:9px;color:var(--dim);padding-top:4px;border-top:1px solid rgba(255,255,255,.04)">'+setup.basis+'</div>':'')+
+    '</div>';
+  }
+
+  // ── MULTI-TIMEFRAME ─────────────────────────────────────────────
+  h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'+
+    '<div style="font-size:10px;font-weight:700;color:var(--dim);letter-spacing:1px;margin-bottom:6px">⏱ MULTI-TIMEFRAME ANALYSIS</div>';
   [[tf1h,'1H'],[tf4h,'4H'],[tf1d,'1D']].forEach(function(pair){
     var tf=pair[0], label=pair[1];
-    var bias=tf.bias||tf.trend||'—';
-    var bc=bias.includes('BULL')||bias==='LONG'?'var(--g)':bias.includes('BEAR')||bias==='SHORT'?'var(--red)':'var(--amber)';
     var rsi=tf.rsi||tf.indicators?.rsi||'—';
-    var ew=tf.elliottWave?.wave||tf.wave||'—';
-    html+='<div style="background:rgba(0,0,0,.15);border-radius:6px;padding:6px;text-align:center">'+
-      '<div style="font-size:9px;color:var(--dim);margin-bottom:3px">'+label+'</div>'+
-      '<div style="font-size:11px;font-weight:700;color:'+bc+'">'+bias+'</div>'+
-      (rsi!=='—'?'<div style="font-size:9px;color:var(--muted);margin-top:2px">RSI '+rsi+'</div>':'')+
-      (ew!=='—'?'<div style="font-size:8px;color:var(--purple);margin-top:1px">'+ew+'</div>':'')+
+    var trend=tf.trend||tf.bias||'—';
+    var tC=String(trend).includes('BULL')||String(trend).includes('Bull')?'var(--g)':String(trend).includes('BEAR')||String(trend).includes('Bear')?'var(--red)':'var(--amber)';
+    var ew=tf.elliottWave;
+    var ewWave=ew?(typeof ew==='string'?ew:(ew.wave||'—')):'—';
+    var ewConf=ew&&typeof ew==='object'?(ew.confidence||0):0;
+    var smcSig=tf.smc?( typeof tf.smc==='string'?tf.smc:(tf.smc.signal||'Neutral')):'—';
+    var rsiDir=typeof rsi==='number'?( rsi>55?'⬆️ Above Neutral':rsi<45?'⬇️ Below Neutral':'➡️ Neutral'):'';
+    h+='<div style="border-bottom:1px solid rgba(255,255,255,.05);padding:5px 0;display:grid;grid-template-columns:30px 1fr;gap:6px">'+
+      '<div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--dim)">⏱ '+label+'</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:10px">'+
+        '<div><span style="color:var(--dim)">RSI </span><span style="font-family:var(--m)">'+rsi+(typeof rsi==='number'?' '+rsiDir:'')+'</span></div>'+
+        '<div><span style="color:var(--dim)">Tren </span><span style="color:'+tC+'">'+trend+'</span></div>'+
+        '<div><span style="color:var(--dim)">Elliott </span><span style="color:var(--purple)">'+ewWave+(ewConf?' ('+ewConf+'%)':'')+'</span></div>'+
+        '<div><span style="color:var(--dim)">SMC </span><span>'+smcSig+'</span></div>'+
+      '</div>'+
     '</div>';
   });
-  html+='</div></div>';
+  h+='</div>';
 
-  // ── SMC ANALYSIS ─────────────────────────────────────────────────
-  if(smc4h && Object.keys(smc4h).length){
-    html+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:8px;padding:8px 10px;margin-bottom:8px">'+
-      '<div style="font-size:9px;color:var(--amber);letter-spacing:1.5px;margin-bottom:5px">📦 SMC / ICT ANALYSIS (4H)</div>'+
-      '<div style="display:flex;gap:5px;flex-wrap:wrap">';
-    var smcItems=[
-      [smc4h.hasBOS,'BOS','var(--g)'],
-      [smc4h.hasCHoCH,'CHoCH','var(--amber)'],
-      [smc4h.inBullOB,'Bull OB','var(--g)'],
-      [smc4h.inBearOB,'Bear OB','var(--red)'],
-      [smc4h.inBullFVG,'Bull FVG','var(--g)'],
-      [smc4h.inBearFVG,'Bear FVG','var(--red)'],
-    ];
-    smcItems.forEach(function(item){
-      if(item[0]) html+='<span style="font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.05);color:'+item[2]+'">'+item[1]+'</span>';
-    });
-    if(smc4h.signal) html+='<span style="font-size:10px;color:var(--muted)">Signal: <strong>'+smc4h.signal+'</strong></span>';
-    html+='</div></div>';
-  }
-
-  // ── TRADE SETUP ──────────────────────────────────────────────────
-  const sl=setup.sl||d.sl||0, entry=setup.entry||d.entry||p;
-  const tp1=setup.tp1||d.tp1||0, tp2=setup.tp2||d.tp2||0, tp3=setup.tp3||d.tp3||0;
-  if(sl||tp1){
-    html+='<div style="background:rgba(0,255,136,.03);border:1px solid rgba(0,255,136,.12);border-radius:8px;padding:9px 11px;margin-bottom:8px">'+
-      '<div style="font-size:9px;color:var(--g);letter-spacing:1.5px;margin-bottom:7px">🎯 TRADE SETUP</div>'+
-      '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:5px">';
-    if(entry) html+='<div style="background:rgba(255,255,255,.04);border-radius:5px;padding:5px;text-align:center"><div style="font-size:8px;color:var(--muted)">ENTRY</div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--g2)">$'+fP(entry)+'</div></div>';
-    if(sl) html+='<div style="background:rgba(255,68,100,.06);border-radius:5px;padding:5px;text-align:center"><div style="font-size:8px;color:var(--red)">STOP LOSS</div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--red)">$'+fP(sl)+'</div></div>';
-    if(tp1) html+='<div style="background:rgba(0,255,136,.05);border-radius:5px;padding:5px;text-align:center"><div style="font-size:8px;color:var(--g)">TP1</div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--g2)">$'+fP(tp1)+'</div></div>';
-    if(tp2) html+='<div style="background:rgba(0,255,136,.07);border-radius:5px;padding:5px;text-align:center"><div style="font-size:8px;color:var(--g)">TP2</div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--g2)">$'+fP(tp2)+'</div></div>';
-    if(tp3) html+='<div style="background:rgba(0,255,136,.09);border-radius:5px;padding:5px;text-align:center"><div style="font-size:8px;color:var(--g)">TP3</div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--g2)">$'+fP(tp3)+'</div></div>';
-    html+='</div></div>';
-  }
-
-  // ── KEY LEVELS ───────────────────────────────────────────────────
-  if(kl.support||kl.resistance){
-    html+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:8px;padding:8px 10px;margin-bottom:8px">'+
-      '<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:5px">🏗 KEY LEVELS</div>'+
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">';
-    ['support','support2','resistance','resistance2'].forEach(function(k){
-      if(kl[k]&&kl[k]>0){
-        var isRes=k.startsWith('res');
-        html+='<div style="font-size:9px"><span style="color:var(--dim)">'+( isRes?'R'+(k.includes('2')?'2':'1'):'S'+(k.includes('2')?'2':'1'))+': </span>'+
-          '<span style="font-family:var(--m);font-weight:700;color:'+(isRes?'var(--red)':'var(--g2)')+'">$'+fP(kl[k])+'</span></div>';
-      }
-    });
-    html+='</div></div>';
-  }
-
-  // ── REASONS ──────────────────────────────────────────────────────
-  var reasons=rec.reasons||[];
-  if(reasons.length){
-    html+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:8px;padding:8px 10px;margin-bottom:6px">'+
-      '<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:5px">📋 ALASAN SINYAL</div>';
-    reasons.slice(0,6).forEach(function(r){
-      html+='<div style="font-size:10px;color:var(--muted);padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04)">• '+r+'</div>';
-    });
-    html+='</div>';
-  }
-
-  // ── DERIVATIVES ──────────────────────────────────────────────────
-  if(deriv&&(deriv.fundingRate!==undefined||deriv.openInterest)){
-    html+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:8px;padding:7px 10px;margin-bottom:6px">'+
-      '<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:4px">📡 DERIVATIVES</div>'+
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:9px;color:var(--muted)">';
-    if(deriv.fundingRate!==undefined) html+='<span>Funding: <span style="color:'+(deriv.fundingRate<0?'var(--g)':deriv.fundingRate>0.03?'var(--red)':'var(--muted)')+'">'+(deriv.fundingRate*100).toFixed(4)+'%</span></span>';
-    if(deriv.openInterest) html+='<span>OI: <span style="font-weight:700">$'+fV(deriv.openInterest)+'</span></span>';
-    if(deriv.sentiment) html+='<span>Sentiment: <span style="color:var(--amber)">'+deriv.sentiment+'</span></span>';
-    html+='</div></div>';
-  }
-
-  // ── LIQMAP ───────────────────────────────────────────────────────
-  if(liq&&(liq.longLiq||liq.shortLiq)){
-    html+='<div style="background:rgba(255,255,255,.015);border-radius:7px;padding:7px 10px;font-size:9px;color:var(--muted)">'+
-      '💥 Liq zones: Long $'+fP(liq.longLiq||0)+' · Short $'+fP(liq.shortLiq||0)+
+  // ── FINANCIAL ASTROLOGY ─────────────────────────────────────────
+  if(astro&&astro.moonPhase){
+    h+='<div style="background:rgba(168,85,247,.04);border:1px solid rgba(168,85,247,.12);border-radius:9px;padding:9px 11px">'+
+      '<div style="font-size:10px;font-weight:700;color:var(--purple);letter-spacing:1px;margin-bottom:5px">🌙 FINANCIAL ASTROLOGY</div>'+
+      '<div style="font-size:12px;font-weight:700;color:var(--txt)">'+( astro.moonEmoji||'🌙')+' '+(astro.moonPhase||'—')+'</div>'+
+      '<div style="font-size:10px;color:var(--muted);margin-top:2px">'+( astro.halvingPhase||'')+'</div>'+
+      '<div style="font-size:9px;color:var(--dim);margin-top:3px">'+
+        (astro.seasonality?'Seasonality: '+astro.seasonality:'')+
+        (astro.daysSinceHalving?' · '+Math.round(astro.daysSinceHalving)+'d post-halving':'')+
+      '</div>'+
     '</div>';
   }
 
-  html+='</div>';
-  return html;
+  h+='</div>';
+  return h;
 }
 
 
