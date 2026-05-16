@@ -816,51 +816,66 @@ function altRow(coin, mode){
 // ── TOP GAINERS ──────────────────────────────────────────────────
 function renderAltGainers(coins){
   var el=document.getElementById('alt-gainers'); if(!el) return;
-  var filtered=coins.filter(function(c){ return c.ch24>=0.5&&c.vol>500000; });
-  if(!filtered.length) filtered=coins.filter(function(c){ return c.ch24>0; });
-  if(!filtered.length){ el.innerHTML='<div class="ct">🏆 TOP GAINERS</div><div class="alt-empty">—</div>'; return; }
+  // coins already filtered for ch24 >= 1% by API
+  if(!coins.length){
+    el.innerHTML='<div class="ct">🏆 TOP GAINERS</div>'+
+      '<div style="color:var(--muted);font-size:11px;padding:10px;text-align:center">Market flat — no coins with >1% gain right now</div>';
+    return;
+  }
   var h='<div class="ct">🏆 TOP GAINERS</div><div class="alt-list">';
-  filtered.slice(0,20).forEach(function(coin){ h+=altRow(coin,'gain'); });
-  h+='</div><div class="alt-footer">'+filtered.length+' gainers ·  update realtime</div>';
+  coins.slice(0,25).forEach(function(coin){ h+=altRow(coin,'gain'); });
+  h+='</div><div class="alt-footer">'+coins.length+' koin naik ≥1% · sorted by quality score</div>';
   el.innerHTML=h;
 }
+
 
 // ── VOLUME BREAKOUT ──────────────────────────────────────────────
 function renderAltVol(coins){
   var el=document.getElementById('alt-vol'); if(!el) return;
-  var filtered=coins.filter(function(c){ return c.vol>=10e6; });
-  if(filtered.length<5) filtered=coins.filter(function(c){ return c.vol>=5e6; });
-  if(!filtered.length){ el.innerHTML='<div class="ct">📊 VOLUME BREAKOUT</div><div class="alt-empty">—</div>'; return; }
-  // Sort by volume descending
-  filtered.sort(function(a,b){ return (b.vol||0)-(a.vol||0); });
+  // coins already filtered for vol >= 10M by API, sorted by volume desc
+  if(!coins.length){
+    el.innerHTML='<div class="ct">📊 VOLUME BREAKOUT</div>'+
+      '<div style="color:var(--muted);font-size:11px;padding:10px;text-align:center">—</div>';
+    return;
+  }
   var h='<div class="ct">📊 VOLUME BREAKOUT</div><div class="alt-list">';
-  filtered.slice(0,20).forEach(function(coin){ h+=altRow(coin,'vol'); });
-  h+='</div><div class="alt-footer">'+filtered.length+' volume events · sorted by volume</div>';
+  coins.slice(0,25).forEach(function(coin){ h+=altRow(coin,'vol'); });
+  h+='</div><div class="alt-footer">'+coins.length+' koin · vol ≥$10M · sorted by volume</div>';
   el.innerHTML=h;
 }
+
 
 // ── RSI EKSTREM ──────────────────────────────────────────────────
 function renderAltRSI(rsiList, realCount){
   var el=document.getElementById('alt-rsi'); if(!el) return;
-  // Filter meaningful RSI (not proxy artifacts)
-  var clean=rsiList.filter(function(c){
-    return c.vol>=1e6&&c.rsi>8&&c.rsi<92;
+
+  // rsiList now contains ONLY rsiReal=true coins (Wilder's RSI from klines)
+  // Already sorted ascending (oversold first) by API
+  if(!rsiList.length){
+    el.innerHTML='<div class="ct">📉 RSI EKSTREM</div>'+
+      '<div style="color:var(--muted);font-size:11px;padding:12px;text-align:center">'+
+        '⏳ Memuat real RSI dari klines...<br><span style="font-size:9px;color:var(--dim)">Butuh 15-25 detik untuk 30 koin</span>'+
+      '</div>';
+    return;
+  }
+
+  var h='<div class="ct">📉 RSI EKSTREM — <span style="color:var(--g);font-size:10px">'+realCount+' REAL RSI (Wilder\'s)</span></div>';
+  h+='<div class="alt-list">';
+
+  rsiList.forEach(function(coin){
+    var rsi=coin.rsi, ch=coin.ch24||0, up=ch>=0;
+    var rc=rsiCol(rsi);
+    var zone=rsi<=30?'Oversold 🔥':rsi<=42?'Bearish Zone':rsi<=50?'Neutral-Bearish':rsi<=58?'Neutral-Bullish':rsi<=70?'Bullish Zone':rsi<=80?'Overbought ⚠️':'Extreme OB 🔴';
+    var zoneC=rsi<=42?'var(--red)':rsi>=65?'var(--amber)':'var(--muted)';
+    h+=altRow(coin,'rsi');
   });
-  if(clean.length<8) clean=rsiList.filter(function(c){ return c.vol>=500000&&c.rsi>5&&c.rsi<95; });
-  // Sort: most extreme first (oversold/overbought)
-  clean.sort(function(a,b){
-    var da=Math.min(a.rsi-50, 50-a.rsi); // distance from 50
-    var db=Math.min(b.rsi-50, 50-b.rsi);
-    return da-db; // most extreme first (most negative = furthest from 50)
-  });
-  if(!clean.length){ el.innerHTML='<div class="ct">📉 RSI EKSTREM</div><div class="alt-empty">—</div>'; return; }
-  var h='<div class="ct">📉 RSI EKSTREM</div><div class="alt-list">';
-  clean.slice(0,20).forEach(function(coin){ h+=altRow(coin,'rsi'); });
-  h+='</div><div class="alt-footer">'+clean.length+' coins · Real RSI: '+realCount+'</div>';
+
+  h+='</div>';
+  h+='<div class="alt-footer">'+rsiList.length+' koin · ✅ All Real RSI (Wilder\'s, 4H klines)</div>';
   el.innerHTML=h;
 }
 
-// ── TOP LOSERS ───────────────────────────────────────────────────
+
 function renderAltLosers(coins){
   var el=document.getElementById('alt-losers');
   var wrap=document.getElementById('alt-losers-wrap');
