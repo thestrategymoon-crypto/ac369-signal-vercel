@@ -122,17 +122,20 @@ export default async function handler(req, res) {
 
   // ── PARALLEL PRICE FETCH ─────────────────────────────────────
   async function fetchPrice() {
-    const [fapi, spot, cgId, cc] = await Promise.allSettled([
+    // Fetch all spot tickers once (no ?symbol= filter - more reliable)
+    const allSpotTickers = await sf('https://api.binance.com/api/v3/ticker/24hr', 8000);
+    const spotFiltered = Array.isArray(allSpotTickers) 
+      ? allSpotTickers.find(t => t.symbol === (sym + 'USDT')) || null : null;
+    const [fapi, cgId, cc] = await Promise.allSettled([
       sf(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${sym}USDT`),
-      sf(`https://api.binance.com/api/v3/ticker/24hr?symbol=${sym}USDT`),
       CG[sym] ? sf(`https://api.coingecko.com/api/v3/simple/price?ids=${CG[sym]}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`) : Promise.resolve(null),
       sf(`https://min-api.cryptocompare.com/data/price?fsym=${sym}&tsyms=USD`),
     ]);
 
     if (fapi.status === 'fulfilled' && fapi.value && !fapi.value.code && +fapi.value.lastPrice > 0)
       return { price: +fapi.value.lastPrice, change24h: +fapi.value.priceChangePercent, vol: +fapi.value.quoteVolume, name: sym, src: 'binance_futures' };
-    if (spot.status === 'fulfilled' && spot.value && !spot.value.code && +spot.value.lastPrice > 0)
-      return { price: +spot.value.lastPrice, change24h: +spot.value.priceChangePercent, vol: +spot.value.quoteVolume, name: sym, src: 'binance_spot' };
+    if (spotFiltered && +spotFiltered.lastPrice > 0)
+      return { price: +spotFiltered.lastPrice, change24h: +spotFiltered.priceChangePercent, vol: +spotFiltered.quoteVolume, name: sym, src: 'binance_spot' };
     if (cgId.status === 'fulfilled' && cgId.value?.[CG[sym]]?.usd > 0)
       return { price: cgId.value[CG[sym]].usd, change24h: cgId.value[CG[sym]].usd_24h_change || 0, vol: cgId.value[CG[sym]].usd_24h_vol || 0, name: sym, src: 'coingecko_map' };
     if (cc.status === 'fulfilled' && cc.value?.USD > 0) {
