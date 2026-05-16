@@ -48,7 +48,19 @@ async function fetchTicker(sym) {
   const cgId = { BTC: 'bitcoin', ETH: 'ethereum' }[sym];
   const [fR, sR, ccR, cgR, capR] = await Promise.allSettled([
     sf('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=' + sym + 'USDT', 6000),
-    sf('https://api.binance.com/api/v3/ticker/24hr?symbol=' + sym + 'USDT', 6000),
+    (async()=>{
+      // Try all-tickers and filter (more reliable than ?symbol=)
+      const all = await sf('https://api.binance.com/api/v3/ticker/24hr', 8000);
+      if(Array.isArray(all)){
+        const t = all.find(x=>x.symbol===(sym+'USDT'));
+        if(t) return t;
+      }
+      // Fallback: Bybit spot
+      const by = await sf('https://api.bybit.com/v5/market/tickers?category=spot&symbol='+sym+'USDT', 5000);
+      const bt = by?.result?.list?.[0];
+      if(bt) return {symbol:sym+'USDT',lastPrice:bt.lastPrice||0,priceChangePercent:bt.price24hPcnt?(+bt.price24hPcnt*100).toFixed(4):0,quoteVolume:bt.turnover24h||0,highPrice:bt.highPrice24h||0,lowPrice:bt.lowPrice24h||0};
+      return null;
+    })(),
     sf('https://min-api.cryptocompare.com/data/pricemultifull?fsyms=' + sym + '&tsyms=USD', 6000),
     cgId ? sf('https://api.coingecko.com/api/v3/simple/price?ids=' + cgId + '&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true', 6000) : Promise.resolve(null),
     cgId ? sf('https://api.coincap.io/v2/assets/' + cgId, 6000) : Promise.resolve(null),
