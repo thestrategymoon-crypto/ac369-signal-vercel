@@ -717,10 +717,18 @@ async function fetchMacro(){
 // ── ALTCOIN MOMENTUM ──────────────────────────────────────────────
 var _altData=null;
 async function fetchAltcoins(){
-  var mkt=$('alt-mkt'), body=$('alt-body'), tabs=$('alt-tabs');
-  if(body) body.innerHTML='<div style="color:var(--muted);font-size:11px;padding:16px;text-align:center"><span class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>Loading all altcoins...</div>';
+  var mkt=$('alt-mkt');
+  // Show loading state on all 3 section cards
+  ['alt-gainers','alt-vol','alt-rsi','alt-losers','alt-narasi'].forEach(function(id){
+    var el=$(id); if(!el) return;
+    var title=el.querySelector('.ct');
+    var titleTxt=title?title.innerHTML:'';
+    el.innerHTML=(titleTxt?'<div class="ct">'+titleTxt+'</div>':'')+
+      '<div style="color:var(--muted);font-size:10px;padding:12px;text-align:center">'+
+        '<span class="spin" style="width:10px;height:10px;border-width:1.5px;display:inline-block;vertical-align:middle;margin-right:5px"></span>Loading...</div>';
+  });
   try{
-    const ctrl=new AbortController(); setTimeout(()=>ctrl.abort(),18000);
+    const ctrl=new AbortController(); setTimeout(()=>ctrl.abort(),28000);
     const r=await fetch('/api/altcoins',{signal:ctrl.signal});
     if(!r.ok) throw new Error('HTTP '+r.status);
     const d=await r.json();
@@ -741,7 +749,10 @@ async function fetchAltcoins(){
     renderAltAll();
     H('s-alt','<span style="color:'+mc+'">'+(m.signal||'—')+'</span>');
   }catch(e){
-    if(body) body.innerHTML='<div style="color:var(--red);font-size:11px;padding:12px">❌ '+e.message+'<br><button onclick="fetchAltcoins()" style="margin-top:8px;background:rgba(100,100,255,.1);border:1px solid rgba(100,100,255,.2);color:#b0b0ff;padding:5px 12px;border-radius:6px;font-size:10px;cursor:pointer">⟳ Retry</button></div>';
+    var errHtml='<div style="color:var(--red);font-size:11px;padding:12px">❌ '+e.message+
+      '<br><button onclick="fetchAltcoins()" style="margin-top:8px;background:rgba(255,68,100,.08);border:1px solid rgba(255,68,100,.2);color:var(--red);padding:5px 12px;border-radius:6px;font-size:10px;cursor:pointer">⟳ Retry</button></div>';
+    var el=$('alt-gainers'); if(el) el.innerHTML='<div class="ct">🏆 TOP GAINERS</div>'+errHtml;
+    var el2=$('alt-rsi'); if(el2) el2.innerHTML='<div class="ct">📉 RSI EKSTREM</div>'+errHtml;
   }
 }
 
@@ -1374,7 +1385,7 @@ async function fetchOnchain(){
   const body=$('onchain-body'); if(!body) return;
   body.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;text-align:center"><span class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>Loading BTC Intelligence...</div>';
   try{
-    const ctrl=new AbortController(); setTimeout(function(){ctrl.abort();},14000);
+    const ctrl=new AbortController(); setTimeout(function(){ctrl.abort();},22000);
     const r=await fetch('/api/onchain',{signal:ctrl.signal});
     if(!r.ok) throw new Error('HTTP '+r.status);
     var d=await r.json();
