@@ -17,7 +17,7 @@
       "maxDuration": 20
     },
     "api/altcoins.js": {
-      "maxDuration": 20
+      "maxDuration": 30
     },
     "api/accumulation.js": {
       "maxDuration": 25
@@ -32,7 +32,7 @@
       "maxDuration": 25
     },
     "api/onchain.js": {
-      "maxDuration": 12
+      "maxDuration": 25
     }
   },
   "headers": [
