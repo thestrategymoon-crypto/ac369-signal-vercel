@@ -180,38 +180,40 @@ export default async function handler(req, res) {
       .map(t => buildCoin(t))
       .filter(Boolean);
 
-    // ── REAL RSI: fetch klines for top 30 by volume ────────────────
-    // Get top 30 coins by volume for real RSI computation
-    const topSyms = all
-      .filter(c => c.vol >= 5e6)
+    // ── REAL RSI: Major coins only (parallel, fast) ─────────────────
+    // Focus on major coins that are always in RSI Ekstrem section
+    const MAJOR = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT',
+                   'ADAUSDT','AVAXUSDT','DOGEUSDT','LINKUSDT','DOTUSDT',
+                   'MATICUSDT','NEARUSDT','APTUSDT','INJUSDT','ARBUSDT'];
+    // Also add top-5 by volume from current data
+    const top5 = all
+      .filter(c => !MAJOR.includes(c.symbol+'USDT'))
       .sort((a,b) => b.vol - a.vol)
-      .slice(0, 30)
+      .slice(0, 5)
       .map(c => c.symbol + 'USDT');
+    const allRSISyms = [...new Set([...MAJOR, ...top5])];
 
-    // Fetch in batches of 10 to avoid overwhelming
+    // Fetch all in ONE parallel batch (20 concurrent is OK for Vercel)
     let realRSICount = 0;
-    for (let batch = 0; batch < topSyms.length; batch += 10) {
-      const batchSyms = topSyms.slice(batch, batch + 10);
-      const batchResults = await Promise.allSettled(
-        batchSyms.map(sym =>
-          sf(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=4h&limit=30`, 5500)
-            .then(d => Array.isArray(d) && d.length >= 15 ? d :
-              sf(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1h&limit=60`, 4500)
-                .then(d2 => Array.isArray(d2) && d2.length >= 15 ? d2 : null)
-            )
-        )
-      );
-      batchResults.forEach((r, i) => {
-        if (r.status !== 'fulfilled' || !Array.isArray(r.value)) return;
-        const closes = r.value.map(k => +k[4]).filter(v => v > 0);
-        if (closes.length < 15) return;
-        const rsi = calcRSI(closes, 14);
-        if (rsi === null) return;
-        const base = batchSyms[i].replace('USDT','');
-        const coin = all.find(c => c.symbol === base);
-        if (coin) { coin.rsi = rsi; coin.rsiReal = true; realRSICount++; }
-      });
-    }
+    const klineResults = await Promise.allSettled(
+      allRSISyms.map(sym =>
+        sf(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=4h&limit=30`, 6000)
+          .then(d => Array.isArray(d) && d.length >= 15 ? d :
+            sf(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1h&limit=60`, 5000)
+              .then(d2 => Array.isArray(d2) && d2.length >= 15 ? d2 : null)
+          )
+      )
+    );
+    klineResults.forEach((r, i) => {
+      if (r.status !== 'fulfilled' || !Array.isArray(r.value)) return;
+      const closes = r.value.map(k => +k[4]).filter(v => v > 0);
+      if (closes.length < 15) return;
+      const rsi = calcRSI(closes, 14);
+      if (rsi === null) return;
+      const base = allRSISyms[i].replace('USDT','');
+      const coin = all.find(c => c.symbol === base);
+      if (coin) { coin.rsi = rsi; coin.rsiReal = true; realRSICount++; }
+    });
 
     // ── MARKET SUMMARY ─────────────────────────────────────────────
     const pos    = all.filter(c => c.ch24 > 0).length;
