@@ -1,160 +1,147 @@
-// api/macro.js — AC369 FUSION v13 REBUILT
-// CryptoCompare primary for klines (always accessible), Bybit for price
+// api/macro.js — v15 REBUILT
+// Fast: Alternative.me + CoinGecko + Binance spot tickers
+// Max 6 seconds total. NO Binance fapi.
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 's-maxage=60');
+  res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const sf = async (url, ms = 6000) => {
+  const t0 = Date.now();
+
+  const sf = async (url, ms) => {
     const c = new AbortController();
     const t = setTimeout(() => c.abort(), ms);
     try {
-      const r = await fetch(url, { signal: c.signal, headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' } });
-      clearTimeout(t); if (!r.ok) return null; return await r.json();
+      const r = await fetch(url, { signal: c.signal, headers: { Accept: 'application/json', 'User-Agent': 'AC369/1.0' } });
+      clearTimeout(t);
+      if (!r.ok) return null;
+      return await r.json();
     } catch { clearTimeout(t); return null; }
   };
 
   try {
-    const [fngRes, globalRes, btcDailyRes, tickerRes] = await Promise.allSettled([
-      sf('https://api.alternative.me/fng/?limit=14&format=json'),
-      sf('https://api.coingecko.com/api/v3/global'),
-      // CryptoCompare daily BTC (always works)
-      sf('https://min-api.cryptocompare.com/data/v2/histoday?fsym=BTC&tsym=USD&limit=90'),
-      sf('https://api.binance.com/api/v3/ticker/24hr')
-        .then(d => Array.isArray(d) && d.length > 100 ? d
-          : sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h')),
+    // 3 parallel calls
+    const [fngR, glR, tickersR] = await Promise.allSettled([
+      sf('https://api.alternative.me/fng/?limit=14&format=json', 4000),
+      sf('https://api.coingecko.com/api/v3/global', 4000),
+      sf('https://api.binance.com/api/v3/ticker/24hr', 6000),
     ]);
 
-    // ── F&G ───────────────────────────────────────────────────
-    let fearGreed = { value: 50, classification: 'Neutral', history: [], interpretation: 'Sentimen netral', signal: 'NEUTRAL' };
-    if (fngRes.status === 'fulfilled' && fngRes.value?.data) {
-      const d = fngRes.value.data, v = parseInt(d[0].value);
-      fearGreed = {
-        value: v, classification: d[0].value_classification,
-        history: d.slice(0, 7).map(x => ({ value: parseInt(x.value), label: x.value_classification, date: new Date(x.timestamp * 1000).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) })),
-        signal: v <= 20 ? 'EXTREME_FEAR_BUY' : v <= 40 ? 'FEAR_ACCUMULATE' : v <= 60 ? 'NEUTRAL' : v <= 80 ? 'GREED_CAUTION' : 'EXTREME_GREED_SELL',
-        interpretation: v <= 20 ? 'Extreme Fear — zona akumulasi terbaik' : v <= 40 ? 'Fear — akumulasi bertahap' : v <= 60 ? 'Netral' : v <= 80 ? 'Greed — waspada koreksi' : 'Extreme Greed — distribusi smart money',
-      };
-    }
+    // ── F&G ─────────────────────────────────────────────────
+    const fngData  = fngR.status === 'fulfilled' ? fngR.value?.data || [] : [];
+    const fgVal    = fngData[0] ? parseInt(fngData[0].value) : 50;
+    const fgCls    = fngData[0]?.value_classification || 'Neutral';
+    const fgHist   = fngData.slice(0, 7).map(d => ({
+      value: parseInt(d.value),
+      label: d.value_classification,
+      date:  new Date(d.timestamp * 1000).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+    }));
+
+    const fearGreed = {
+      value: fgVal, classification: fgCls,
+      history: fgHist,
+      signal: fgVal <= 20 ? 'EXTREME_FEAR_BUY' : fgVal <= 40 ? 'FEAR' : fgVal <= 60 ? 'NEUTRAL' : fgVal <= 80 ? 'GREED' : 'EXTREME_GREED_SELL',
+      interpretation: fgVal <= 20 ? '🔥 Extreme Fear — zona akumulasi terbaik (buy sangat kuat)' : fgVal <= 40 ? '😨 Fear — akumulasi bertahap, tunggu konfirmasi' : fgVal <= 60 ? '😐 Netral — tidak ada edge kuat' : fgVal <= 80 ? '😄 Greed — waspada koreksi, kurangi leverage' : '🤑 Extreme Greed — distribusi smart money',
+    };
 
     // ── BTC DOMINANCE ─────────────────────────────────────────
-    let btcDom = 58, ethDom = 12;
-    let btcDominance = { dominance: '58.00%', value: 58, interpretation: 'BTC Season' };
-    if (globalRes.status === 'fulfilled' && globalRes.value?.data) {
-      const gd = globalRes.value.data;
-      btcDom = +((gd.market_cap_percentage?.btc || 58).toFixed(2));
-      ethDom = +((gd.market_cap_percentage?.eth || 12).toFixed(2));
-      btcDominance = {
-        dominance: btcDom.toFixed(2) + '%', value: btcDom, eth: ethDom.toFixed(2) + '%',
-        interpretation: btcDom > 60 ? 'BTC Dominasi — kapital terkonsentrasi' : btcDom > 55 ? 'BTC Season — altcoin laggard' : btcDom > 50 ? 'Transisi — rotasi ke altcoin mulai' : btcDom > 45 ? 'Altcoin Season Awal' : 'Altcoin Season Aktif',
-        totalMarketCap: gd.total_market_cap?.usd || 0,
-        marketCapChange24h: +((gd.market_cap_change_percentage_24h_usd || 0).toFixed(2)),
-      };
-    }
+    const gld = glR.status === 'fulfilled' ? glR.value?.data : null;
+    const btcDomV = gld?.market_cap_percentage?.btc ? +gld.market_cap_percentage.btc.toFixed(2) : 58;
+    const ethDomV = gld?.market_cap_percentage?.eth ? +gld.market_cap_percentage.eth.toFixed(2) : 12;
+    const totalMC = gld?.total_market_cap?.usd || 0;
+    const mcChg24 = gld?.market_cap_change_percentage_24h_usd ? +gld.market_cap_change_percentage_24h_usd.toFixed(2) : 0;
 
-    // ── MVRV Z-SCORE (from CryptoCompare daily) ───────────────
-    let mvrvZScore = { value: 'N/A', interpretation: 'Data tidak tersedia', signal: 'NEUTRAL' };
-    const klData = btcDailyRes.status === 'fulfilled' ? btcDailyRes.value : null;
-    if (klData?.Response === 'Success' && klData.Data?.Data?.length >= 60) {
-      const closes = klData.Data.Data.filter(d => d.close > 0).map(d => d.close);
-      const cur = closes[closes.length - 1];
-      const n   = Math.min(200, closes.length);
-      const avg = closes.slice(-n).reduce((a, b) => a + b, 0) / n;
-      const std = Math.sqrt(closes.slice(-n).reduce((s, v) => s + (v - avg) ** 2, 0) / n);
-      const z   = std > 0 ? +((cur - avg) / std).toFixed(2) : 0;
-      mvrvZScore = {
-        value: z.toString(), estimate: z,
-        interpretation: z > 7 ? '🔴 Sangat Overvalued — Jual kuat' : z > 3 ? '⚠️ Overvalued — Hati-hati' : z > -0.5 ? '⚖️ Fair Value' : z > -3 ? '🟢 Undervalued — Zona akumulasi' : '🔥 Extreme Undervalue — Beli kuat',
-        signal: z > 5 ? 'SELL' : z > 2 ? 'CAUTION' : z < -2 ? 'BUY' : 'HOLD',
-        note: `${n}-day z-score (CryptoCompare)`,
-      };
-    }
+    const btcDominance = {
+      value: btcDomV, dominance: btcDomV.toFixed(2) + '%', eth: ethDomV.toFixed(2) + '%',
+      totalMarketCap: totalMC, marketCapChange24h: mcChg24,
+      interpretation: btcDomV > 62 ? 'BTC Dominasi Ekstrem — altcoin sangat lemah' : btcDomV > 57 ? 'BTC Season — hold altcoin minimal' : btcDomV > 50 ? 'Transisi — rotasi ke altcoin mulai' : btcDomV > 45 ? 'Altcoin Season Awal' : 'Altcoin Season Aktif 🚀',
+      signal: btcDomV > 58 ? 'BTC_SEASON' : btcDomV < 45 ? 'ALT_SEASON' : 'TRANSITION',
+    };
 
-    // ── ALTCOIN SEASON ────────────────────────────────────────
-    let altIdx = 0, altLabel = '₿ Bitcoin Season', altDetail = '';
-    const tickers = tickerRes.status === 'fulfilled' ? tickerRes.value : null;
-    if (Array.isArray(tickers) && tickers.length > 0) {
-      const isBinance = tickers[0]?.lastPrice !== undefined;
-      if (isBinance) {
-        const tMap = {};
-        tickers.forEach(t => { if (t?.symbol) tMap[t.symbol] = t; });
-        const btcChg = +(tMap['BTCUSDT']?.priceChangePercent || 0);
-        const ALTS = ['ETHUSDT','BNBUSDT','XRPUSDT','ADAUSDT','SOLUSDT','DOTUSDT','LINKUSDT','LTCUSDT','AVAXUSDT','ATOMUSDT','NEARUSDT','ARBUSDT','OPUSDT','MATICUSDT','UNIUSDT','SUIUSDT','INJUSDT','AAVEUSDT'];
-        let out = 0, tot = 0;
-        ALTS.forEach(s => { if (tMap[s]) { tot++; if (+(tMap[s].priceChangePercent || 0) > btcChg) out++; } });
-        altIdx = tot > 0 ? Math.round(out / tot * 100) : 0;
-        altDetail = `${out}/${tot} altcoin outperform BTC (24h)`;
-      }
-    }
-    if      (altIdx >= 75) altLabel = '🚀 Altcoin Season';
-    else if (altIdx >= 55) altLabel = '📈 Altcoin Trending';
-    else if (altIdx >= 25) altLabel = '⚖️ Mixed Market';
-    const altcoinSeason = { index: altIdx, season: altLabel, label: altLabel, detail: altDetail };
+    // ── MVRV PROXY from price comparison ──────────────────────
+    const allT = tickersR.status === 'fulfilled' && Array.isArray(tickersR.value) ? tickersR.value : [];
+    const tMap = {};
+    allT.forEach(t => { if (t?.symbol) tMap[t.symbol] = t; });
+    const btcPx = +(tMap['BTCUSDT']?.lastPrice || 0);
+
+    // MVRV proxy: current price vs estimated realized price
+    const REALIZED = 56576;
+    const mvProxy = btcPx > 0 ? +(btcPx / REALIZED).toFixed(2) : null;
+    const mvrvZScore = {
+      value: mvProxy?.toString() || 'N/A', estimate: mvProxy,
+      interpretation: !mvProxy ? 'Data tidak tersedia' : mvProxy < 0.8 ? '🔥 Extreme Undervalue — Beli kuat' : mvProxy < 1.2 ? '🟢 Fair value (cheap zone)' : mvProxy < 1.8 ? '⚖️ Fair value' : mvProxy < 2.5 ? '⚠️ Mulai mahal' : mvProxy < 3.5 ? '🔴 Bubble territory' : '💀 Extreme bubble',
+      signal: !mvProxy ? 'NEUTRAL' : mvProxy < 1.2 ? 'BUY' : mvProxy > 3.0 ? 'SELL' : 'HOLD',
+      note: 'Proxy: harga / realized price ($' + REALIZED.toLocaleString() + ')',
+    };
+
+    // ── ALTCOIN SEASON INDEX ──────────────────────────────────
+    const ALTS = ['ETHUSDT','BNBUSDT','XRPUSDT','ADAUSDT','SOLUSDT','DOTUSDT','LINKUSDT','LTCUSDT','AVAXUSDT','ATOMUSDT','NEARUSDT','ARBUSDT','OPUSDT','MATICUSDT','UNIUSDT','SUIUSDT','INJUSDT','AAVEUSDT'];
+    const btcChg = +(tMap['BTCUSDT']?.priceChangePercent || 0);
+    let out = 0, tot = 0;
+    ALTS.forEach(s => { if (tMap[s]) { tot++; if (+(tMap[s].priceChangePercent || 0) > btcChg) out++; } });
+    const altIdx = tot > 0 ? Math.round(out / tot * 100) : 50;
+    const altLabel = altIdx >= 75 ? '🚀 Altcoin Season!' : altIdx >= 55 ? '📈 Altcoin Trending' : altIdx >= 25 ? '⚖️ Mixed Market' : '₿ Bitcoin Season';
+
+    const altcoinSeason = {
+      index: altIdx, label: altLabel, season: altLabel,
+      detail: `${out}/${tot} altcoin outperform BTC (24h).`,
+      value: altIdx,
+    };
 
     // ── MARKET CYCLE ─────────────────────────────────────────
-    const halvingDate = new Date('2024-04-20');
-    const daysSinceHalving = Math.floor((Date.now() - halvingDate.getTime()) / 86400000);
-    let cyclePhase, cycleDetail, cycleWarning = null;
-    if      (daysSinceHalving < 90)  { cyclePhase = 'Post-Halving Early';     cycleDetail = `${daysSinceHalving} hari. Historis: sideways 2-3 bulan sebelum bull run.`; }
-    else if (daysSinceHalving < 365) { cyclePhase = 'Bull Cycle Early ✅';    cycleDetail = `${daysSinceHalving} hari. Periode terbaik untuk beli dan hold.`; }
-    else if (daysSinceHalving < 480) { cyclePhase = 'Bull Cycle Peak Zone ⚡'; cycleDetail = `${daysSinceHalving} hari. Zona puncak historis. Waspadai distribusi.`; cycleWarning = 'BTC sering puncak 12-18 bulan post-halving. Pertimbangkan profit-taking.'; }
-    else if (daysSinceHalving < 730) { cyclePhase = 'Distribution / Late Bull ⚠️'; cycleDetail = `${daysSinceHalving} hari. Smart money cenderung exit bertahap.`; cycleWarning = 'Waspadai volatilitas tinggi dan "rally-and-dump".'; }
-    else                             { cyclePhase = 'Bear Market / Accumulation'; cycleDetail = `${daysSinceHalving} hari. Fase akumulasi. Waktu DCA.`; }
-
-    // ── MOON PHASE ────────────────────────────────────────────
-    const jd  = Date.now() / 86400000 + 2440587.5;
-    const dnm = ((jd - 2460320.5) % 29.53058867 + 29.53058867) % 29.53058867;
-    let moonPhase, moonEmoji;
-    if      (dnm < 1.5)  { moonPhase = 'New Moon';        moonEmoji = '🌑'; }
-    else if (dnm < 7.5)  { moonPhase = 'Waxing Crescent'; moonEmoji = '🌒'; }
-    else if (dnm < 8.5)  { moonPhase = 'First Quarter';   moonEmoji = '🌓'; }
-    else if (dnm < 14)   { moonPhase = 'Waxing Gibbous';  moonEmoji = '🌔'; }
-    else if (dnm < 16)   { moonPhase = 'Full Moon';        moonEmoji = '🌕'; }
-    else if (dnm < 22)   { moonPhase = 'Waning';           moonEmoji = '🌖'; }
-    else                 { moonPhase = 'Dark Moon';         moonEmoji = '🌘'; }
+    const dsh = Math.floor((Date.now() - 1713571200000) / 86400000);
+    let cyclePhase, cycleDetail, warning = null;
+    if      (dsh < 90)  { cyclePhase = 'Post-Halving Early';      cycleDetail = `Hari ${dsh}. Historis: sideways 2-3 bulan, kemudian bull run dimulai.`; }
+    else if (dsh < 365) { cyclePhase = '🔥 Bull Cycle Early';     cycleDetail = `Hari ${dsh}. Periode terbaik akumulasi dan hold. Smart money accumulating.`; }
+    else if (dsh < 480) { cyclePhase = '⚡ Bull Cycle Peak Zone'; cycleDetail = `Hari ${dsh}. Zona puncak historis. Pertimbangkan profit taking bertahap.`; warning = 'BTC sering puncak 12-18 bulan post-halving. Pertimbangkan partial profit taking.'; }
+    else if (dsh < 730) { cyclePhase = '⚠️ Late Bull / Distribution'; cycleDetail = `Hari ${dsh}. Smart money cenderung exit bertahap. Waspada volatilitas tinggi.`; warning = 'Fase distribusi historis. Kurangi exposure jika belum profit taking.'; }
+    else                { cyclePhase = '🌱 Accumulation';          cycleDetail = `Hari ${dsh}. Fase akumulasi bottom cycle. DCA zone terbaik.`; }
 
     // ── TOP GAINERS / LOSERS ──────────────────────────────────
-    let topGainers = [], topLosers = [], volumeBreakout = [];
-    if (Array.isArray(tickers) && tickers.length > 0 && tickers[0]?.lastPrice !== undefined) {
-      const STABLES = new Set(['USDT','USDC','BUSD','TUSD','DAI','FDUSD']);
-      const f = tickers.filter(t => t?.symbol?.endsWith('USDT') && +(t.quoteVolume || 0) > 1000000 && !STABLES.has(t.symbol.replace('USDT', '')));
-      const s = [...f].sort((a, b) => +b.priceChangePercent - +a.priceChangePercent);
-      const mp = t => ({ symbol: t.symbol.replace('USDT', ''), price: +(+t.lastPrice).toFixed(6), change: +(+t.priceChangePercent).toFixed(2), volume: Math.round(+t.quoteVolume) });
-      topGainers    = s.slice(0, 10).map(mp);
-      topLosers     = s.slice(-10).reverse().map(mp);
-      volumeBreakout = [...f].filter(t => +(t.quoteVolume || 0) > 30000000).sort((a, b) => +b.quoteVolume - +a.quoteVolume).slice(0, 8)
-        .map(t => ({ ...mp(t), signal: +t.priceChangePercent > 3 ? 'BULLISH_BREAKOUT' : +t.priceChangePercent < -3 ? 'BEARISH_BREAKDOWN' : 'HIGH_VOLUME' }));
-    }
+    const STABLES = new Set(['USDT','USDC','BUSD','TUSD','DAI','FDUSD','USDP']);
+    const filtered = allT.filter(t => t?.symbol?.endsWith('USDT') && +(t.quoteVolume||0) > 1e6 && !STABLES.has(t.symbol.replace('USDT','')));
+    const sorted = [...filtered].sort((a, b) => +b.priceChangePercent - +a.priceChangePercent);
+    const mp = t => ({ symbol: t.symbol.replace('USDT',''), price: +(+t.lastPrice).toFixed(6), change: +(+t.priceChangePercent).toFixed(2), volume: Math.round(+t.quoteVolume) });
+    const topGainers = sorted.slice(0, 10).map(mp);
+    const topLosers  = sorted.slice(-10).reverse().map(mp);
 
-    // ── CYCLE SUMMARY ─────────────────────────────────────────
+    // Moon phase
+    const jd  = Date.now() / 86400000 + 2440587.5;
+    const dnm = ((jd - 2460320.5) % 29.53058867 + 29.53058867) % 29.53058867;
+    const phases = [[1.5,'New Moon','🌑'],[7.5,'Waxing Crescent','🌒'],[8.5,'First Quarter','🌓'],[14,'Waxing Gibbous','🌔'],[16,'Full Moon','🌕'],[22,'Waning','🌖']];
+    let moonPhase = 'Dark Moon', moonEmoji = '🌘';
+    for (const [lim, ph, em] of phases) { if (dnm < lim) { moonPhase = ph; moonEmoji = em; break; } }
+
+    // Cycle summary text
     const cycleSummary = [
-      `F&G: ${fearGreed.value} (${fearGreed.classification}).`,
-      `BTC Dom ${btcDom}% — ${btcDom > 55 ? 'BTC season' : 'Alt season trending'}.`,
-      altIdx >= 75 ? 'Altcoin season aktif 🚀.' : altIdx < 25 ? 'Bitcoin season.' : 'Market mixed.',
+      `F&G: ${fgVal}/100 (${fgCls}).`,
+      `BTC Dom ${btcDomV}% — ${btcDomV > 55 ? 'BTC season' : btcDomV < 45 ? 'Alt season aktif 🚀' : 'Transisi'}.`,
+      altIdx >= 75 ? '🚀 Altcoin season aktif.' : altIdx < 25 ? '₿ Bitcoin season dominasi.' : `${altLabel}.`,
       cycleDetail,
-      mvrvZScore.value !== 'N/A' ? `MVRV Z: ${mvrvZScore.value}.` : '',
-      cycleWarning ? `⚠️ ${cycleWarning}` : '',
+      mvProxy ? `MVRV proxy: ${mvProxy} (${mvrvZScore.signal}).` : '',
+      warning ? `⚠️ ${warning}` : '',
     ].filter(Boolean).join(' ');
 
     return res.status(200).json({
-      timestamp: Date.now(), version: 'v13',
-      fearGreed, btcDominance, mvrvZScore, altcoinSeason, cycleSummary,
-      dominance: { btc: btcDom, eth: ethDom },
-      mvrv: mvrvZScore,
-      cycle: { phase: cyclePhase, detail: cycleDetail, warning: cycleWarning, daysSinceHalving },
-      marketSummary: cycleSummary,
+      ok: true, ts: Date.now(), elapsed: Date.now() - t0, version: 'v15',
+      fearGreed, btcDominance, mvrvZScore, altcoinSeason,
+      mvrv: mvrvZScore, dominance: { btc: btcDomV, eth: ethDomV },
+      cycleSummary, marketSummary: cycleSummary,
+      cycle: { phase: cyclePhase, detail: cycleDetail, warning, daysSinceHalving: dsh },
       moonPhase: { phase: moonPhase, emoji: moonEmoji, daysSinceNM: +dnm.toFixed(1) },
-      topGainers, topLosers, volumeBreakout,
+      topGainers, topLosers,
     });
+
   } catch (e) {
     return res.status(200).json({
-      timestamp: Date.now(), error: e.message, version: 'v13',
-      fearGreed: { value: 50, classification: 'Neutral' },
-      btcDominance: 58, mvrvZScore: { value: 'N/A', signal: 'NEUTRAL' },
-      altcoinSeason: { index: 50, label: '⚖️ Mixed Market' },
-      cycleSummary: 'Data sementara tidak tersedia.',
-      dominance: { btc: 58, eth: 16 }, mvrv: { value: 'N/A' },
+      ok: false, error: e.message, ts: Date.now(), version: 'v15',
+      fearGreed: { value: 50, classification: 'Neutral', history: [] },
+      btcDominance: { value: 58, dominance: '58.00%', interpretation: '₿ BTC Season' },
+      mvrvZScore: { value: 'N/A', signal: 'NEUTRAL', interpretation: 'Data tidak tersedia' },
+      altcoinSeason: { index: 50, label: '⚖️ Mixed Market', season: '⚖️ Mixed Market' },
+      mvrv: { value: 'N/A' }, dominance: { btc: 58, eth: 12 },
+      cycleSummary: 'Data sementara tidak tersedia.', topGainers: [], topLosers: [],
     });
   }
 }
