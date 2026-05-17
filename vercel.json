@@ -3,15 +3,13 @@
   "functions": {
     "api/onchain.js":      { "maxDuration": 25 },
     "api/altcoins.js":     { "maxDuration": 30 },
-    "api/analytics.js":    { "maxDuration": 25 },
+    "api/analytics.js":    { "maxDuration": 20 },
     "api/bias.js":         { "maxDuration": 15 },
-    "api/macro.js":        { "maxDuration": 20 },
+    "api/macro.js":        { "maxDuration": 15 },
+    "api/intelligence.js": { "maxDuration": 25 },
     "api/scanner-full.js": { "maxDuration": 25 },
     "api/search.js":       { "maxDuration": 30 },
-    "api/accumulation.js": { "maxDuration": 25 },
-    "api/memes.js":        { "maxDuration": 20 },
-    "api/daytrade.js":     { "maxDuration": 25 },
-    "api/intelligence.js": { "maxDuration": 25 }
+    "api/health.js":       { "maxDuration": 5  }
   },
   "headers": [
     {
