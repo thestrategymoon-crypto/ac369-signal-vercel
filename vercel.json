@@ -1,56 +1,25 @@
 {
   "version": 2,
   "functions": {
-    "api/search.js": {
-      "maxDuration": 30
-    },
-    "api/analytics.js": {
-      "maxDuration": 25
-    },
-    "api/scanner-full.js": {
-      "maxDuration": 25
-    },
-    "api/bias.js": {
-      "maxDuration": 15
-    },
-    "api/macro.js": {
-      "maxDuration": 20
-    },
-    "api/altcoins.js": {
-      "maxDuration": 30
-    },
-    "api/accumulation.js": {
-      "maxDuration": 25
-    },
-    "api/memes.js": {
-      "maxDuration": 20
-    },
-    "api/daytrade.js": {
-      "maxDuration": 25
-    },
-    "api/intelligence.js": {
-      "maxDuration": 25
-    },
-    "api/onchain.js": {
-      "maxDuration": 25
-    }
+    "api/onchain.js":      { "maxDuration": 25 },
+    "api/altcoins.js":     { "maxDuration": 30 },
+    "api/analytics.js":    { "maxDuration": 25 },
+    "api/bias.js":         { "maxDuration": 15 },
+    "api/macro.js":        { "maxDuration": 20 },
+    "api/scanner-full.js": { "maxDuration": 25 },
+    "api/search.js":       { "maxDuration": 30 },
+    "api/accumulation.js": { "maxDuration": 25 },
+    "api/memes.js":        { "maxDuration": 20 },
+    "api/daytrade.js":     { "maxDuration": 25 },
+    "api/intelligence.js": { "maxDuration": 25 }
   },
   "headers": [
     {
       "source": "/api/(.*)",
       "headers": [
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        },
-        {
-          "key": "Access-Control-Allow-Methods",
-          "value": "GET, OPTIONS"
-        },
-        {
-          "key": "Access-Control-Allow-Headers",
-          "value": "Content-Type"
-        }
+        { "key": "Access-Control-Allow-Origin",  "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type" }
       ]
     }
   ]
