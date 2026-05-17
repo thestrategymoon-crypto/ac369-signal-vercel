@@ -1,0 +1,11 @@
+// api/health.js — Instant test endpoint
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'no-cache');
+  return res.status(200).json({
+    ok: true, version: 'v15', ts: Date.now(),
+    msg: 'AC369 FUSION API is running',
+    env: process.env.VERCEL_ENV || 'local',
+    region: process.env.VERCEL_REGION || 'unknown',
+  });
+}
