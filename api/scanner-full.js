@@ -1,449 +1,332 @@
-// api/scanner-full.js — AC369 FUSION v11.1 FIXED
-// ═══════════════════════════════════════════════════════════════
-// FIX: Probability 100% bug — score clamp too easy to hit max
-// FIX: Wave 3 detection requires STRICTER confirmation
-// FIX: BOS detection more realistic from ticker data
-// FIX: Probability max = 90% (100% only theoretically perfect)
-// FIX: Better data source labeling
-// FIX: Daily Bias from /api/bias (not recomputed here)
-// KEEP: Trend Alignment, Mercury Retrograde, Institutional filter
-// ═══════════════════════════════════════════════════════════════
+// api/scanner-full.js — v16 INSTITUTIONAL SCANNER
+// Sumber: MEXC tickers (tidak diblokir) + CryptoCompare RSI top coins
+// Filter: SMC OB/FVG + Volume Breakout + Elliott Wave + Multi-TF
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Cache-Control', 's-maxage=45, stale-while-revalidate=20');
   if (req.method === 'OPTIONS') return res.status(200).end();
+  const t0 = Date.now();
 
-  const sf = async (url, ms = 6000) => {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), ms);
+  const sf = async (url, ms) => {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), ms);
     try {
-      const r = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' } });
-      clearTimeout(t); if (!r.ok) return null; return await r.json();
+      const r = await fetch(url, { signal:c.signal, headers:{ Accept:'application/json','User-Agent':'AC369/1.0' } });
+      clearTimeout(t); if(!r.ok) return null; return await r.json();
     } catch { clearTimeout(t); return null; }
   };
 
-  try {
-    const start = Date.now();
+  // ── TA HELPERS ────────────────────────────────────────────
+  const EMA = (a,p) => {
+    if(!a||a.length<2) return a?.[a.length-1]||0;
+    const k=2/(p+1); let e=a.slice(0,Math.min(p,a.length)).reduce((s,v)=>s+v,0)/Math.min(p,a.length);
+    for(let i=Math.min(p,a.length);i<a.length;i++)e=a[i]*k+e*(1-k);
+    return +e.toFixed(8);
+  };
 
-    // ── PARALLEL DATA FETCH ───────────────────────────────────────
-    const [tickerRes, fngRes, globalRes, btcKlineRes] = await Promise.allSettled([
-      // PRIMARY: Binance Spot (never geo-blocked)
-      sf('https://api.binance.com/api/v3/ticker/24hr')
-        .then(d => Array.isArray(d) && d.length > 100 ? d :
-          sf('https://fapi.binance.com/fapi/v1/ticker/24hr')
-            .then(d2 => Array.isArray(d2) && d2.length > 100 ? d2 :
-              sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h')
-                .then(cg => Array.isArray(cg) ? cg.map(c => ({
-                  symbol: (c.symbol||'').toUpperCase()+'USDT',
-                  lastPrice: String(c.current_price||0),
-                  priceChangePercent: String(c.price_change_percentage_24h||0),
-                  quoteVolume: String(c.total_volume||0),
-                  highPrice: String((c.current_price||0)*1.05),
-                  lowPrice: String((c.current_price||0)*0.95),
-                  openPrice: String((c.current_price||0)/(1+(c.price_change_percentage_24h||0)/100)),
-                  _cg: true
-                })) : [])
-            )
-        ),
-      sf('https://api.alternative.me/fng/?limit=1&format=json'),
-      sf('https://api.coingecko.com/api/v3/global'),
-      // BTC 4H from CryptoCompare (always works)
-      sf('https://min-api.cryptocompare.com/data/v2/histohour?fsym=BTC&tsym=USD&limit=200')
-        .then(d => d?.Response === 'Success' && d.Data?.Data?.length > 20
-          ? d.Data.Data.map(x => ({ c: +x.close, v: +x.volumeto })).filter(k => k.c > 0)
-          : sf('https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=4h&limit=50')
-              .then(d => Array.isArray(d) ? d.map(k => ({ c: +k[4], v: +k[5] })) : null)
-        ),
-    ]);
+  const RSI14 = (a) => {
+    if(!a||a.length<16) return null;
+    let ag=0,al=0;
+    for(let i=1;i<=14;i++){const d=a[i]-a[i-1];d>0?ag+=d:al-=d;}
+    ag/=14;al/=14;
+    for(let i=15;i<a.length;i++){const d=a[i]-a[i-1];ag=(ag*13+Math.max(d,0))/14;al=(al*13+Math.max(-d,0))/14;}
+    return al===0?100:+(100-100/(1+ag/al)).toFixed(2);
+  };
 
-    const rawTickers = tickerRes.status === 'fulfilled' ? tickerRes.value : [];
-    if (!Array.isArray(rawTickers) || rawTickers.length === 0) {
-      return res.status(200).json({ error: 'All ticker sources failed', results: [], totalScanned: 0 });
+  const MACD_SIG = (a) => {
+    if(!a||a.length<36) return {bull:false,bear:false,xUp:false,xDown:false};
+    const k12=2/13,k26=2/27,k9=2/10;
+    let e12=a.slice(0,12).reduce((s,v)=>s+v,0)/12, e26=a.slice(0,26).reduce((s,v)=>s+v,0)/26;
+    const mv=[];
+    for(let i=26;i<a.length;i++){e12=a[i]*k12+e12*(1-k12);e26=a[i]*k26+e26*(1-k26);mv.push(e12-e26);}
+    let sig=mv.slice(0,9).reduce((s,v)=>s+v,0)/9;
+    for(let i=9;i<mv.length;i++)sig=mv[i]*k9+sig*(1-k9);
+    const last=mv[mv.length-1],prev=mv[mv.length-2]||last,hist=last-sig,prevH=prev-sig;
+    return{bull:last>0&&hist>0,bear:last<0&&hist<0,xUp:hist>0&&prevH<=0,xDown:hist<0&&prevH>=0};
+  };
+
+  const ATR14 = (K) => {
+    if(!K||K.length<3) return 0;
+    const tr=K.slice(1).map((k,i)=>Math.max(k.h-k.l,Math.abs(k.h-K[i].c),Math.abs(k.l-K[i].c)));
+    return tr.slice(-14).reduce((s,v)=>s+v,0)/Math.min(14,tr.length);
+  };
+
+  // Quick SMC from klines
+  const quickSMC = (K,price) => {
+    if(!K||K.length<10) return {signal:'Neutral',hasBOS:false,hasCHoCH:false,inBullOB:false,inBearOB:false,inBullFVG:false,score:0};
+    const n=K.length;
+    // BOS
+    const recentH=Math.max(...K.slice(-15).map(k=>k.h));
+    const recentL=Math.min(...K.slice(-15).map(k=>k.l));
+    const prevH=Math.max(...K.slice(-30,-15).map(k=>k.h));
+    const prevL=Math.min(...K.slice(-30,-15).map(k=>k.l));
+    const hasBOS=(price>recentH&&recentH>prevH)||(price<recentL&&recentL<prevL);
+    const bosType=price>recentH?'Bull':'Bear';
+    // OB
+    let inBullOB=false,inBearOB=false;
+    for(let i=n-12;i<n-3;i++){if(i<0)continue;
+      const k=K[i],nxt=K[i+1];
+      if(k.c<k.o&&nxt.c>nxt.o&&nxt.c>k.o){const obH=Math.max(k.o,k.c),obL=Math.min(k.o,k.c);if(price>=obL*0.998&&price<=obH*1.005)inBullOB=true;}
+      if(k.c>k.o&&nxt.c<nxt.o&&nxt.c<k.o){const obH=Math.max(k.o,k.c),obL=Math.min(k.o,k.c);if(price>=obL*0.997&&price<=obH*1.002)inBearOB=true;}
     }
-
-    // ── DAILY MARKET BIAS ─────────────────────────────────────────
-    let dailyBias = { bias: 'NEUTRAL', biasLabel: '⚖️ NEUTRAL', biasScore: 0, details: [], recommendation: 'Selektif.', fgValue: 50, btcDom: 58, btcTrend: 'NEUTRAL' };
-    let biasScore = 0, fgValue = 50, btcDom = 58, btcTrend = 'NEUTRAL';
-    const biasDetail = [];
-
-    if (fngRes.status === 'fulfilled' && fngRes.value?.data) {
-      fgValue = parseInt(fngRes.value.data[0].value);
-      if (fgValue <= 20) { biasScore += 3; biasDetail.push(`F&G ${fgValue} (Extreme Fear)`); }
-      else if (fgValue <= 35) { biasScore += 2; biasDetail.push(`F&G ${fgValue} (Fear)`); }
-      else if (fgValue >= 80) { biasScore -= 3; biasDetail.push(`F&G ${fgValue} (Extreme Greed)`); }
-      else if (fgValue >= 65) { biasScore -= 2; biasDetail.push(`F&G ${fgValue} (Greed)`); }
-      else { biasDetail.push(`F&G ${fgValue} (Neutral)`); }
+    // FVG
+    let inBullFVG=false,inBearFVG=false;
+    for(let i=n-10;i<n-2;i++){if(i<0)continue;
+      if(K[i+2].l-K[i].h>0&&price>=K[i].h&&price<=K[i+2].l) inBullFVG=true;
+      if(K[i].l-K[i+2].h>0&&price>=K[i+2].h&&price<=K[i].l) inBearFVG=true;
     }
+    const bs=(hasBOS&&bosType==='Bull'?2:0)+(inBullOB?2:0)+(inBullFVG?1:0);
+    const be=(hasBOS&&bosType==='Bear'?2:0)+(inBearOB?2:0)+(inBearFVG?1:0);
+    return{signal:bs>be?'Bullish':be>bs?'Bearish':'Neutral',hasBOS,hasCHoCH:false,bosType:hasBOS?bosType:'None',inBullOB,inBearOB,inBullFVG,inBearFVG,score:bs-be};
+  };
 
-    if (globalRes.status === 'fulfilled' && globalRes.value?.data) {
-      btcDom = parseFloat((globalRes.value.data.market_cap_percentage?.btc || 58).toFixed(1));
-      if (btcDom > 62) { biasScore -= 2; biasDetail.push(`BTC Dom ${btcDom}% (sangat tinggi)`); }
-      else if (btcDom > 57) { biasScore -= 1; biasDetail.push(`BTC Dom ${btcDom}%`); }
-      else if (btcDom < 48) { biasScore += 2; biasDetail.push(`BTC Dom ${btcDom}% (altseason)`); }
-      else { biasDetail.push(`BTC Dom ${btcDom}%`); }
+  // Quick Elliott Wave from RSI+trend
+  const quickEW = (closes,rsi,price,ema200) => {
+    if(!closes||closes.length<20||rsi===null) return {wave:'Unknown',confidence:0};
+    const trend=price>ema200?'UP':'DOWN';
+    if(trend==='UP'){
+      if(rsi<35) return{wave:'Wave 2 Pullback',confidence:68};
+      if(rsi>=45&&rsi<=62) return{wave:'Wave 3 — Impulse',confidence:75};
+      if(rsi>70){
+        const recent20=closes.slice(-20),max20=Math.max(...recent20);
+        const prevMaxRsi=RSI14(closes.slice(-30,-10));
+        if(price>=max20*0.995&&prevMaxRsi&&rsi<prevMaxRsi-5) return{wave:'Wave 5 Ending — Divergence',confidence:72};
+        return{wave:'Wave 5 In Progress',confidence:58};
+      }
+      return{wave:'Wave 4 Correction',confidence:55};
+    } else {
+      if(rsi<30) return{wave:'Wave C Capitulation',confidence:70};
+      if(rsi<45) return{wave:'Wave A/C Bearish',confidence:62};
+      return{wave:'Corrective Phase',confidence:48};
     }
+  };
 
-    const btcK = btcKlineRes.status === 'fulfilled' && Array.isArray(btcKlineRes.value) ? btcKlineRes.value : null;
-    if (btcK && btcK.length >= 20) {
-      const closes = btcK.map(k => k.c);
-      const last = closes[closes.length - 1];
-      const ema20 = closes.slice(-20).reduce((a, b) => a + b, 0) / 20;
-      const ema50 = closes.length >= 50 ? closes.slice(-50).reduce((a, b) => a + b, 0) / 50 : closes.reduce((a, b) => a + b, 0) / closes.length;
-      let g = 0, l = 0;
-      for (let i = closes.length - 14; i < closes.length; i++) { const d = closes[i] - closes[i - 1]; d >= 0 ? g += d : l -= d; }
-      const rsi4h = l === 0 ? 100 : parseFloat((100 - 100 / (1 + (g / 14) / (l / 14))).toFixed(1));
-      const ts = (last > ema20 ? 1 : -1) + (last > ema50 ? 1 : -1) + (rsi4h > 50 ? 0.5 : -0.5);
-      if (ts >= 2) { btcTrend = 'BULLISH'; biasScore += 3; biasDetail.push(`BTC 4H BULLISH (RSI ${rsi4h})`); }
-      else if (ts > 0) { btcTrend = 'BULLISH_WEAK'; biasScore += 1; biasDetail.push(`BTC 4H lemah naik (RSI ${rsi4h})`); }
-      else if (ts <= -2) { btcTrend = 'BEARISH'; biasScore -= 3; biasDetail.push(`BTC 4H BEARISH (RSI ${rsi4h})`); }
-      else if (ts < 0) { btcTrend = 'BEARISH_WEAK'; biasScore -= 1; biasDetail.push(`BTC 4H lemah turun (RSI ${rsi4h})`); }
-    }
+  // Candle pattern signal
+  const candleSignal = (K) => {
+    if(!K||K.length<2) return 'Neutral';
+    const last=K[K.length-1],prev=K[K.length-2];
+    const b=Math.abs(last.c-last.o),r=last.h-last.l;
+    if(r===0) return 'Neutral';
+    const lw=Math.min(last.c,last.o)-last.l,uw=last.h-Math.max(last.c,last.o);
+    if(lw/r>0.6&&b/r<0.3) return 'Hammer 🔨';
+    if(uw/r>0.6&&b/r<0.3) return 'Shooting Star ⭐';
+    if(b/r>0.8) return last.c>last.o?'Bull Marubozu 🐂':'Bear Marubozu 🐻';
+    if(prev.c<prev.o&&last.c>last.o&&last.o<prev.c&&last.c>prev.o) return 'Bull Engulfing 🐂';
+    if(prev.c>prev.o&&last.c<last.o&&last.o>prev.c&&last.c<prev.o) return 'Bear Engulfing 🐻';
+    if(b/r<0.1) return 'Doji ⚖️';
+    return last.c>last.o?'Bullish Candle':'Bearish Candle';
+  };
 
-    let biasLabel, biasRec;
-    if (biasScore >= 5) { biasLabel = '🚀 STRONG BULLISH'; biasRec = '✅ Kondisi ideal Long. Prioritaskan entry bullish berkualitas tinggi.'; }
-    else if (biasScore >= 2) { biasLabel = '📈 BULLISH'; biasRec = '✅ Kondisi baik Long. Filter sinyal beli yang kuat.'; }
-    else if (biasScore <= -5) { biasLabel = '💀 STRONG BEARISH'; biasRec = '⚠️ Prioritaskan Short/Sell atau Cash.'; }
-    else if (biasScore <= -2) { biasLabel = '📉 BEARISH'; biasRec = '⚠️ Hati-hati Long. Altcoin naik mungkin dead-cat bounce.'; }
-    else { biasLabel = '⚖️ NEUTRAL'; biasRec = '⚖️ Selektif — ikuti setup berkualitas tinggi saja.'; }
+  // Trend alignment string
+  const trendAlign = (t1h,t4h,t1d) => {
+    const bs=[t1h,t4h,t1d].filter(t=>t==='BULLISH').length;
+    const be=[t1h,t4h,t1d].filter(t=>t==='BEARISH').length;
+    if(bs===3) return{label:'🚀 FULL SEND',color:'full-bull'};
+    if(bs>=2) return{label:'📈 STRONG BULL',color:'bull'};
+    if(be===3) return{label:'💀 FULL BEAR',color:'full-bear'};
+    if(be>=2) return{label:'📉 STRONG BEAR',color:'bear'};
+    return{label:'⚖️ SIDEWAYS',color:'neutral'};
+  };
 
-    dailyBias = { bias: biasScore >= 5 ? 'STRONG_BULL' : biasScore >= 2 ? 'BULLISH' : biasScore <= -5 ? 'STRONG_BEAR' : biasScore <= -2 ? 'BEARISH' : 'NEUTRAL', biasLabel, biasScore, details: biasDetail, recommendation: biasRec, fgValue, btcDom: +btcDom.toFixed(1), btcTrend };
-    const isBearishBias = dailyBias.bias === 'BEARISH' || dailyBias.bias === 'STRONG_BEAR';
-    const isBullishBias = dailyBias.bias === 'BULLISH' || dailyBias.bias === 'STRONG_BULL';
+  // ── ASTRO CONTEXT ─────────────────────────────────────────
+  const getAstro = () => {
+    const jd=Date.now()/86400000+2440587.5;
+    const dnm=((jd-2460320.5)%29.53058867+29.53058867)%29.53058867;
+    const phases=[[1.5,'New Moon','🌑'],[8.5,'First Quarter','🌓'],[16,'Full Moon','🌕'],[22,'Waning','🌖'],[29.5,'Waning Crescent','🌘']];
+    let moonPhase='Dark Moon',moonEmoji='🌑';
+    for(const[lim,ph,em]of phases)if(dnm<lim){moonPhase=ph;moonEmoji=em;break;}
+    const dsh=Math.floor((Date.now()-1713571200000)/86400000);
+    const halvPhase=dsh<365?'Bull Early 🔥':dsh<480?'Bull Peak ⚡':dsh<730?'Distribution ⚠️':'Accumulation 🌱';
+    return{moonPhase,moonEmoji,halvingPhase:halvPhase,daysSinceHalving:dsh,chaotic:moonPhase==='Full Moon'||moonPhase==='New Moon'};
+  };
 
-    // ── ASTRO ─────────────────────────────────────────────────────
-    const now = new Date();
-    const jdNow = Date.now() / 86400000 + 2440587.5;
-    const daysSinceNM = ((jdNow - 2460320.5) % 29.53058867 + 29.53058867) % 29.53058867;
-    const halvingDate = new Date('2024-04-20');
-    const daysSinceHalving = Math.floor((Date.now() - halvingDate.getTime()) / 86400000);
+  // ── FILTER CONSTANTS ──────────────────────────────────────
+  const STABLES=new Set(['USDT','USDC','BUSD','DAI','TUSD','USDP','FDUSD','USDD','GUSD','FRAX','BIDR','EUR','GBP']);
+  const IGNORE=new Set(['BTCDOMUSDT','DEFIUSDT','USDCUSDT','PERPUSDT']);
+  const NO_SFX=['UP','DOWN','BULL','BEAR','LONG','SHORT','3L','3S','5L','5S'];
 
-    const mrs = [
-      { s: new Date('2025-03-15'), e: new Date('2025-04-07') },
-      { s: new Date('2025-07-18'), e: new Date('2025-08-11') },
-      { s: new Date('2025-11-09'), e: new Date('2025-12-01') },
-      { s: new Date('2026-03-08'), e: new Date('2026-03-31') },
-      { s: new Date('2026-07-06'), e: new Date('2026-07-30') },
-      { s: new Date('2026-10-28'), e: new Date('2026-11-18') },
-    ];
-    const inMR = mrs.some(p => now >= p.s && now <= p.e);
-    const inMRShadow = mrs.some(p => { const ps = new Date(p.s.getTime() - 7*86400000); const pe = new Date(p.e.getTime() + 7*86400000); return now >= ps && now <= pe; });
-    const astroChaotic = inMR || (daysSinceNM >= 14 && daysSinceNM < 16); // Full Moon
+  // ── FETCH TICKERS ─────────────────────────────────────────
+  const [tickR,fngR] = await Promise.allSettled([
+    (async()=>{
+      const mx=await sf('https://api.mexc.com/api/v3/ticker/24hr',9000);
+      if(Array.isArray(mx)&&mx.length>100)return{data:mx.filter(t=>t?.symbol?.endsWith('USDT')),src:'MEXC'};
+      const by=await sf('https://api.bybit.com/v5/market/tickers?category=spot',8000);
+      if(by?.result?.list?.length>50)return{data:by.result.list.filter(t=>t?.symbol?.endsWith('USDT')).map(t=>({symbol:t.symbol,lastPrice:t.lastPrice,priceChangePercent:t.price24hPcnt?+(+t.price24hPcnt*100).toFixed(4):0,quoteVolume:t.turnover24h||'0',highPrice:t.highPrice24h||t.lastPrice,lowPrice:t.lowPrice24h||t.lastPrice,openPrice:t.prevPrice24h||t.lastPrice})),src:'Bybit'};
+      return null;
+    })(),
+    sf('https://api.alternative.me/fng/?limit=1&format=json',4000),
+  ]);
 
-    let moonPhase, moonEmoji;
-    if (daysSinceNM < 1.5) { moonPhase = 'New Moon'; moonEmoji = '🌑'; }
-    else if (daysSinceNM < 7.5) { moonPhase = 'Waxing Crescent'; moonEmoji = '🌒'; }
-    else if (daysSinceNM < 8.5) { moonPhase = 'First Quarter'; moonEmoji = '🌓'; }
-    else if (daysSinceNM < 14) { moonPhase = 'Waxing Gibbous'; moonEmoji = '🌔'; }
-    else if (daysSinceNM < 16) { moonPhase = 'Full Moon'; moonEmoji = '🌕'; }
-    else if (daysSinceNM < 22) { moonPhase = 'Waning'; moonEmoji = '🌖'; }
-    else { moonPhase = 'Dark Moon'; moonEmoji = '🌘'; }
+  const rawTickers=tickR.status==='fulfilled'?tickR.value?.data:[];
+  const srcName=tickR.status==='fulfilled'?tickR.value?.src||'unknown':'unknown';
+  const fg=fngR.status==='fulfilled'?parseInt(fngR.value?.data?.[0]?.value||50):50;
 
-    let halvingPhase;
-    if (daysSinceHalving < 90) halvingPhase = 'Post-Halving Early';
-    else if (daysSinceHalving < 365) halvingPhase = 'Bull Cycle Early ✅';
-    else if (daysSinceHalving < 547) halvingPhase = 'Bull Cycle Peak ⚠️';
-    else if (daysSinceHalving < 730) halvingPhase = 'Distribution ⚠️';
-    else halvingPhase = 'Bear Market / Accumulation';
-
-    const astroStr = `${moonEmoji} ${moonPhase}`;
-    const astroWarning = inMR ? '⚠️ Mercury Retrograde' : astroChaotic ? '🌕 Full Moon Chaos' : inMRShadow ? '⚠️ MR Shadow' : null;
-
-    // ── FILTER STABLECOINS / LEVERAGED ───────────────────────────
-    const STABLES = new Set(['USDT','USDC','BUSD','TUSD','DAI','FDUSD','USDP','SUSD','GUSD','FRAX','LUSD','CRVUSD','USDD','USTC','PYUSD']);
-    const BAD_SFX = ['UP','DOWN','BEAR','BULL','3L','3S','2L','2S','5L','5S'];
-    const filtered = rawTickers.filter(t => {
-      if (!t || typeof t !== 'object') return false;
-      const sym = String(t.symbol || '');
-      if (!sym.endsWith('USDT')) return false;
-      const base = sym.replace('USDT', '');
-      if (STABLES.has(base) || base.length < 2) return false;
-      if (BAD_SFX.some(s => base.endsWith(s) || base.startsWith(s))) return false;
-      if (+(t.quoteVolume || 0) < 500000) return false;
-      if (+(t.lastPrice || 0) <= 0) return false;
-      return true;
-    });
-    filtered.sort((a, b) => +(b.quoteVolume || 0) - +(a.quoteVolume || 0));
-    const dataSource = rawTickers[0]?._cg ? 'coingecko' : 'binance';
-
-    // ── PROCESS EACH COIN ─────────────────────────────────────────
-    const results = [];
-
-    for (const t of filtered.slice(0, 1000)) {
-      const base = t.symbol.replace('USDT', '');
-      const price = +(t.lastPrice || 0);
-      const change24h = +(t.priceChangePercent || 0);
-      const vol24h = +(t.quoteVolume || 0);
-      const high = +(t.highPrice || price * 1.02);
-      const low = +(t.lowPrice || price * 0.98);
-      const open = +(t.openPrice || t.prevClosePrice || price);
-      if (price <= 0) continue;
-
-      const range = high - low || price * 0.02;
-      const rangePos = range > 0 ? (price - low) / range : 0.5;
-      const body = Math.abs(price - open);
-      const lw = range > 0 ? (Math.min(price, open) - low) / range : 0;
-      const uw = range > 0 ? (high - Math.max(price, open)) / range : 0;
-      const pctFromLow = rangePos;
-      const pctFromHigh = 1 - rangePos;
-
-      // ── SMC ANALYSIS ──────────────────────────────────────────
-      let smcSignal = 'NONE', smcDetail = '';
-      let inBullOB = false, inBearOB = false, inBullFVG = false, inBearFVG = false;
-      let hasBOS = false, hasCHoCH = false;
-      let smcScore = 0;
-
-      // Bull OB: price near day low + hammer wick (institutional accumulation)
-      // Strict: must be within 12% of low AND have significant lower wick
-      if (pctFromLow <= 0.12 && lw >= 0.40 && change24h > -10) {
-        inBullOB = true; smcSignal = 'BULL_OB';
-        smcDetail = `Bull OB near low — institutional accumulation zone`;
-        smcScore += 4;
-      }
-      // Bear OB: price near day high + upper wick rejection
-      else if (pctFromHigh <= 0.12 && uw >= 0.40 && change24h < 10) {
-        inBearOB = true; smcSignal = 'BEAR_OB';
-        smcDetail = `Bear OB near high — distribution zone`;
-        smcScore -= 4;
-      }
-
-      // FVG: gap between open and current price (retesting gap)
-      // Strict: minimum 3% gap AND mid-range position (retesting)
-      if (open > 0 && price > open * 1.03 && rangePos > 0.28 && rangePos < 0.58) {
-        inBullFVG = true;
-        if (smcScore >= 0) { smcSignal = 'BULL_FVG'; smcDetail = `Bull FVG retest (+${((price/open-1)*100).toFixed(1)}%)`; smcScore += 3; }
-      }
-      if (open > 0 && price < open * 0.97 && rangePos > 0.42 && rangePos < 0.72) {
-        inBearFVG = true;
-        if (smcScore <= 0) { smcSignal = 'BEAR_FVG'; smcDetail = `Bear FVG fill (${((price/open-1)*100).toFixed(1)}%)`; smcScore -= 3; }
-      }
-
-      // BOS/CHoCH: Clean breaks with MINIMUM 5% move AND volume confirmation
-      // Strict: change > 7% for BOS (avoid false breakouts)
-      if (change24h >= 7 && price > open * 1.06 && rangePos >= 0.72 && vol24h > 5000000) {
-        hasBOS = true; smcSignal = 'BOS_BULL';
-        smcDetail = `BOS Bullish +${change24h.toFixed(1)}% — confirmed breakout`;
-        smcScore += 5;
-      } else if (change24h <= -7 && price < open * 0.94 && rangePos <= 0.28 && vol24h > 3000000) {
-        hasBOS = true; smcSignal = 'BOS_BEAR';
-        smcDetail = `BOS Bearish ${change24h.toFixed(1)}% — confirmed breakdown`;
-        smcScore -= 5;
-      }
-      // CHoCH: moderate reversal with body confirmation
-      else if (change24h > 3.5 && change24h < 7 && rangePos > 0.62 && body / range > 0.45) {
-        hasCHoCH = true; smcSignal = 'CHOCH_BULL';
-        smcDetail = `CHoCH Bullish — tren berubah naik`;
-        smcScore += 3;
-      } else if (change24h < -3.5 && change24h > -7 && rangePos < 0.38 && body / range > 0.45) {
-        hasCHoCH = true; smcSignal = 'CHOCH_BEAR';
-        smcDetail = `CHoCH Bearish — tren berubah turun`;
-        smcScore -= 3;
-      }
-
-      // Premium/Discount zone
-      const midRange = (high + low) / 2;
-      const inDiscount = price < midRange * 0.97;
-      const inPremium = price > midRange * 1.03;
-      if (inDiscount && smcScore > 0) smcScore += 1;
-      if (inPremium && smcScore < 0) smcScore -= 1;
-
-      // ── ELLIOTT WAVE ──────────────────────────────────────────
-      // STRICT detection: requires multiple confirmations
-      let ewWave = '-', ewBias = 'NEUTRAL', ewScore = 0;
-      let isWave3Early = false, isWave5 = false, isWaveC = false;
-
-      // Wave 3 Early: STRICT — must have significant momentum + volume + NOT overbought
-      // Requires: change >= 5% (not just 4%), vol > 10M (institutional), rangePos 0.65-0.88
-      if (change24h >= 5 && rangePos >= 0.65 && rangePos < 0.88 && vol24h >= 10000000 && pctFromHigh > 0.05) {
-        isWave3Early = true; ewWave = '⚡ Wave 3 (Early)'; ewBias = 'BULLISH'; ewScore = 4;
-      }
-      // Wave 3 Developing: price above midrange with momentum, moderate volume
-      else if (change24h >= 2 && change24h < 5 && rangePos >= 0.5 && rangePos < 0.75 && lw > 0.12 && vol24h >= 5000000) {
-        ewWave = '📈 Wave 3 (Dev)'; ewBias = 'BULLISH'; ewScore = 3;
-      }
-      // Wave 1: initial impulse from downtrend, modest move
-      else if (change24h >= 2 && change24h < 4.5 && rangePos >= 0.55 && rangePos < 0.72 && open > 0 && price > open * 1.02) {
-        ewWave = '🌱 Wave 1 (Impulse)'; ewBias = 'BULLISH'; ewScore = 2;
-      }
-      // Wave 4 correction (pullback, still bullish structure)
-      else if (change24h >= -3.5 && change24h <= -0.5 && rangePos >= 0.28 && rangePos <= 0.52 && lw > 0.22) {
-        ewWave = '🔄 Wave 4 (Correction)'; ewBias = 'BULLISH_WEAK'; ewScore = 1;
-      }
-      // Wave 5 top: extended, overbought — AVOID BUYING
-      else if (change24h >= 8 && rangePos >= 0.88 && uw > 0.15) {
-        isWave5 = true; ewWave = '🏔️ Wave 5 (Peak)'; ewBias = 'AVOID'; ewScore = -2;
-      }
-      // Wave C Bearish: strong down with volume
-      else if (change24h <= -4 && rangePos <= 0.32 && vol24h >= 5000000) {
-        isWaveC = true; ewWave = '📉 Wave C (Bear)'; ewBias = 'BEARISH'; ewScore = -4;
-      }
-      // Post-ABC accumulation
-      else if (change24h >= 1 && change24h < 2.5 && rangePos >= 0.38 && lw > 0.28) {
-        ewWave = '🔁 Post-ABC Setup'; ewBias = 'BULLISH_WEAK'; ewScore = 1;
-      }
-      // Bearish impulse
-      else if (change24h <= -4) { ewWave = '📉 Bearish Impulse'; ewBias = 'BEARISH'; ewScore = -3; }
-      else { ewWave = '—'; ewBias = 'NEUTRAL'; ewScore = 0; }
-
-      // ── VOLUME ────────────────────────────────────────────────
-      let volScore = 0, volSignal = '', isVolBreakout = false;
-      const volTier = vol24h >= 500e6 ? 5 : vol24h >= 100e6 ? 4 : vol24h >= 30e6 ? 3 : vol24h >= 10e6 ? 2 : vol24h >= 3e6 ? 1 : 0;
-
-      // Institutional Volume: requires both HIGH volume AND significant price move
-      if (volTier >= 3 && Math.abs(change24h) >= 5) {
-        isVolBreakout = true;
-        volSignal = `💥 Inst.Vol $${(vol24h / 1e6).toFixed(0)}M`;
-        volScore = change24h > 0 ? 4 : -4;
-      } else if (volTier >= 2 && Math.abs(change24h) >= 3) {
-        isVolBreakout = true;
-        volSignal = `📊 $${(vol24h / 1e6).toFixed(0)}M`;
-        volScore = change24h > 0 ? 2 : -2;
-      } else if (volTier >= 4 && Math.abs(change24h) >= 1) {
-        volSignal = `Vol $${(vol24h / 1e6).toFixed(0)}M`;
-        volScore = change24h > 0 ? 1 : -1;
-      } else if (volTier >= 1) {
-        volScore = change24h > 0 ? 0.5 : -0.5;
-      }
-
-      // ── CANDLE PATTERN ────────────────────────────────────────
-      let patternScore = 0;
-      const chartPatterns = [];
-      if (lw / range > 0.55 && body / range < 0.25 && price >= open) { chartPatterns.push({ name: '🔨 Hammer', signal: 'bullish', probability: 70 }); patternScore += 1.5; }
-      if (uw / range > 0.55 && body / range < 0.25 && price <= open) { chartPatterns.push({ name: '🌠 Shooting Star', signal: 'bearish', probability: 68 }); patternScore -= 1.5; }
-      if (body / range < 0.08) { chartPatterns.push({ name: '➕ Doji', signal: 'neutral', probability: 50 }); }
-      if (body / range > 0.75 && price > open) { chartPatterns.push({ name: '💪 Bull Marubozu', signal: 'bullish', probability: 72 }); patternScore += 1; }
-      if (body / range > 0.75 && price < open) { chartPatterns.push({ name: '💀 Bear Marubozu', signal: 'bearish', probability: 72 }); patternScore -= 1; }
-      if (!chartPatterns.length) {
-        chartPatterns.push({ name: change24h > 2 ? 'Momentum Naik' : change24h < -2 ? 'Momentum Turun' : 'Sideways', signal: change24h > 2 ? 'bullish' : change24h < -2 ? 'bearish' : 'neutral', probability: 55 });
-      }
-
-      // ── ASTRO SCORE ───────────────────────────────────────────
-      // Very conservative — astro should not inflate scores
-      // During Mercury Retrograde: zero bonus (might penalize)
-      const month = now.getMonth() + 1;
-      const monthBonus = { 1:0.5, 2:0.5, 3:0, 4:0.5, 5:-0.5, 6:-0.5, 7:0, 8:0, 9:-1, 10:1, 11:0.5, 12:0.5 }[month] || 0;
-      const moonBonus = daysSinceNM < 1.5 ? 0.5 : daysSinceNM < 7.5 ? 0.3 : daysSinceNM >= 14 && daysSinceNM < 16 ? -0.5 : 0;
-      const halvingBonus = daysSinceHalving < 365 ? 0.5 : daysSinceHalving < 547 ? 0.3 : daysSinceHalving < 730 ? -0.3 : -0.5;
-      // During Mercury Retrograde: clear penalty, no reward possible
-      const astroScore = astroChaotic ? -0.5 : (monthBonus + moonBonus + halvingBonus);
-
-      // ── TREND ALIGNMENT ───────────────────────────────────────
-      const trend1h = price > open * 1.004 ? 'BULL' : price < open * 0.996 ? 'BEAR' : 'NEUT';
-      const trend4h = rangePos > 0.55 && change24h > 0 ? 'BULL' : rangePos < 0.45 && change24h < 0 ? 'BEAR' : change24h > 1.5 ? 'BULL' : change24h < -1.5 ? 'BEAR' : 'NEUT';
-      const trend1d = change24h > 2.5 ? 'BULL' : change24h < -2.5 ? 'BEAR' : 'NEUT';
-
-      const bullC = [trend1h === 'BULL', trend4h === 'BULL', trend1d === 'BULL'].filter(Boolean).length;
-      const bearC = [trend1h === 'BEAR', trend4h === 'BEAR', trend1d === 'BEAR'].filter(Boolean).length;
-
-      let trendAlignment = '⚖️ SIDEWAYS', taScore = 0, taColor = 'neutral';
-      if (bullC === 3) { trendAlignment = '🚀 FULL SEND'; taScore = 5; taColor = 'full-bull'; }
-      else if (bullC === 2 && bearC === 0) { trendAlignment = '✅ STRONG BUY'; taScore = 3; taColor = 'bull'; }
-      else if (bullC === 2) { trendAlignment = '📈 BUY'; taScore = 2; taColor = 'bull'; }
-      else if (bearC === 3) { trendAlignment = '💀 FULL SHORT'; taScore = -5; taColor = 'full-bear'; }
-      else if (bearC === 2 && bullC === 0) { trendAlignment = '🔴 STRONG SELL'; taScore = -3; taColor = 'bear'; }
-      else if (bearC === 2) { trendAlignment = '📉 SELL'; taScore = -2; taColor = 'bear'; }
-      else if (bullC === 1 && bearC === 0) { trendAlignment = '⚡ WEAK BULL'; taScore = 1; taColor = 'weak-bull'; }
-      else if (bearC === 1 && bullC === 0) { trendAlignment = '⚠️ WEAK BEAR'; taScore = -1; taColor = 'weak-bear'; }
-
-      // Bias adjustment for trend alignment
-      if (isBearishBias && bullC === 3) { trendAlignment = '⚠️ BULL vs BIAS'; taScore -= 2; }
-      if (isBullishBias && bearC === 3) { trendAlignment = '⚠️ BEAR vs BIAS'; taScore += 2; }
-
-      // ── TOTAL SCORE ───────────────────────────────────────────
-      // FIXED: Use float scores, clamp range reduced to -10..+10
-      // This means hitting max (prob 90%) requires perfect setup
-      const totalScore = smcScore + ewScore + volScore + patternScore + astroScore + taScore;
-
-      // ── INSTITUTIONAL FILTER ──────────────────────────────────
-      const smcQualified = smcSignal !== 'NONE' && smcScore !== 0;
-      const ewQualified = ewBias !== 'NEUTRAL' && ewWave !== '—' && ewBias !== 'AVOID';
-      const volQualified = isVolBreakout || volTier >= 2;
-
-      // PRIMARY FILTER: Must meet at least 2 of 3 criteria
-      const primaryFilters = [smcQualified, ewQualified, volQualified].filter(Boolean).length;
-      if (primaryFilters < 2) continue;
-      if (astroChaotic && Math.abs(totalScore) < 8) continue; // During chaos, only top setups
-      if (isWave5) continue; // Never buy Wave 5 tops
-
-      // ── PROBABILITY MAPPING ───────────────────────────────────
-      // FIXED: Scale -10 to +10 → 10% to 90%
-      // Score of +10 = 90% (top tier), never 100%
-      const clampedScore = Math.max(-10, Math.min(10, totalScore));
-      // Map: -10 → 10%, 0 → 50%, +10 → 90%
-      const rawProb = 50 + (clampedScore * 4); // 4 points per score unit
-      const prob = Math.round(Math.min(90, Math.max(12, rawProb))); // Hard cap: 12-90%
-      const probLabel = prob >= 82 ? '🔥 Premium Setup' : prob >= 73 ? '💎 High Prob' : prob >= 62 ? '📊 Good Setup' : prob >= 50 ? '👀 Pantau' : prob >= 38 ? '⚠️ Bearish Setup' : '💀 Short Setup';
-
-      // Build signals
-      const signals = [];
-      if (smcDetail) signals.push(smcDetail);
-      if (volSignal) signals.push(volSignal);
-      if (hasBOS) signals.push(`BOS ${smcScore > 0 ? 'Bullish' : 'Bearish'} ✓`);
-      if (hasCHoCH) signals.push(`CHoCH ${smcScore > 0 ? 'Bullish' : 'Bearish'} ✓`);
-      if (inBullOB) signals.push('Bull OB ✓');
-      if (inBearOB) signals.push('Bear OB ✓');
-      if (inBullFVG) signals.push('Bull FVG ✓');
-      if (inBearFVG) signals.push('Bear FVG ✓');
-
-      results.push({
-        rank: 0, symbol: base, fullSymbol: t.symbol, name: base,
-        price, change24h: +change24h.toFixed(2), priceChange24h: +change24h.toFixed(2),
-        volume24h: vol24h, highPrice: high, lowPrice: low, rangePos: +rangePos.toFixed(3),
-        smc: { signal: smcScore > 0 ? 'Bullish' : smcScore < 0 ? 'Bearish' : 'Neutral', summary: smcDetail || 'No clear signal', hasBOS, hasCHoCH, inBullOB, inBearOB, inBullFVG, inBearFVG, inDiscount, inPremium, smcScore: +smcScore.toFixed(1) },
-        elliottWave: { wave: ewWave, confidence: Math.abs(ewScore) >= 4 ? 80 : Math.abs(ewScore) >= 3 ? 70 : Math.abs(ewScore) >= 2 ? 60 : 50, description: ewBias, isWave3Early, isWaveC, isWave5, bias: ewBias },
-        volume: { score: +volScore.toFixed(1), signal: volSignal, isBreakout: isVolBreakout, tier: volTier },
-        trendAlignment, taScore, taColor, trend1h, trend4h, trend1d,
-        astrology: { signal: astroStr, moonPhase, moonEmoji, illumination: Math.round(daysSinceNM / 29.53 * 100), interpretation: halvingPhase, chaotic: astroChaotic, warning: astroWarning },
-        astro: `${astroStr}\n${halvingPhase}`,
-        chartPatterns: chartPatterns.slice(0, 2),
-        pattern: chartPatterns[0]?.name || '—',
-        smcScore: +smcScore.toFixed(1), ewScore: +ewScore.toFixed(1), volScore: +volScore.toFixed(1),
-        patternScore: +patternScore.toFixed(1), astroScore: +astroScore.toFixed(1), taScore,
-        score: +totalScore.toFixed(2),
-        probability: prob, probLabel,
-        breakoutProbability: { score: prob, reasons: signals.slice(0, 4), interpretation: probLabel },
-        signals: signals.slice(0, 4),
-        reason: change24h >= 0 ? `+${Math.min(change24h * 1.2, 30).toFixed(1)}%` : `${Math.max(change24h * 1.2, -30).toFixed(1)}%`,
-      });
-    }
-
-    results.sort((a, b) => b.score - a.score || b.probability - a.probability || b.volume24h - a.volume24h);
-    results.forEach((r, i) => { r.rank = i + 1; });
-
-    // Market overview
-    const allChg = results.map(r => r.change24h);
-    const bullCnt = allChg.filter(c => c > 1).length;
-    const bearCnt = allChg.filter(c => c < -1).length;
-    const avgChg = allChg.length ? +(allChg.reduce((a, b) => a + b, 0) / allChg.length).toFixed(2) : 0;
-
-    // Subsets
-    const topSetups = {
-      institutional: results.filter(r => r.score > 0 && (r.smc.hasBOS || r.smc.inBullOB || r.smc.inBullFVG) && r.elliottWave.isWave3Early).slice(0, 40),
-      bullish: results.filter(r => r.score > 0).slice(0, 60),
-      bearish: results.filter(r => r.score < 0).slice(0, 40),
-      fullSend: results.filter(r => r.taColor === 'full-bull').slice(0, 30),
-      strongSell: results.filter(r => r.taColor === 'full-bear' || r.taColor === 'bear').slice(0, 30),
-      highProbBull: results.filter(r => r.probability >= 73 && r.score > 0).slice(0, 30),
-      volumeBreakout: results.filter(r => r.volume.isBreakout && r.change24h > 0).slice(0, 30),
-      smcSetups: results.filter(r => r.smcScore > 0).slice(0, 30),
-      ewSetups: results.filter(r => r.ewScore > 0 && (r.elliottWave.isWave3Early || r.elliottWave.wave?.includes('Dev'))).slice(0, 30),
-    };
-
-    res.setHeader('Cache-Control', 's-maxage=30');
-    return res.status(200).json({
-      timestamp: Date.now(),
-      totalScanned: filtered.length,
-      totalQualified: results.length,
-      scanDuration: ((Date.now() - start) / 1000).toFixed(1),
-      dataSource,
-      dailyBias,
-      astroContext: { moonPhase, moonEmoji, halvingPhase, daysSinceNM: +daysSinceNM.toFixed(1), astroChaotic, warning: astroWarning, inMercuryRetrograde: inMR, inMercuryShadow: inMRShadow },
-      marketOverview: { bullishCount: bullCnt, bearishCount: bearCnt, neutralCount: results.length - bullCnt - bearCnt, avgChange24h: avgChg, marketMood: dailyBias.bias },
-      results,
-      topSetups,
-    });
-
-  } catch (e) {
-    return res.status(200).json({ error: e.message, results: [], totalScanned: 0, timestamp: Date.now() });
+  if(!rawTickers?.length){
+    return res.status(200).json({ok:false,error:'Ticker data tidak tersedia',ts:Date.now(),totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0},astroContext:getAstro()});
   }
+
+  // ── FILTER QUALIFYING TICKERS ─────────────────────────────
+  const qualify = rawTickers.filter(t=>{
+    if(!t?.symbol?.endsWith('USDT')) return false;
+    if(IGNORE.has(t.symbol)) return false;
+    const b=t.symbol.replace('USDT','');
+    if(STABLES.has(b)) return false;
+    if(NO_SFX.some(p=>b.endsWith(p)||b.startsWith(p))) return false;
+    if(b.length>12) return false;
+    const p=+(t.lastPrice||0),v=+(t.quoteVolume||0);
+    if(p<=0||v<2e6) return false; // min $2M volume
+    if(p>=0.97&&p<=1.03&&Math.abs(+(t.priceChangePercent||0))<0.5) return false;
+    return true;
+  });
+
+  const totalScanned=qualify.length;
+
+  // Sort by volume, take top 235 for deep analysis
+  const topByVol=qualify.sort((a,b)=>+(b.quoteVolume||0)-+(a.quoteVolume||0)).slice(0,235);
+
+  // ── RSI BATCH from CryptoCompare (top 40 coins) ───────────
+  const rsiMap={};
+  const rsiTop=topByVol.slice(0,40).map(t=>t.symbol.replace('USDT',''));
+
+  const ccKlines = await Promise.allSettled(
+    rsiTop.map(sym=>sf(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${sym}&tsym=USD&limit=56&aggregate=4&e=CCCAGG`,5500))
+  );
+
+  ccKlines.forEach((r,i)=>{
+    if(r.status!=='fulfilled'||r.value?.Response!=='Success') return;
+    const raw4h=r.value.Data?.Data; if(!raw4h||raw4h.length<16) return;
+    const K=raw4h.filter(d=>d.close>0).map(d=>({t:d.time,o:+d.open,h:+d.high,l:+d.low,c:+d.close,v:+(d.volumeto||0)}));
+    if(K.length<16) return;
+    const closes=K.map(k=>k.c);
+    const rsi=RSI14(closes);
+    if(rsi===null) return;
+    const ema9=EMA(closes,9),ema21=EMA(closes,21),ema50=EMA(closes,Math.min(50,closes.length-1)),ema200=EMA(closes,Math.min(200,closes.length-1));
+    const macd=MACD_SIG(closes);
+    const atr=ATR14(K);
+    const smc=quickSMC(K,closes[closes.length-1]);
+    const ewv=quickEW(closes,rsi,closes[closes.length-1],ema200);
+    const candle=candleSignal(K);
+    rsiMap[rsiTop[i]]={rsi,rsi4h:rsi,K,closes,ema9,ema21,ema50,ema200,macd,atr,smc,ew:ewv,candle,hasFullData:true};
+  });
+
+  // ── SCORE EACH COIN ────────────────────────────────────────
+  const astro=getAstro();
+  const results=[];
+
+  topByVol.forEach((t,idx)=>{
+    const sym=t.symbol.replace('USDT','');
+    const price=+(t.lastPrice||0);
+    const ch24=+(t.priceChangePercent||0);
+    const vol=+(t.quoteVolume||0);
+    const high=+(t.highPrice||price*1.01);
+    const low=+(t.lowPrice||price*0.99);
+    const open=+(t.openPrice||price);
+    if(price<=0) return;
+
+    const body=high>low?Math.abs(price-open)/(high-low):0;
+    const vt=vol>=1e9?5:vol>=200e6?4:vol>=50e6?3:vol>=10e6?2:vol>=1e6?1:0;
+
+    // Use full kline data if available
+    const kd=rsiMap[sym];
+    const rsi=kd?.rsi??Math.max(15,Math.min(85,50+(ch24>0?ch24*2:-ch24*2)));
+    const ema200=kd?.ema200||price;
+    const ema50=kd?.ema50||price;
+    const ema9=kd?.ema9||price;
+    const macd=kd?.macd||{bull:ch24>0,bear:ch24<0,xUp:false,xDown:false};
+    const atr=kd?.atr||price*0.02;
+    const smc4H=kd?.smc||{signal:'Neutral',hasBOS:false,inBullOB:false,inBearOB:false,inBullFVG:false,score:0};
+    const ewv=kd?.ew||{wave:'Unknown',confidence:0};
+    const candlePat=kd?.candle||candleSignal([{o:open,h:high,l:low,c:price},{o:price*0.99,h:price*1.01,l:price*0.98,c:price}]);
+
+    // Trend per TF
+    const t4h=price>ema50&&rsi>50?'BULLISH':price<ema50&&rsi<50?'BEARISH':'NEUTRAL';
+    const t1h=rsi>55?'BULLISH':rsi<45?'BEARISH':'NEUTRAL';
+    const t1d=price>ema200?'BULLISH':price<ema200*0.97?'BEARISH':'NEUTRAL';
+    const ta=trendAlign(t1h,t4h,t1d);
+
+    // Confluence Score
+    let score=0;
+    if(price>ema9)    score+=1;
+    if(price>ema50)   score+=1;
+    if(price>ema200)  score+=2;
+    if(macd.bull)     score+=1;
+    if(macd.xUp)      score+=2;
+    if(macd.xDown)    score-=2;
+    if(rsi<35)        score+=2;
+    else if(rsi<50)   score+=1;
+    else if(rsi>65)   score-=1;
+    else if(rsi>75)   score-=2;
+    if(vt>=3&&ch24>2) score+=1; // Volume + price
+    if(smc4H.hasBOS&&smc4H.bosType==='Bull') score+=2;
+    if(smc4H.hasBOS&&smc4H.bosType==='Bear') score-=2;
+    if(smc4H.inBullOB) score+=2; if(smc4H.inBearOB) score-=2;
+    if(smc4H.inBullFVG) score+=1;
+    if(ewv.wave?.includes('Wave 3')) score+=2;
+    if(ewv.wave?.includes('Wave 2')) score+=1;
+    if(ewv.wave?.includes('Wave 5 End')||ewv.wave?.includes('Divergence')) score-=2;
+
+    const probability=Math.max(1,Math.min(99,50+score*5));
+    const pcts={signal:ch24,vol24h:vol};
+
+    // Candle pattern
+    const patterns=candlePat?[{name:candlePat,signal:ch24>0?'bullish':ch24<0?'bearish':'neutral'}]:[];
+
+    // Build signals text
+    const signals=[];
+    if(smc4H.inBullOB) signals.push('Bull OB — zona demand aktif');
+    if(smc4H.hasBOS&&smc4H.bosType==='Bull') signals.push('BOS Bullish konfirmasi');
+    if(smc4H.inBullFVG) signals.push('Bull FVG — gap rebalance');
+    if(macd.xUp) signals.push('MACD golden cross ✅');
+    if(rsi<32) signals.push(`RSI ${rsi} oversold`);
+    if(vt>=4&&Math.abs(ch24)<2) signals.push('Stealth vol — akumulasi diam-diam 👁');
+    if(vt>=3&&ch24>5) signals.push(`+${ch24.toFixed(1)}% vol ${['','','','$10M','$50M','$200M'][vt]}+ breakout`);
+    if(ewv.wave?.includes('Wave 3')) signals.push(`${ewv.wave} (${ewv.confidence}%)`);
+    if(smc4H.inBearOB) signals.push('Bear OB — zona supply aktif ⚠️');
+    if(macd.xDown) signals.push('MACD death cross ⚠️');
+
+    results.push({
+      rank:idx+1, symbol:sym, price, change24h:+ch24.toFixed(2), volume24h:vol,
+      trendAlignment:ta.label, taColor:ta.color,
+      trend1h:t1h.slice(0,4), trend4h:t4h.slice(0,4), trend1d:t1d.slice(0,4),
+      rsi:rsi, rsi4h:rsi, rsiReal:!!kd?.hasFullData,
+      smc:smc4H, elliottWave:ewv,
+      chartPatterns:patterns,
+      probability, score,
+      signals:signals.slice(0,4),
+      astrology:{moonPhase:astro.moonPhase,moonEmoji:astro.moonEmoji,halvingPhase:astro.halvingPhase,chaotic:astro.chaotic},
+      hasFullData:!!kd?.hasFullData,
+      pcts, body:+body.toFixed(3), vt,
+    });
+  });
+
+  // Sort results by score desc
+  results.sort((a,b)=>b.score-a.score||(b.probability-a.probability));
+  results.forEach((r,i)=>r.rank=i+1);
+
+  // ── CATEGORIZE TOP SETUPS ──────────────────────────────────
+  const institutional = results.filter(r=>r.score>=3&&r.rsi<65&&r.probability>=55&&r.volume24h>=10e6).slice(0,60);
+  const fullSend      = results.filter(r=>r.taColor==='full-bull'&&r.probability>=60).slice(0,40);
+  const highProbBull  = results.filter(r=>r.probability>=70&&r.score>=3).slice(0,40);
+  const smcSetups     = results.filter(r=>(r.smc?.inBullOB||r.smc?.inBullFVG||r.smc?.hasBOS)&&r.score>=2).slice(0,40);
+  const ewSetups      = results.filter(r=>r.elliottWave?.wave?.includes('Wave 3')&&r.probability>=55).slice(0,30);
+  const volumeBreakout= results.filter(r=>r.vt>=3&&r.change24h>2&&r.body>0.4).sort((a,b)=>b.volume24h-a.volume24h).slice(0,40);
+  const strongSell    = results.filter(r=>r.score<=-3||r.taColor==='full-bear').sort((a,b)=>a.score-b.score).slice(0,30);
+
+  // ── MARKET OVERVIEW ───────────────────────────────────────
+  const bullish=results.filter(r=>r.score>0).length;
+  const bearish=results.filter(r=>r.score<0).length;
+  const avgCh=results.length?+(results.reduce((s,r)=>s+r.change24h,0)/results.length).toFixed(2):0;
+  const mood=avgCh>3?'STRONG BULL':avgCh>1?'BULL':avgCh<-3?'STRONG BEAR':avgCh<-1?'BEAR':'NEUTRAL';
+
+  return res.status(200).json({
+    ok:true, ts:Date.now(), elapsed:Date.now()-t0, version:'v16',
+    src:srcName, fg,
+    totalScanned, totalQualified:results.length,
+    rsiDataCount:Object.keys(rsiMap).length,
+    results,
+    topSetups:{institutional,fullSend,highProbBull,smcSetups,ewSetups,volumeBreakout,strongSell},
+    marketOverview:{marketMood:mood,bullishCount:bullish,bearishCount:bearish,avgChange24h:avgCh,totalCoins:results.length},
+    astroContext:astro,
+  });
 }
