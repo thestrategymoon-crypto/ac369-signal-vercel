@@ -1,7 +1,9 @@
-// api/onchain.js — v19
-// BTC price: CoinGecko /coins/markets?ids=bitcoin (RELIABLE — sama dengan macro.js)
-// FR/OI/L/S: Bybit single-symbol (dengan fallback graceful)
-// Network: mempool.space
+// api/onchain.js — v20
+// BTC Price: CoinGecko markets (WORKING ✅)
+// FR: Bybit /funding/history (dedicated endpoint)
+// OI: Bybit /open-interest (dedicated endpoint)
+// L/S: Bybit /account-ratio (dedicated endpoint)
+// Network: mempool.space (WORKING ✅)
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -19,78 +21,108 @@ export default async function handler(req, res) {
   };
 
   try {
-    // ── ALL PARALLEL ───────────────────────────────────────
-    const [cgPriceR, fngR, cgGlobalR, byBTCR, byETHR, byLSR, memR, feesR, hashR] = await Promise.allSettled([
-      // BTC price dari CoinGecko markets (RELIABLE, sama source dengan macro.js)
+    // ── WAVE 1: All parallel (9 calls) ────────────────────
+    const [
+      cgPriceR,   // CoinGecko: BTC + ETH price (WORKING)
+      fngR,       // Alternative.me: F&G (WORKING)
+      cgGlobalR,  // CoinGecko: global (WORKING)
+      byFRR,      // Bybit: Funding Rate via /funding/history
+      byOIR,      // Bybit: Open Interest via /open-interest
+      byLSR,      // Bybit: Long/Short via /account-ratio
+      byTickR,    // Bybit: ticker (backup for price + ETH FR)
+      memR,       // mempool.space: mempool
+      feesR,      // mempool.space: fees
+    ] = await Promise.allSettled([
       sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum&sparkline=false&price_change_percentage=24h', 5000),
-      // F&G
       sf('https://api.alternative.me/fng/?limit=1&format=json', 4000),
-      // BTC Dom
       sf('https://api.coingecko.com/api/v3/global', 4000),
-      // Bybit BTC derivatives (FR + OI)
-      sf('https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT', 5000),
-      // Bybit ETH derivatives
-      sf('https://api.bybit.com/v5/market/tickers?category=linear&symbol=ETHUSDT', 4000),
-      // Bybit L/S
+      // Dedicated Bybit funding rate endpoint (different from ticker)
+      sf('https://api.bybit.com/v5/market/funding/history?category=linear&symbol=BTCUSDT&limit=1', 5000),
+      // Dedicated Bybit open interest endpoint
+      sf('https://api.bybit.com/v5/market/open-interest?category=linear&symbol=BTCUSDT&intervalTime=1h&limit=1', 5000),
+      // Long/Short ratio
       sf('https://api.bybit.com/v5/market/account-ratio?category=linear&symbol=BTCUSDT&period=1h&limit=1', 4000),
-      // mempool
+      // Ticker (backup — for ETH FR + OI backup)
+      sf('https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT', 5000),
       sf('https://mempool.space/api/mempool', 5000),
       sf('https://mempool.space/api/v1/fees/recommended', 4000),
-      sf('https://mempool.space/api/v1/mining/hashrate/3d', 5000),
     ]);
 
-    // Block height
-    const blockHR = await sf('https://mempool.space/api/blocks/tip/height', 4000);
+    // Wave 2: hashrate + block height
+    const [hashR, blockHR] = await Promise.allSettled([
+      sf('https://mempool.space/api/v1/mining/hashrate/3d', 5000),
+      sf('https://mempool.space/api/blocks/tip/height', 4000),
+    ]);
 
     // ── BTC/ETH PRICE dari CoinGecko ──────────────────────
-    const cgCoins  = cgPriceR.status==='fulfilled' && Array.isArray(cgPriceR.value) ? cgPriceR.value : [];
-    const btcCG    = cgCoins.find(c => c.id === 'bitcoin');
-    const ethCG    = cgCoins.find(c => c.id === 'ethereum');
+    const cgCoins = cgPriceR.status==='fulfilled' && Array.isArray(cgPriceR.value) ? cgPriceR.value : [];
+    const btcCG   = cgCoins.find(c => c.id==='bitcoin');
+    const ethCG   = cgCoins.find(c => c.id==='ethereum');
+    const byTick  = byTickR.status==='fulfilled' ? byTickR.value?.result?.list?.[0] : null;
 
-    // Bybit tickers (backup & derivatives)
-    const byBTC = byBTCR.status==='fulfilled' ? byBTCR.value?.result?.list?.[0] : null;
-    const byETH = byETHR.status==='fulfilled' ? byETHR.value?.result?.list?.[0] : null;
+    const btcPrice = btcCG?.current_price  || (byTick?.lastPrice ? +byTick.lastPrice : 0);
+    const ethPrice = ethCG?.current_price  || 0;
+    const btcChg24 = btcCG?.price_change_percentage_24h
+      ? +btcCG.price_change_percentage_24h.toFixed(2)
+      : (byTick?.price24hPcnt ? +(parseFloat(byTick.price24hPcnt)*100).toFixed(2) : 0);
+    const ethChg24 = ethCG?.price_change_percentage_24h
+      ? +ethCG.price_change_percentage_24h.toFixed(2) : 0;
+    const btcVol   = btcCG?.total_volume   || (byTick?.turnover24h ? +byTick.turnover24h : 0);
+    const btcMCap  = btcCG?.market_cap     || 0;
+    const btcH24   = btcCG?.high_24h       || btcPrice*1.02;
+    const btcL24   = btcCG?.low_24h        || btcPrice*0.98;
+    const vol24hPct = btcPrice>0 && btcH24>btcL24 ? +((btcH24-btcL24)/btcPrice*100).toFixed(2) : 0;
 
-    // Use CoinGecko as primary, Bybit as backup
-    const btcPrice  = btcCG?.current_price  || (byBTC?.lastPrice ? +byBTC.lastPrice : 0);
-    const ethPrice  = ethCG?.current_price  || (byETH?.lastPrice ? +byETH.lastPrice : 0);
-    const btcChg24  = btcCG?.price_change_percentage_24h  ? +btcCG.price_change_percentage_24h.toFixed(2)  : (byBTC?.price24hPcnt ? +(parseFloat(byBTC.price24hPcnt)*100).toFixed(2) : 0);
-    const ethChg24  = ethCG?.price_change_percentage_24h  ? +ethCG.price_change_percentage_24h.toFixed(2)  : 0;
-    const btcVol    = btcCG?.total_volume   || (byBTC?.turnover24h ? +byBTC.turnover24h : 0);
-    const btcMCap   = btcCG?.market_cap     || 0;
-    const btcH24    = btcCG?.high_24h       || (byBTC?.highPrice24h ? +byBTC.highPrice24h : btcPrice*1.02);
-    const btcL24    = btcCG?.low_24h        || (byBTC?.lowPrice24h  ? +byBTC.lowPrice24h  : btcPrice*0.98);
-    const vol24hPct = btcPrice > 0 && btcH24 > btcL24 ? +((btcH24-btcL24)/btcPrice*100).toFixed(2) : 0;
+    // ── FUNDING RATE dari /funding/history ─────────────────
+    // Response: { result: { list: [{ fundingRate: "0.0001", fundingRateTimestamp: "..." }] } }
+    const frHistList = byFRR.status==='fulfilled' ? byFRR.value?.result?.list : null;
+    const frHistItem = Array.isArray(frHistList) ? frHistList[0] : null;
 
-    // ── FUNDING RATE + OI dari Bybit ──────────────────────
-    const frRaw = byBTC?.fundingRate ? parseFloat(byBTC.fundingRate) : null;
+    // Also check ticker as backup
+    const frFromTicker = byTick?.fundingRate ? parseFloat(byTick.fundingRate) : null;
+    const frRaw = frHistItem?.fundingRate
+      ? parseFloat(frHistItem.fundingRate)
+      : frFromTicker;
+
     const frPct = frRaw !== null ? +(frRaw*100).toFixed(4) : null;
     const frAnn = frRaw !== null ? +(frRaw*100*3*365).toFixed(1) : null;
-    const frSig = frPct===null ? '—'
-                : frPct<-0.01 ? '⚡ Short Squeeze Setup!'
-                : frPct<-0.003? '🟢 Negative FR — squeeze potential'
-                : frPct<0.003  ? '⚖️ Netral'
-                : frPct<0.02   ? '⚠️ Long Bias'
-                : frPct<0.05   ? '⚠️ Overleveraged Longs'
-                :                '🔴 EXTREME — long liquidation risk';
+    const frSig = frPct===null   ? '—'
+                : frPct<-0.01   ? '⚡ Short Squeeze Setup!'
+                : frPct<-0.003  ? '🟢 Negative FR — squeeze potential'
+                : frPct<0.003   ? '⚖️ Netral'
+                : frPct<0.02    ? '⚠️ Long Bias'
+                : frPct<0.05    ? '⚠️ Overleveraged Longs'
+                :                 '🔴 EXTREME — long liquidation risk';
 
+    // ── OPEN INTEREST dari /open-interest ──────────────────
+    // Response: { result: { list: [{ openInterest: "123456789", timestamp: "..." }] } }
     let oiVal=null, oiLabel='—';
-    if (byBTC?.openInterestValue) {
-      const oiRaw=parseFloat(byBTC.openInterestValue);
+    const oiList = byOIR.status==='fulfilled' ? byOIR.value?.result?.list : null;
+    const oiItem = Array.isArray(oiList) ? oiList[0] : null;
+    if (oiItem?.openInterest && btcPrice>0) {
+      // openInterest is in contracts (BTC). Convert to USD
+      const oiBTC = parseFloat(oiItem.openInterest);
+      const oiUSD = oiBTC * btcPrice;
+      oiVal   = +(oiUSD/1e9).toFixed(2);
+      oiLabel = oiVal>30?'VERY HIGH — crowded':oiVal>20?'HIGH — leverage aktif':oiVal>10?'NORMAL — healthy':'LOW';
+    } else if (byTick?.openInterestValue) {
+      // Fallback: dari ticker
+      const oiRaw = parseFloat(byTick.openInterestValue);
       if (oiRaw>0){oiVal=+(oiRaw/1e9).toFixed(2);oiLabel=oiVal>30?'VERY HIGH':oiVal>20?'HIGH':oiVal>10?'NORMAL':'LOW';}
     }
 
-    const ethFrRaw=byETH?.fundingRate?parseFloat(byETH.fundingRate):null;
-    const ethFrPct=ethFrRaw!==null?+(ethFrRaw*100).toFixed(4):null;
+    // ETH FR dari ticker (backup)
+    const ethFrRaw = byTick?.fundingRate ? parseFloat(byTick.fundingRate) : null;
+    const ethFrPct = null; // separate ETH call not done in this batch
 
-    // ── LONG/SHORT ─────────────────────────────────────────
-    let lsRatio=null,longPct=null,shortPct=null,lsSig='—';
-    const byLS=byLSR.status==='fulfilled'?byLSR.value?.result?.list?.[0]:null;
-    if (byLS?.buyRatio){
-      const b=parseFloat(byLS.buyRatio),s=1-b;
-      lsRatio=+(b/s).toFixed(3);longPct=+(b*100).toFixed(1);shortPct=+(s*100).toFixed(1);
+    // ── LONG / SHORT dari /account-ratio ──────────────────
+    let lsRatio=null, longPct=null, shortPct=null, lsSig='—';
+    const byLS = byLSR.status==='fulfilled' ? byLSR.value?.result?.list?.[0] : null;
+    if (byLS?.buyRatio) {
+      const b=parseFloat(byLS.buyRatio), s=1-b;
+      lsRatio=+(b/s).toFixed(3); longPct=+(b*100).toFixed(1); shortPct=+(s*100).toFixed(1);
       lsSig=lsRatio<0.65?'⚡ Short overloaded — squeeze pending':lsRatio<0.9?'🟢 Slight short bias':lsRatio>2.2?'🔴 Long overloaded — dump risk':lsRatio>1.5?'⚠️ Slight long bias':'⚖️ Balanced';
-    } else if (frRaw!==null){
+    } else if (frRaw!==null) {
       longPct=+Math.max(35,Math.min(72,52+frRaw*300)).toFixed(1);
       shortPct=+(100-longPct).toFixed(1);
       lsRatio=+(longPct/shortPct).toFixed(3);
@@ -121,7 +153,7 @@ export default async function handler(req, res) {
     const mem=memR.status==='fulfilled'?memR.value:null;
     const fees=feesR.status==='fulfilled'?feesR.value:null;
     const hash=hashR.status==='fulfilled'?hashR.value:null;
-    const blockH=typeof blockHR==='number'?blockHR:typeof blockHR==='string'?parseInt(blockHR):849671;
+    const blockH=typeof blockHR.value==='number'?blockHR.value:typeof blockHR.value==='string'?parseInt(blockHR.value):849671;
     const hashRate=hash?.currentHashrate?+(hash.currentHashrate/1e18).toFixed(1):null;
     const hashRateT=hashRate?(hashRate>700?'ATH Zone 🔥':hashRate>550?'Very High':hashRate>400?'High':'Normal'):'—';
     const mempoolTx=mem?.count||null;
@@ -133,7 +165,7 @@ export default async function handler(req, res) {
     const dLeft=Math.round(bLeft*10/60/24);
     const halvPct=+Math.min(100,Math.max(0,(blockH-840000)/(HALVING_NEXT-840000)*100)).toFixed(1);
 
-    // ── BULL/BEAR SCORE ────────────────────────────────────
+    // ── BULL/BEAR ──────────────────────────────────────────
     let bull=40,bear=40;
     if(fgVal<=20)bull+=20;else if(fgVal<=35)bull+=10;else if(fgVal<=45)bull+=5;
     else if(fgVal>=80)bear+=20;else if(fgVal>=65)bear+=10;else if(fgVal>=55)bear+=5;
@@ -147,33 +179,34 @@ export default async function handler(req, res) {
 
     // ── WEEKLY OUTLOOK ─────────────────────────────────────
     const wkSentiment=`F&G ${fgVal}/100 (${fgLabel}).\n${fgStatus}`;
-    const wkDeriv=frPct!==null?`Funding ${frPct}% per 8h (Bybit).\nL/S: ${longPct||'?'}% / ${shortPct||'?'}%.\n${lsSig}.`:oiVal!==null?`OI: $${oiVal}B — ${oiLabel}.`:`Derivatives: Bybit single-symbol tidak tersedia saat ini.`;
-    const wkDom=`BTC Dom ${btcDomPct}%.\n${btcDomPct>57?'BTC season — altcoin minimal.':btcDomPct<45?'Altseason aktif.':'Transisi BTC/Alt.'}`;
-    const wkTrend=`BTC ${btcChg24>=0?'+':''}${btcChg24}% (24h).\nVol: $${(btcVol/1e9).toFixed(1)}B.\n${vol24hPct>5?'Volatilitas tinggi.':Math.abs(btcChg24)<0.5?'Sideways — compression.':btcChg24>2?'Momentum bullish aktif.':btcChg24<-2?'Tekanan jual aktif.':'Mild movement.'}`;
+    const wkDeriv=frPct!==null
+      ? `Funding ${frPct}% per 8h.\nL/S: ${longPct||'?'}% / ${shortPct||'?'}%.\n${lsSig}.`
+      : oiVal!==null
+        ? `OI: $${oiVal}B — ${oiLabel}.`
+        : `Derivatives: menunggu data Bybit.`;
+    const wkDom=`BTC Dom ${btcDomPct}%.\n${btcDomPct>57?'BTC season.':btcDomPct<45?'Altseason aktif.':'Transisi.'}`;
+    const wkTrend=`BTC ${btcChg24>=0?'+':''}${btcChg24}% (24h). Vol $${(btcVol/1e9).toFixed(1)}B.\n${vol24hPct>5?'Volatilitas tinggi.':Math.abs(btcChg24)<0.5?'Sideways — compression.':btcChg24>2?'Momentum bullish.':btcChg24<-2?'Tekanan jual.':'Mild.'}`;
 
-    // ── AI PROMPT ──────────────────────────────────────────
     const aiPrompt=[
-      'Analisa data BTC onchain/derivatives berikut seperti hedge fund analyst institutional.',
-      `BTC: $${btcPrice.toLocaleString('en-US',{maximumFractionDigits:0})} | ${btcChg24>=0?'+':''}${btcChg24}% | Vol $${(btcVol/1e9).toFixed(1)}B | MCap $${(btcMCap/1e12).toFixed(2)}T`,
-      `ETH: $${ethPrice.toLocaleString('en-US',{maximumFractionDigits:0})} | ${ethChg24>=0?'+':''}${ethChg24}% | ETH FR: ${ethFrPct??'N/A'}%`,
+      'Analisa BTC onchain/derivatives seperti hedge fund analyst.',
+      `BTC: $${btcPrice.toLocaleString('en-US',{maximumFractionDigits:0})} | ${btcChg24>=0?'+':''}${btcChg24}% | Vol $${(btcVol/1e9).toFixed(1)}B`,
       `F&G: ${fgVal}/100 (${fgLabel}) | BTC Dom: ${btcDomPct}%`,
       `FR: ${frPct??'N/A'}% per 8h (Ann ${frAnn??'N/A'}%) | ${frSig}`,
-      `L/S: ${lsRatio??'N/A'} | ${longPct??'—'}% Long / ${shortPct??'—'}% Short | ${lsSig}`,
-      `OI: ${oiVal!=null?'$'+oiVal+'B':'N/A'} | ${oiLabel}`,
-      `MVRV proxy: ${mvrvProxy??'N/A'} (${mvrvLabel}) | NUPL proxy: ${nupl??'N/A'} (${nuplLabel}) | SOPR: ${sopr} (${soprLabel})`,
-      `Hash: ${hashRate??'—'} EH/s (${hashRateT}) | Block: #${blockH.toLocaleString()} | Fee: ${fastFee??'—'} sat/vB`,
-      `Bull: ${bull}pts Bear: ${bear}pts | ${bullBias}% Bull Bias | ${overallSignal}`,
-      '','Berikan: 1.Kondisi pasar 2.Key risk 3.Posisi optimal 4.Level kunci. Bahasa Indonesia, tajam.',
+      `L/S: ${lsRatio??'N/A'} | ${longPct??'—'}% Long / ${shortPct??'—'}% Short`,
+      `OI: ${oiVal!=null?'$'+oiVal+'B':'N/A'} | MVRV: ${mvrvProxy??'N/A'} | NUPL: ${nupl??'N/A'} | SOPR: ${sopr}`,
+      `Hash: ${hashRate??'—'} EH/s | Block: #${blockH.toLocaleString()} | Fee: ${fastFee??'—'} sat/vB`,
+      `Bull: ${bull} Bear: ${bear} | ${bullBias}% Bull | ${overallSignal}`,
+      '','Berikan analisis singkat: kondisi pasar, key risk, posisi optimal. Bahasa Indonesia.',
     ].join('\n');
 
     return res.status(200).json({
-      ok:true, ts:Date.now(), elapsed:Date.now()-t0, version:'v19',
+      ok:true, ts:Date.now(), elapsed:Date.now()-t0, version:'v20',
       dataOk:btcPrice>0,
-      sources:['CoinGecko Markets','Bybit Single-Symbol','Alternative.me','mempool.space'],
+      sources:['CoinGecko Markets','Bybit Dedicated Endpoints','Alternative.me','mempool.space'],
       btcPrice,btcChg24h:btcChg24,btcVol,btcMCap,btcH24,btcL24,vol24hPct,
       ethPrice,ethChg24h:ethChg24,ethFrPct,
       fgVal,fgLabel,fgStatus,
-      frPct,frAnn,frSig,frSrc:'Bybit',
+      frPct,frAnn,frSig,frSrc:'Bybit /funding/history',
       oiVal,oiLabel,
       lsRatio,longPct,shortPct,lsSig,
       mvrvProxy,mvrvLabel,nuplProxy:nupl,nuplLabel,soprProxy:sopr,soprLabel,
@@ -187,7 +220,7 @@ export default async function handler(req, res) {
 
   } catch(e) {
     return res.status(200).json({
-      ok:false,error:e.message,ts:Date.now(),elapsed:Date.now()-t0,version:'v19',
+      ok:false,error:e.message,ts:Date.now(),elapsed:Date.now()-t0,version:'v20',
       dataOk:false,btcPrice:0,ethPrice:0,fgVal:50,fgLabel:'Neutral',fgStatus:'—',
       frPct:null,frSig:'—',oiVal:null,oiLabel:'—',lsRatio:null,longPct:null,shortPct:null,lsSig:'—',
       mvrvProxy:null,mvrvLabel:'—',nuplProxy:null,nuplLabel:'—',soprProxy:null,soprLabel:'—',
