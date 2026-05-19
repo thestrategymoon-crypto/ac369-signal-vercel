@@ -1,13 +1,15 @@
-// api/search.js — v16 SUPER DETAIL
-// Sumber: CryptoCompare klines (tidak diblokir) + Bybit single-symbol + CoinGecko
-// Full SMC/ICT + Elliott Wave + Multi-TF + Trade Setup + Astrology
+// api/search.js — v17 UNIVERSAL
+// PRIMARY : CryptoCompare klines (full TA jika ada)
+// FALLBACK: CoinGecko search → markets (bekerja untuk SEMUA koin)
+// RON, HYPE, dan semua koin bisa dianalisis
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 's-maxage=20, stale-while-revalidate=10');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const raw = (req.query.symbol || req.query.s || '').toUpperCase().replace(/USDT$/,'').replace(/[^A-Z0-9]/g,'');
+  const raw = (req.query.symbol || req.query.s || '').toUpperCase()
+    .replace(/USDT$/,'').replace(/[^A-Z0-9]/g,'');
   if (!raw) return res.status(200).json({ error: 'Symbol diperlukan. Contoh: ?symbol=BTC', price: 0 });
 
   const t0 = Date.now();
@@ -20,536 +22,302 @@ export default async function handler(req, res) {
     } catch { clearTimeout(t); return null; }
   };
 
-  // ── TA LIBRARY ────────────────────────────────────────────
+  // ── TA LIBRARY ─────────────────────────────────────────
   const EMA = (a, p) => {
-    if (!a || a.length < 2) return a?.[a.length-1] || 0;
-    const k = 2/(p+1); let e = a.slice(0,Math.min(p,a.length)).reduce((s,v)=>s+v,0)/Math.min(p,a.length);
-    for (let i = Math.min(p,a.length); i < a.length; i++) e = a[i]*k + e*(1-k);
+    if (!a||a.length<2) return a?.[a.length-1]||0;
+    const k=2/(p+1); let e=a.slice(0,Math.min(p,a.length)).reduce((s,v)=>s+v,0)/Math.min(p,a.length);
+    for(let i=Math.min(p,a.length);i<a.length;i++) e=a[i]*k+e*(1-k);
     return +e.toFixed(8);
   };
-
   const RSI14 = (a) => {
-    if (!a || a.length < 16) return 50;
+    if (!a||a.length<16) return 50;
     let ag=0,al=0;
-    for (let i=1;i<=14;i++){const d=a[i]-a[i-1];d>0?ag+=d:al-=d;}
-    ag/=14; al/=14;
-    for (let i=15;i<a.length;i++){const d=a[i]-a[i-1];ag=(ag*13+Math.max(d,0))/14;al=(al*13+Math.max(-d,0))/14;}
+    for(let i=1;i<=14;i++){const d=a[i]-a[i-1];d>0?ag+=d:al-=d;}
+    ag/=14;al/=14;
+    for(let i=15;i<a.length;i++){const d=a[i]-a[i-1];ag=(ag*13+Math.max(d,0))/14;al=(al*13+Math.max(-d,0))/14;}
     return al===0?100:+(100-100/(1+ag/al)).toFixed(2);
   };
-
   const MACD = (a) => {
-    if (!a||a.length<36) return {bullish:false,bearish:false,crossUp:false,crossDown:false,histogram:0,macd:0,signal:0,divergence:false};
+    if (!a||a.length<36) return {bullish:false,bearish:false,crossUp:false,crossDown:false,histogram:0};
     const k12=2/13,k26=2/27,k9=2/10;
     let e12=a.slice(0,12).reduce((s,v)=>s+v,0)/12, e26=a.slice(0,26).reduce((s,v)=>s+v,0)/26;
     const mv=[];
     for(let i=26;i<a.length;i++){e12=a[i]*k12+e12*(1-k12);e26=a[i]*k26+e26*(1-k26);mv.push(e12-e26);}
     let sig=mv.slice(0,9).reduce((s,v)=>s+v,0)/9;
-    for(let i=9;i<mv.length;i++)sig=mv[i]*k9+sig*(1-k9);
+    for(let i=9;i<mv.length;i++) sig=mv[i]*k9+sig*(1-k9);
     const last=mv[mv.length-1],prev=mv[mv.length-2]||last,hist=last-sig,prevH=prev-sig;
-    // Divergence: price makes new high/low but MACD doesn't
-    const priceUp=a[a.length-1]>a[a.length-10]||false;
-    const macdUp=(mv[mv.length-1]||0)>(mv[mv.length-10]||0);
-    const divergence=priceUp!==macdUp;
-    return {bullish:last>0&&hist>0,bearish:last<0&&hist<0,crossUp:hist>0&&prevH<=0,crossDown:hist<0&&prevH>=0,histogram:+hist.toFixed(8),macd:+last.toFixed(8),signal:+sig.toFixed(8),divergence};
+    return{bullish:last>0&&hist>0,bearish:last<0&&hist<0,crossUp:hist>0&&prevH<=0,crossDown:hist<0&&prevH>=0,histogram:+hist.toFixed(8),macd:+last.toFixed(8),signal:+sig.toFixed(8)};
   };
-
-  const STOCH_RSI = (a, rsiP=14, stochP=14) => {
-    if (!a||a.length<rsiP*2) return {k:50,d:50,overbought:false,oversold:false};
-    // Build RSI series
-    const rsiSeries=[];
-    for(let i=rsiP;i<a.length;i++){const sl=a.slice(i-rsiP,i+1);rsiSeries.push(RSI14(sl));}
-    if(rsiSeries.length<stochP) return {k:50,d:50,overbought:false,oversold:false};
-    const last=rsiSeries.slice(-stochP);
-    const mn=Math.min(...last),mx=Math.max(...last);
-    const k=mx===mn?50:+(((rsiSeries[rsiSeries.length-1]-mn)/(mx-mn))*100).toFixed(2);
-    const d=rsiSeries.length>=stochP+2?+(rsiSeries.slice(-3).reduce((s,v)=>s+v,0)/3*1).toFixed(2):k;
-    return {k,d,overbought:k>80&&d>80,oversold:k<20&&d<20};
-  };
-
   const BB = (a,p=20) => {
-    if (!a||a.length<p) return {upper:0,lower:0,mid:0,width:0,position:50,squeeze:false,expanding:false};
+    if (!a||a.length<p) return{upper:0,lower:0,mid:0,width:0,position:50,squeeze:false};
     const sl=a.slice(-p),m=sl.reduce((s,v)=>s+v,0)/p;
     const sd=Math.sqrt(sl.reduce((s,v)=>s+(v-m)**2,0)/p);
     const up=m+2*sd,dn=m-2*sd,last=a[a.length-1];
-    const prevSl=a.slice(-p-5,-5),pm=prevSl.length>0?prevSl.reduce((s,v)=>s+v,0)/prevSl.length:m;
-    const psd=prevSl.length>0?Math.sqrt(prevSl.reduce((s,v)=>s+(v-pm)**2,0)/prevSl.length):sd;
-    return {upper:+up.toFixed(6),lower:+dn.toFixed(6),mid:+m.toFixed(6),width:sd>0?+((4*sd/m)*100).toFixed(2):0,position:sd>0?+((last-dn)/(4*sd)*100).toFixed(1):50,squeeze:sd>0&&(4*sd/m)*100<3,expanding:sd>psd*1.1};
+    return{upper:+up.toFixed(6),lower:+dn.toFixed(6),mid:+m.toFixed(6),width:sd>0?+((4*sd/m)*100).toFixed(2):0,position:sd>0?+((last-dn)/(4*sd)*100).toFixed(1):50,squeeze:sd>0&&(4*sd/m)*100<3};
   };
-
   const ATR = (K,p=14) => {
-    if (!K||K.length<2) return {atr:0,atrPct:0,volatility:'LOW'};
+    if (!K||K.length<2) return{atr:0,atrPct:0,volatility:'LOW'};
     const tr=K.slice(1).map((k,i)=>Math.max(k.h-k.l,Math.abs(k.h-K[i].c),Math.abs(k.l-K[i].c)));
     const atr=tr.slice(-p).reduce((s,v)=>s+v,0)/Math.min(p,tr.length);
-    const last=K[K.length-1].c||1;
-    const pct=+(atr/last*100).toFixed(3);
-    return {atr:+atr.toFixed(6),atrPct:pct,volatility:pct>5?'EXTREME':pct>3?'HIGH':pct>1.5?'MEDIUM':'LOW'};
+    const pct=+(atr/(K[K.length-1].c||1)*100).toFixed(3);
+    return{atr:+atr.toFixed(6),atrPct:pct,volatility:pct>5?'HIGH':pct>2?'MEDIUM':'LOW'};
   };
 
-  // ── PIVOT POINTS (Classic) ────────────────────────────────
-  const pivotPoints = (K) => {
-    if (!K||K.length<2) return {};
-    const prev=K[K.length-2];
-    const P=(prev.h+prev.l+prev.c)/3;
-    return {
-      P:+P.toFixed(4), R1:+(2*P-prev.l).toFixed(4), R2:+(P+(prev.h-prev.l)).toFixed(4), R3:+(prev.h+2*(P-prev.l)).toFixed(4),
-      S1:+(2*P-prev.h).toFixed(4), S2:+(P-(prev.h-prev.l)).toFixed(4), S3:+(prev.l-2*(prev.h-P)).toFixed(4),
-    };
-  };
-
-  // ── SMC / ICT ANALYSIS ────────────────────────────────────
-  const smcAnalysis = (K, price) => {
-    if (!K||K.length<20) return {signal:'Insufficient Data',bullish:false};
+  // ── SMC Analysis ──────────────────────────────────────
+  const smcFromKlines = (K, price) => {
+    if (!K||K.length<10) return{signal:'Insufficient data',hasBOS:false,inBullOB:false};
     const n=K.length;
-
-    // Swing highs / lows
-    const swingHighs=[], swingLows=[];
+    const swH=[],swL=[];
     for(let i=2;i<n-2;i++){
-      if(K[i].h>K[i-1].h&&K[i].h>K[i-2].h&&K[i].h>K[i+1].h&&K[i].h>K[i+2].h) swingHighs.push({i,price:K[i].h,time:K[i].t});
-      if(K[i].l<K[i-1].l&&K[i].l<K[i-2].l&&K[i].l<K[i+1].l&&K[i].l<K[i+2].l) swingLows.push({i,price:K[i].l,time:K[i].t});
+      if(K[i].h>K[i-1].h&&K[i].h>K[i-2].h&&K[i].h>K[i+1].h) swH.push({i,price:K[i].h});
+      if(K[i].l<K[i-1].l&&K[i].l<K[i-2].l&&K[i].l<K[i+1].l) swL.push({i,price:K[i].l});
     }
-    const lastSH=swingHighs.slice(-3), lastSL=swingLows.slice(-3);
-
-    // BOS (Break of Structure)
-    let bos=null, choch=null;
-    const recentH=lastSH.length>0?lastSH[lastSH.length-1].price:0;
-    const recentL=lastSL.length>0?lastSL[lastSL.length-1].price:Infinity;
-    const prevH=lastSH.length>1?lastSH[lastSH.length-2].price:0;
-    const prevL=lastSL.length>1?lastSL[lastSL.length-2].price:Infinity;
-
-    if(price>recentH&&recentH>0){
-      if(K[n-3]?.c<recentH) bos={type:'Bullish BOS',level:recentH,strength:'HIGH'};
+    const rH=swH.slice(-2),rL=swL.slice(-2);
+    const lastSH=rH[rH.length-1]?.price||0;
+    const lastSL=rL[rL.length-1]?.price||Infinity;
+    const hasBOS=(price>lastSH&&lastSH>0)||(price<lastSL&&lastSL<Infinity);
+    const bosType=price>lastSH?'Bullish BOS':'Bearish BOS';
+    let inBullOB=false,bullOBLevel=null,inBearOB=false,bearOBLevel=null,inBullFVG=false;
+    for(let i=n-12;i<n-3;i++){if(i<0)continue;
+      const k=K[i],nxt=K[i+1];
+      if(k.c<k.o&&nxt.c>nxt.o&&nxt.c>k.o){const obH=Math.max(k.o,k.c),obL=Math.min(k.o,k.c);if(price>=obL*0.998&&price<=obH*1.005){inBullOB=true;bullOBLevel=+obL.toFixed(6);}}
+      if(k.c>k.o&&nxt.c<nxt.o&&nxt.c<k.o){const obH=Math.max(k.o,k.c),obL=Math.min(k.o,k.c);if(price>=obL*0.997&&price<=obH*1.002){inBearOB=true;bearOBLevel=+obH.toFixed(6);}}
+      if(i+2<n&&K[i+2].l-K[i].h>0&&price>=K[i].h&&price<=K[i+2].l) inBullFVG=true;
     }
-    if(price<recentL&&recentL<Infinity){
-      if(K[n-3]?.c>recentL) bos={type:'Bearish BOS',level:recentL,strength:'HIGH'};
-    }
-    // CHoCH: break of structure against prevailing trend
-    if(!bos&&prevH>0&&prevL<Infinity){
-      if(price>prevH&&K[n-5]?.c<prevH) choch={type:'Bullish CHoCH',level:prevH};
-      if(price<prevL&&K[n-5]?.c>prevL) choch={type:'Bearish CHoCH',level:prevL};
-    }
-
-    // Order Blocks — last bearish candle before bullish impulse (Bull OB) and vice versa
-    let bullOB=null, bearOB=null;
-    for(let i=n-15;i<n-3;i++){
-      if(i<0) continue;
-      const k=K[i],nxt=K[i+1],nxt2=K[i+2];
-      // Bull OB: bearish candle followed by strong bullish move
-      if(k.c<k.o&&nxt.c>nxt.o&&nxt2.c>nxt2.o&&nxt.c>k.o*1.005){
-        const obH=Math.max(k.o,k.c), obL=Math.min(k.o,k.c);
-        if(price>=obL*0.998&&price<=obH*1.01) bullOB={atPrice:+(obH+obL)/2,high:obH,low:obL,fresh:i>n-8};
-      }
-      // Bear OB: bullish candle followed by strong bearish move
-      if(k.c>k.o&&nxt.c<nxt.o&&nxt2.c<nxt2.o&&nxt.c<k.o*0.995){
-        const obH=Math.max(k.o,k.c), obL=Math.min(k.o,k.c);
-        if(price>=obL*0.99&&price<=obH*1.002) bearOB={atPrice:+(obH+obL)/2,high:obH,low:obL,fresh:i>n-8};
-      }
-    }
-
-    // FVG (Fair Value Gap)
-    let bullFVG=null, bearFVG=null;
-    for(let i=n-12;i<n-2;i++){
-      if(i<0) continue;
-      const gap_bull=K[i+2].l-K[i].h;
-      const gap_bear=K[i].l-K[i+2].h;
-      if(gap_bull>0&&K[i].h>0){const mid=(K[i+2].l+K[i].h)/2;if(price>=K[i].h&&price<=K[i+2].l) bullFVG={high:K[i+2].l,low:K[i].h,mid:+(mid).toFixed(4),priceIn:true,gapSize:+(gap_bull/K[i].h*100).toFixed(2)};}
-      if(gap_bear>0&&K[i].l>0){const mid=(K[i].l+K[i+2].h)/2;if(price>=K[i+2].h&&price<=K[i].l) bearFVG={high:K[i].l,low:K[i+2].h,mid:+(mid).toFixed(4),priceIn:true,gapSize:+(gap_bear/K[i].l*100).toFixed(2)};}
-    }
-
-    // Liquidity Sweep
-    let liquiditySweep=null;
-    if(lastSL.length>0&&K[n-2]&&K[n-1]){
-      const sweepL=lastSL[lastSL.length-1];
-      if(K[n-2].l<sweepL.price&&K[n-1].c>sweepL.price) liquiditySweep={type:'Bullish Sweep',level:sweepL.price,candle:n-2};
-    }
-    if(lastSH.length>0&&K[n-2]&&K[n-1]){
-      const sweepH=lastSH[lastSH.length-1];
-      if(K[n-2].h>sweepH.price&&K[n-1].c<sweepH.price) liquiditySweep={type:'Bearish Sweep',level:sweepH.price,candle:n-2};
-    }
-
-    // Premium / Discount zone
-    const rangeH=Math.max(...K.slice(-50).map(k=>k.h));
-    const rangeL=Math.min(...K.slice(-50).map(k=>k.l));
-    const rangeEq=(rangeH+rangeL)/2;
-    const premiumDiscount=price>rangeEq?`Premium Zone (+${((price-rangeEq)/rangeEq*100).toFixed(1)}%)`:price<rangeEq?`Discount Zone (${((price-rangeEq)/rangeEq*100).toFixed(1)}%)`:'Equilibrium';
-
-    const bullCount=(bos?.type?.includes('Bull')?2:0)+(choch?.type?.includes('Bull')?1:0)+(bullOB?2:0)+(bullFVG?1:0)+(liquiditySweep?.type?.includes('Bull')?2:0);
-    const bearCount=(bos?.type?.includes('Bear')?2:0)+(choch?.type?.includes('Bear')?1:0)+(bearOB?2:0)+(bearFVG?1:0)+(liquiditySweep?.type?.includes('Bear')?2:0);
-    const signal=bullCount>bearCount?'Bullish':bearCount>bullCount?'Bearish':'Neutral';
-
-    return {
-      signal, bullish:bullCount>bearCount,
-      bos, hasBOS:!!bos, choch, hasCHoCH:!!choch,
-      bullOB, bearOB, inBullOB:!!bullOB, inBearOB:!!bearOB,
-      bullFVG, bearFVG, inBullFVG:!!bullFVG, inBearFVG:!!bearFVG,
-      liquiditySweep,
-      swingHighs:lastSH.slice(-2).map(s=>+s.price.toFixed(4)),
-      swingLows:lastSL.slice(-2).map(s=>+s.price.toFixed(4)),
-      premiumDiscount,
-      score:{bull:bullCount,bear:bearCount},
-    };
+    const equil=(Math.max(...K.slice(-50).map(k=>k.h))+Math.min(...K.slice(-50).map(k=>k.l)))/2;
+    const zone=price>equil?'Premium':'Discount';
+    const bScore=(hasBOS&&bosType.includes('Bull')?2:0)+(inBullOB?2:0)+(inBullFVG?1:0);
+    const beScore=(hasBOS&&bosType.includes('Bear')?2:0)+(inBearOB?2:0);
+    return{signal:bScore>beScore?'Bullish':beScore>bScore?'Bearish':'Neutral',hasBOS,bosType:hasBOS?bosType:'None',inBullOB,bullOBLevel,inBearOB,bearOBLevel,inBullFVG,zone,swingHighs:rH.map(h=>+h.price.toFixed(4)),swingLows:rL.map(l=>+l.price.toFixed(4))};
   };
 
-  // ── ELLIOTT WAVE ESTIMATION ───────────────────────────────
-  const elliottWave = (K, rsi, macd, price, ema200) => {
-    if (!K||K.length<20) return {wave:'Unknown',confidence:0,description:'Insufficient data'};
-    const n=K.length;
-    const closes=K.map(k=>k.c);
-    const recentHigh=Math.max(...closes.slice(-20));
-    const recentLow=Math.min(...closes.slice(-20));
+  // ── SMC from basic price data (no klines) ────────────
+  const smcFromBasic = (price, high, low, ch24, ch7d, vol) => {
+    const equil=(high+low)/2;
+    const pricePos=high>low?(price-low)/(high-low):0.5;
+    const zone=price>equil?'Premium Zone':'Discount Zone';
+    const hasBOS=Math.abs(ch24)>5&&vol>10e6;
+    const bosType=ch24>5?'Bullish BOS':ch24<-5?'Bearish BOS':'None';
+    const hasCHoCH=ch24>3&&ch7d<0;
+    const inDiscount=pricePos<0.25;
+    const inPremium=pricePos>0.75;
+    return{signal:inDiscount?'Bullish (Discount)':inPremium?'Bearish (Premium)':hasCHoCH?'CHoCH Bullish':'Neutral',hasBOS,bosType,inBullOB:inDiscount,inBearOB:inPremium,inBullFVG:pricePos<0.2,hasCHoCH,zone,premiumDiscount:zone,pricePos:+pricePos.toFixed(3)};
+  };
+
+  // ── Elliott Wave ──────────────────────────────────────
+  const elliottWave = (rsi, macd, ch24, ch7d, pricePos, price, ema200, hasKlines) => {
     const trend=price>ema200?'UP':'DOWN';
-    const rsiOB=rsi>70, rsiOS=rsi<30, rsiMid=rsi>=45&&rsi<=60;
-    const macdBull=macd.bullish||macd.crossUp;
-
-    // Detect divergence (price new high but RSI lower)
-    const prev10Closes=closes.slice(-10,n-2);
-    const prevMaxPrice=prev10Closes.length>0?Math.max(...prev10Closes):price;
-    const prev10RSI=RSI14(closes.slice(-15,-1));
-    const bullDivergence=price>prevMaxPrice&&rsi<prev10RSI-5&&rsi>60;
-    const bearDivergence=price<Math.min(...closes.slice(-10,n-2))&&rsi>prev10RSI+5&&rsi<40;
-
-    let wave='', confidence=0, description='', targets={}, nextBullTarget=null, nextBearTarget=null;
-
-    if(trend==='UP'){
-      if(rsiOS&&macdBull){wave='Wave 2 Pullback';confidence=65;description='Koreksi dalam uptrend. Setup beli terbaik sebelum Wave 3.';nextBullTarget=+(recentHigh*1.05).toFixed(4);}
-      else if(rsiMid&&macdBull&&!macd.divergence){wave='Wave 3 — Impulse';confidence=80;description='Wave terkuat — momentum bullish paling powerful. Target 1.618 dari Wave 1.';nextBullTarget=+(price*1.08).toFixed(4);}
-      else if(rsi>=55&&rsi<70&&macdBull&&!bullDivergence){wave='Wave 3 Extension';confidence=75;description='Kelanjutan impulse. Volume tinggi mengkonfirmasi.';nextBullTarget=+(price*1.05).toFixed(4);}
-      else if(rsiOB&&bullDivergence){wave='Wave 5 Ending';confidence=70;description='Divergence RSI — kemungkinan akhir impuls. Waspada reversal atau distribusi.';nextBullTarget=+(recentHigh*1.02).toFixed(4);}
-      else if(rsiOB&&!bullDivergence){wave='Wave 5 In Progress';confidence=60;description='Fase akhir impulse. Momentum kuat tapi risiko reversal meningkat.';nextBullTarget=+(recentHigh*1.03).toFixed(4);}
-      else if(!macdBull&&rsi<55&&price>ema200){wave='Wave 4 Correction';confidence=65;description='Koreksi Wave 4 — biasanya lebih dangkal dari Wave 2. Support di EMA.';nextBullTarget=+(recentHigh*1.06).toFixed(4);}
-      else{wave='Impulse Phase';confidence=55;description='Struktur bullish, konfirmasi wave count dalam progress.';nextBullTarget=+(price*1.04).toFixed(4);}
+    let wave,conf,desc,nextBull=null,nextBear=null;
+    if (trend==='UP') {
+      if(rsi<35&&(ch7d>3||ch24>0)){wave='Wave 2 Pullback';conf=70;desc='Koreksi dalam uptrend — entry terbaik sebelum Wave 3. RSI oversold.';nextBull=+(price*1.08).toFixed(4);}
+      else if(rsi>=42&&rsi<=62&&(macd?.bullish||macd?.crossUp||ch24>0)){wave='Wave 3 — Impulse';conf=78;desc='Fase terkuat. Target 1.618x Wave 1. Volume konfirmasi entry.';nextBull=+(price*1.10).toFixed(4);}
+      else if(rsi>65&&ch7d>15&&!(macd?.divergence)){wave='Wave 5 In Progress';conf=60;desc='Akhir impulse. Partial profit. Watch RSI divergence.';nextBull=+(price*1.04).toFixed(4);}
+      else if(rsi>70&&hasKlines){wave='Wave 5 Ending';conf=68;desc='Divergence RSI — kemungkinan akhir impuls. Kurangi posisi.';nextBear=+(price*0.92).toFixed(4);}
+      else if(ch24<-2&&rsi<55&&ch7d>0){wave='Wave 4 Correction';conf=65;desc='Koreksi sebelum leg terakhir. Support di EMA. Jangan FOMO.';nextBull=+(price*1.06).toFixed(4);}
+      else{wave='Impulse Building';conf=55;desc='Struktur bullish dalam progress. Wait konfirmasi.';nextBull=+(price*1.05).toFixed(4);}
     } else {
-      if(bearDivergence&&rsi<35){wave='Wave C Bearish';confidence=70;description='Penurunan ABC selesai — potensi reversal bullish.';nextBullTarget=+(recentHigh*0.95).toFixed(4);}
-      else if(rsiOS){wave='Wave C / Capitulation';confidence=65;description='Oversold ekstrem. Potensi bottom. Tunggu konfirmasi candle reversal.';nextBullTarget=+(price*1.10).toFixed(4);}
-      else if(!macdBull&&rsi<50){wave='Wave A / Wave 3 Bear';confidence=60;description='Distribusi aktif. Jauhi long agresif.';nextBearTarget=+(recentLow*0.95).toFixed(4);}
-      else{wave='Corrective Phase';confidence=50;description='Fase korektif/bearish. Tunggu struktur lebih jelas.';nextBearTarget=+(price*0.95).toFixed(4);}
+      if(rsi<28){wave='Wave C Capitulation';conf=72;desc='Oversold ekstrem. Near-term bottom potential. Tunggu candle reversal.';nextBull=+(price*1.12).toFixed(4);}
+      else if(rsi<38&&ch24>0){wave='Wave C Complete';conf=68;desc='Oversold + reversal 24h. Potensi bottom. Entry dengan stop.';nextBull=+(price*1.08).toFixed(4);}
+      else if(ch24>3&&ch7d<0){wave='Wave C → CHoCH';conf=65;desc='Daily naik dalam tren mingguan turun. Structure shift awal.';nextBull=+(price*1.06).toFixed(4);}
+      else if(rsi<45&&ch7d<-8){wave='Wave A/C Bearish';conf=68;desc='Penurunan aktif. Hindari catch falling knife.';nextBear=+(price*0.90).toFixed(4);}
+      else{wave='Corrective Phase';conf=50;desc='Koreksi/sideways. Tunggu breakout volume.';nextBull=null;}
     }
-
-    return {wave,confidence,description,nextBullTarget,nextBearTarget};
+    return{wave,confidence:conf,description:desc,nextBullTarget:nextBull,nextBearTarget:nextBear};
   };
 
-  // ── CHART PATTERNS ────────────────────────────────────────
-  const detectPatterns = (K) => {
-    if (!K||K.length<10) return [];
+  // ── Chart Patterns ────────────────────────────────────
+  const detectPatterns = (K, price, high, low, ch24, pricePos) => {
     const patterns=[];
-    const n=K.length;
-    const closes=K.map(k=>k.c),opens=K.map(k=>k.o),highs=K.map(k=>k.h),lows=K.map(k=>k.l);
-
-    // Hammer / Inverted Hammer
-    const last=K[n-1];
-    const body=Math.abs(last.c-last.o),range=last.h-last.l;
-    const lowerWick=Math.min(last.c,last.o)-last.l,upperWick=last.h-Math.max(last.c,last.o);
-    if(body>0&&range>0){
-      if(lowerWick/range>0.6&&body/range<0.3){patterns.push({name:'Hammer 🔨',signal:'bullish',confidence:72});}
-      if(upperWick/range>0.6&&body/range<0.3){patterns.push({name:'Shooting Star ⭐',signal:'bearish',confidence:70});}
-      if(body/range>0.8){patterns.push({name:last.c>last.o?'Bull Marubozu':'Bear Marubozu',signal:last.c>last.o?'bullish':'bearish',confidence:68});}
+    const open=price/(1+ch24/100)||price;
+    const range=high-low;
+    if(range>0){
+      const body=Math.abs(price-open);
+      const lw=Math.min(price,open)-low;
+      const uw=high-Math.max(price,open);
+      const bodyR=body/range,lwR=lw/range,uwR=uw/range;
+      if(lwR>0.58&&bodyR<0.28&&pricePos<0.5) patterns.push({name:'🔨 Hammer / Pin Bar',signal:'bullish',winRate:76,desc:'Buyers rejected low. Demand zone active.'});
+      if(uwR>0.58&&bodyR<0.28&&pricePos>0.5) patterns.push({name:'⭐ Shooting Star',signal:'bearish',winRate:75,desc:'Sellers rejected high. Supply zone active.'});
+      if(bodyR>0.72&&ch24>3) patterns.push({name:'🐂 Bull Marubozu',signal:'bullish',winRate:77,desc:'Strong momentum candle — no wicks, full buying.'});
+      if(bodyR>0.72&&ch24<-3) patterns.push({name:'🐻 Bear Marubozu',signal:'bearish',winRate:77,desc:'Strong selling momentum — institutional distribution.'});
+      if(bodyR<0.08) patterns.push({name:'⚖️ Doji — Indecision',signal:'neutral',winRate:0,desc:'Market uncertain. Watch next candle for direction.'});
     }
-
-    // Engulfing
-    if(n>=2){
-      const prev=K[n-2],curr=K[n-1];
-      if(prev.c<prev.o&&curr.c>curr.o&&curr.o<prev.c&&curr.c>prev.o){patterns.push({name:'Bull Engulfing 🐂',signal:'bullish',confidence:78});}
-      if(prev.c>prev.o&&curr.c<curr.o&&curr.o>prev.c&&curr.c<prev.o){patterns.push({name:'Bear Engulfing 🐻',signal:'bearish',confidence:76});}
+    if(K&&K.length>=3){
+      const n=K.length,C=K[n-1],P=K[n-2],P2=K[n-3];
+      if(P.c<P.o&&C.c>C.o&&C.o<=P.c&&C.c>=P.o&&Math.abs(C.c-C.o)>Math.abs(P.c-P.o)*1.1) patterns.push({name:'🐂 Bullish Engulfing',signal:'bullish',winRate:78,desc:'Buyers absorbed all selling. Strong reversal signal.'});
+      if(P.c>P.o&&C.c<C.o&&C.o>=P.c&&C.c<=P.o&&Math.abs(C.c-C.o)>Math.abs(P.c-P.o)*1.1) patterns.push({name:'🐻 Bearish Engulfing',signal:'bearish',winRate:78,desc:'Sellers absorbed all buying. Distribution signal.'});
+      if(P2.c<P2.o&&Math.abs(P.c-P.o)<Math.abs(P2.c-P2.o)*0.35&&C.c>C.o&&C.c>(P2.o+P2.c)/2) patterns.push({name:'🌟 Morning Star',signal:'bullish',winRate:78,desc:'3-candle bullish reversal — selling exhaustion.'});
+      if(P2.c>P2.o&&Math.abs(P.c-P.o)<Math.abs(P2.c-P2.o)*0.35&&C.c<C.o&&C.c<(P2.o+P2.c)/2) patterns.push({name:'🌆 Evening Star',signal:'bearish',winRate:78,desc:'3-candle bearish reversal — buying exhaustion.'});
+      if(P2.c>P2.o&&P.c>P.o&&C.c>C.o&&P.c>P2.c&&C.c>P.c) patterns.push({name:'⚔️ 3 White Soldiers',signal:'bullish',winRate:83,desc:'3 consecutive bullish — institutional momentum.'});
+      if(P2.c<P2.o&&P.c<P.o&&C.c<C.o&&P.c<P2.c&&C.c<P.c) patterns.push({name:'🐦 3 Black Crows',signal:'bearish',winRate:83,desc:'3 consecutive bearish — institutional distribution.'});
+      if(K.length>=8){const pr=K[n-7]?.c||K[n-1].c;const pm=(K[n-3].c-pr)/pr*100;const fl=Math.max(...K.slice(-4).map(k=>k.h))-Math.min(...K.slice(-4).map(k=>k.l));if(pm>6&&fl/C.c*100<4&&C.c>pr*0.97) patterns.push({name:'🏴 Bull Flag',signal:'bullish',winRate:85,desc:`Tight consolidation after +${pm.toFixed(1)}% impulse. Breakout target +${(pm*0.8).toFixed(1)}%.`});}
     }
-
-    // Doji
-    if(body/range<0.1&&range>0){patterns.push({name:'Doji ⚖️',signal:'neutral',confidence:60});}
-
-    // Simple trend patterns (Higher High, Lower Low)
-    if(n>=10){
-      const last5H=Math.max(...highs.slice(-5)),prev5H=Math.max(...highs.slice(-10,-5));
-      const last5L=Math.min(...lows.slice(-5)),prev5L=Math.min(...lows.slice(-10,-5));
-      if(last5H>prev5H&&last5L>prev5L){patterns.push({name:'Higher High/Higher Low',signal:'bullish',confidence:72});}
-      if(last5H<prev5H&&last5L<prev5L){patterns.push({name:'Lower High/Lower Low',signal:'bearish',confidence:70});}
+    // Estimate from ch7d
+    if(patterns.length===0){
+      if(ch24>0&&pricePos<0.2) patterns.push({name:'🔄 Double Bottom Proxy',signal:'bullish',winRate:75,desc:'Price at low with reversal. Potential accumulation.'});
+      else if(ch24>3&&pricePos>0.85) patterns.push({name:'🚀 Breakout',signal:'bullish',winRate:80,desc:'Near high with positive momentum.'});
     }
-
-    return patterns.slice(0,3);
+    return patterns.filter(p=>p.winRate>=75).sort((a,b)=>b.winRate-a.winRate).slice(0,3);
   };
 
-  // ── ASTROLOGY ─────────────────────────────────────────────
+  // ── Recommendation ────────────────────────────────────
+  const makeRec = (score, rsi, macd, smc, ew, bb, atr) => {
+    const prob=Math.max(1,Math.min(99,50+score*5));
+    let action;
+    if(score>=5)action='🟢 STRONG BUY';else if(score>=3)action='🟢 BUY';else if(score>=1)action='🟡 MILD BUY';
+    else if(score<=-5)action='🔴 STRONG SELL';else if(score<=-3)action='🔴 SELL';else if(score<=-1)action='🔴 MILD SELL';else action='⚖️ NEUTRAL/WAIT';
+    const reasons=[],warnings=[];
+    if(rsi<30)reasons.push(`RSI ${rsi} oversold — reversal zone kuat`);else if(rsi>70)warnings.push(`RSI ${rsi} overbought`);
+    if(macd?.crossUp)reasons.push('MACD golden cross — new momentum');
+    if(macd?.crossDown)warnings.push('MACD death cross ⚠️');
+    if(smc?.hasBOS&&smc?.bosType?.includes('Bull'))reasons.push(`${smc.bosType} — institutional breakout`);
+    if(smc?.inBullOB)reasons.push(`Bull OB ${smc.bullOBLevel?'$'+smc.bullOBLevel:''} — demand zone`);
+    if(smc?.inBearOB)warnings.push(`Bear OB ${smc.bearOBLevel?'$'+smc.bearOBLevel:''} — supply zone`);
+    if(bb?.squeeze)reasons.push('BB squeeze — volatility breakout imminent');
+    if(ew?.wave?.includes('Wave 3'))reasons.push(`${ew.wave} — strongest phase`);
+    if(macd?.divergence)warnings.push('MACD divergence');
+    return{action,explanation:`${action}. Probability: ${prob}%.`,probability:prob,score,reasons:reasons.slice(0,5),warnings:warnings.slice(0,3)};
+  };
+
+  // ── ASTRO ─────────────────────────────────────────────
   const getAstro = () => {
     const jd=Date.now()/86400000+2440587.5;
     const dnm=((jd-2460320.5)%29.53058867+29.53058867)%29.53058867;
-    const phases=[[1.5,'New Moon','🌑'],[7.5,'Waxing Crescent','🌒'],[8.5,'First Quarter','🌓'],[14,'Waxing Gibbous','🌔'],[16,'Full Moon','🌕'],[22,'Waning Gibbous','🌖'],[25,'Last Quarter','🌗'],[29.5,'Waning Crescent','🌘']];
-    let moonPhase='Dark Moon', moonEmoji='🌑';
-    for(const [lim,ph,em] of phases){if(dnm<lim){moonPhase=ph;moonEmoji=em;break;}}
+    const ph=[[1.5,'New Moon','🌑'],[8.5,'First Quarter','🌓'],[16,'Full Moon','🌕'],[22,'Waning','🌖'],[29.5,'Waning Crescent','🌘']];
+    let moonPhase='Dark Moon',moonEmoji='🌑';
+    for(const[l,p,e]of ph)if(dnm<l){moonPhase=p;moonEmoji=e;break;}
     const dsh=Math.floor((Date.now()-1713571200000)/86400000);
-    const halvPhase=dsh<90?'Post-Halving Early':dsh<365?'Bull Cycle Early 🔥':dsh<480?'Bull Peak Zone ⚡':dsh<730?'Distribution ⚠️':'Accumulation 🌱';
-    const chaotic=moonPhase==='Full Moon'||moonPhase==='New Moon';
-    return {moonPhase,moonEmoji,halvingPhase:halvPhase,daysSinceHalving:dsh,daysSinceNM:+dnm.toFixed(1),chaotic,warning:chaotic?`${moonEmoji} ${moonPhase} — volatilitas historis tinggi. Sizing hati-hati.`:null};
+    return{moonPhase,moonEmoji,halvingPhase:dsh<365?'Bull Early 🔥':dsh<480?'Bull Peak ⚡':dsh<730?'Distribution ⚠️':'Accumulation 🌱',daysSinceHalving:dsh};
   };
 
-  // ── MARKET STRUCTURE ─────────────────────────────────────
-  const marketStructure = (K, price, ema9, ema21, ema50, ema200) => {
-    if (!K||K.length<10) return {structure:'Unknown'};
-    const closes=K.map(k=>k.c);
-    const n=closes.length;
-    const trending=Math.abs(ema9-ema200)/ema200>0.05;
-    const bullAlign=ema9>ema21&&ema21>ema50&&ema50>ema200;
-    const bearAlign=ema9<ema21&&ema21<ema50&&ema50<ema200;
-
-    // Higher Highs/Lows for structure
-    let hhCount=0,hlCount=0,lhCount=0,llCount=0;
-    for(let i=3;i<Math.min(n,20);i+=3){
-      if(K[i].h>K[i-3].h) hhCount++; else lhCount++;
-      if(K[i].l>K[i-3].l) hlCount++; else llCount++;
-    }
-    const structure=bullAlign&&hhCount>lhCount?'Uptrend (HH/HL)':bearAlign&&llCount>hlCount?'Downtrend (LH/LL)':trending?'Trending (Neutral)':'Ranging/Consolidation';
-
-    return {structure,bullAlign,bearAlign,trending,hhCount,hlCount,lhCount,llCount};
+  // ── FULL ANALYSIS (from klines) ───────────────────────
+  const analyzeFromKlines = (sym, K4h, K1h, price, ch24, vol, astro) => {
+    if (!K4h||K4h.length<16) return null;
+    const n=K4h.length;
+    const closes=K4h.map(k=>k.c);
+    const p24=K1h?.length>=6?K1h[K1h.length-6].c:K4h[n-6]?.c||price;
+    const ch24calc=p24>0?+((price-p24)/p24*100).toFixed(2):ch24;
+    const rsi4h=RSI14(closes);
+    const rsi1h=K1h?.length>=16?RSI14(K1h.map(k=>k.c)):rsi4h;
+    const macd4h=MACD(closes);
+    const bb4h=BB(closes,20);
+    const atr4h=ATR(K4h,14);
+    const ema9=EMA(closes,9),ema21=EMA(closes,21),ema50=EMA(closes,Math.min(50,n-1)),ema200=EMA(closes,Math.min(200,n-1));
+    const high24=Math.max(...K4h.slice(-6).map(k=>k.h));
+    const low24=Math.min(...K4h.slice(-6).map(k=>k.l));
+    const pricePos=high24>low24?(price-low24)/(high24-low24):0.5;
+    const smc=smcFromKlines(K4h,price);
+    const ew=elliottWave(rsi4h,macd4h,ch24calc,0,pricePos,price,ema200,true);
+    const pats=detectPatterns(K4h,price,high24,low24,ch24calc,pricePos);
+    const trend4h=price>ema50?'BULLISH':price<ema50?'BEARISH':'NEUTRAL';
+    const trend1h=rsi1h>55?'BULLISH':rsi1h<45?'BEARISH':'NEUTRAL';
+    let score=0;
+    if(price>ema9)score++;if(price>ema21)score++;if(price>ema50)score++;if(price>ema200)score+=2;
+    if(macd4h.bullish)score++;if(macd4h.crossUp)score+=2;if(macd4h.crossDown)score-=2;
+    if(rsi4h<30)score+=2;else if(rsi4h>70)score-=2;else if(rsi4h>55)score++;
+    if(smc.inBullOB)score+=2;if(smc.inBearOB)score-=2;if(smc.hasBOS&&smc.bosType?.includes('Bull'))score+=2;
+    const rec=makeRec(score,rsi4h,macd4h,smc,ew,bb4h,atr4h);
+    const pv=K4h[n-2]||K4h[n-1];const P=(pv.h+pv.l+pv.c)/3;
+    const pivot={P:+P.toFixed(4),R1:+(2*P-pv.l).toFixed(4),R2:+(P+pv.h-pv.l).toFixed(4),S1:+(2*P-pv.h).toFixed(4),S2:+(P-(pv.h-pv.l)).toFixed(4)};
+    const hs=K4h.slice(-30).map(k=>k.h).sort((a,b)=>b-a);
+    const ls=K4h.slice(-30).map(k=>k.l).sort((a,b)=>a-b);
+    const res=hs.find(h=>h>price)||price*1.05;
+    const sup=ls.find(l=>l<price)||price*0.95;
+    const atrVal=atr4h.atr||price*0.02;
+    const isLong=score>0;
+    const slRef=isLong?Math.min(...(smc.swingLows||[price*0.97]),price-atrVal*1.5):Math.max(...(smc.swingHighs||[price*1.03]),price+atrVal*1.5);
+    const risk=Math.abs(price-slRef);
+    const setup={direction:isLong?'LONG':'SHORT',entry:+price.toFixed(6),sl:+slRef.toFixed(6),tp1:+(price+(isLong?1:-1)*risk*2).toFixed(6),tp2:+(price+(isLong?1:-1)*risk*3.5).toFixed(6),tp3:+(price+(isLong?1:-1)*risk*5).toFixed(6),riskPct:+Math.abs((price-slRef)/price*100).toFixed(2),rrRatio:2};
+    return{symbol:sym+'USDT',ticker:sym,price:+price.toFixed(8),change24h:ch24calc,volume24h:+vol.toFixed(0),dataSource:'CryptoCompare (Full Analysis)',rsi:{'1h':rsi1h,'4h':rsi4h},macd:{'4h':macd4h},bb:{'4h':bb4h},atr:{'4h':atr4h},ema:{9:+ema9.toFixed(4),21:+ema21.toFixed(4),50:+ema50.toFixed(4),200:+ema200.toFixed(4)},smc:{'4H':smc},elliottWave:{'4H':ew},chartPatterns:pats,pivotPoints:{'4H':pivot},keyLevels:{support:+sup.toFixed(4),resistance:+res.toFixed(4)},timeframes:{'1H':{rsi:rsi1h,trend:trend1h},'4H':{rsi:rsi4h,trend:trend4h,ema50:+ema50.toFixed(4),ema200:+ema200.toFixed(4)}},tradeSetup:setup,recommendation:rec,confluence:{probability:rec.probability,signal:rec.action},summary:{bias:score>0?'BULLISH':score<0?'BEARISH':'NEUTRAL',oneLiner:`${rec.action} | ${ew.wave} | RSI ${rsi4h} | ${smc.signal}`},astrology:astro,candleCount:{'4H':K4h.length,'1H':K1h?.length||0}};
   };
 
-  // ── GENERATE TRADE SETUP ──────────────────────────────────
-  const tradeSetup = (price, smc, ew, atr, rsi, trend) => {
-    const isLong=trend==='BULLISH'||(rsi<40&&!trend.includes('BEAR'));
-    const direction=isLong?'LONG':'SHORT';
-    const atrVal=atr.atr||price*0.02;
-
-    let entry=price, sl, tp1, tp2, tp3;
-    if(isLong){
-      // Entry at OB or current price
-      entry=smc.bullOB?.low??smc.bullFVG?.low??price;
-      if(Math.abs(entry-price)/price>0.05) entry=price; // Don't use if too far
-      // SL below swing low or OB
-      const slRef=smc.swingLows?.length?Math.min(...smc.swingLows):price*(1-atr.atrPct*2/100);
-      sl=Math.min(slRef,price-(atrVal*1.5));
-      const risk=price-sl;
-      tp1=+(price+risk*2).toFixed(6);
-      tp2=+(price+risk*3.5).toFixed(6);
-      tp3=+(price+risk*5).toFixed(6);
-    } else {
-      entry=smc.bearOB?.high??smc.bearFVG?.high??price;
-      if(Math.abs(entry-price)/price>0.05) entry=price;
-      const slRef=smc.swingHighs?.length?Math.max(...smc.swingHighs):price*(1+atr.atrPct*2/100);
-      sl=Math.max(slRef,price+(atrVal*1.5));
-      const risk=sl-price;
-      tp1=+(price-risk*2).toFixed(6);
-      tp2=+(price-risk*3.5).toFixed(6);
-      tp3=+(price-risk*5).toFixed(6);
-    }
-
-    const riskPct=+Math.abs((price-sl)/price*100).toFixed(2);
-    const tp1Pct=+Math.abs((tp1-price)/price*100).toFixed(2);
-    const rrRatio=riskPct>0?+(tp1Pct/riskPct).toFixed(2):0;
-
-    return {direction,entry:+entry.toFixed(6),sl:+sl.toFixed(6),tp1,tp2,tp3,riskPct,tp1Pct,rrRatio};
+  // ── LITE ANALYSIS (from CoinGecko basic data) ────────
+  const analyzeFromBasic = (sym, cgData, astro) => {
+    const price=cgData.current_price||0;
+    const ch24=cgData.price_change_percentage_24h||0;
+    const ch7d=cgData.price_change_percentage_7d||0;
+    const vol=cgData.total_volume||0;
+    const high=cgData.high_24h||price*1.02;
+    const low=cgData.low_24h||price*0.98;
+    const mcap=cgData.market_cap||0;
+    const pricePos=high>low?(price-low)/(high-low):0.5;
+    const range=high>low?(high-low)/price*100:0;
+    const estRSI=Math.max(10,Math.min(90,50+ch24*2.5+(pricePos-0.5)*25));
+    const smc=smcFromBasic(price,high,low,ch24,ch7d,vol);
+    const fakeEMA200=price/(1+(ch7d/100)*0.3);
+    const ew=elliottWave(estRSI,null,ch24,ch7d,pricePos,price,fakeEMA200,false);
+    const pats=detectPatterns(null,price,high,low,ch24,pricePos);
+    let score=0;
+    if(ch24>5)score+=2;else if(ch24>2)score++;else if(ch24<-5)score-=2;else if(ch24<-2)score--;
+    if(ch7d>10)score+=2;else if(ch7d>4)score++;else if(ch7d<-10)score-=2;else if(ch7d<-4)score--;
+    if(estRSI<30)score+=2;else if(estRSI>70)score-=2;else if(estRSI>55)score++;
+    if(smc.inBullOB)score++;if(smc.inBearOB)score--;
+    if(pats.some(p=>p.signal==='bullish'))score++;if(pats.some(p=>p.signal==='bearish'))score--;
+    const prob=Math.max(5,Math.min(95,50+score*7));
+    const action=score>=4?'🟢 STRONG BUY':score>=2?'🟢 BUY':score>=1?'🟡 MILD BUY':score<=-4?'🔴 STRONG SELL':score<=-2?'🔴 SELL':score<=-1?'🔴 MILD SELL':'⚖️ NEUTRAL/WAIT';
+    const reasons=[];
+    if(estRSI<30) reasons.push(`RSI ~${estRSI.toFixed(0)} oversold — reversal zone`);
+    if(ch24>5)    reasons.push(`+${ch24.toFixed(1)}% 24h momentum`);
+    if(ch7d>10)   reasons.push(`+${ch7d.toFixed(1)}% 7d trend`);
+    if(smc.inBullOB) reasons.push('Discount zone — potential demand area');
+    pats.forEach(p=>reasons.push(`${p.name} (${p.winRate}%): ${p.desc}`));
+    const sl=smc.inBullOB?+(low*0.97).toFixed(6):+(low*0.98).toFixed(6);
+    const risk=Math.abs(price-sl);
+    const setup={direction:score>0?'LONG':'SHORT',entry:+price.toFixed(6),sl,tp1:+(price+risk*2).toFixed(6),tp2:+(price+risk*3.5).toFixed(6),tp3:+(price+risk*5).toFixed(6),riskPct:+Math.abs((price-sl)/price*100).toFixed(2),rrRatio:2,note:'TP/SL estimated (no klines data)'};
+    return{symbol:sym+'USDT',ticker:sym,name:cgData.name||sym,price,change24h:+ch24.toFixed(2),change7d:+ch7d.toFixed(2),volume24h:vol,mcap,dataSource:`CoinGecko (Lite Analysis — no klines)`,rsi:{'4h':+estRSI.toFixed(1),'1h':+estRSI.toFixed(1),'1d':+estRSI.toFixed(1)},macd:{'4h':{bullish:ch24>0&&ch7d>0,bearish:ch24<0,crossUp:ch24>3&&ch7d<0,crossDown:ch24<-3&&ch7d>0}},smc:{'4H':smc},elliottWave:{'4H':ew},chartPatterns:pats,keyLevels:{support:+low.toFixed(6),resistance:+high.toFixed(6)},tradeSetup:setup,recommendation:{action,probability:prob,score,reasons:reasons.slice(0,5),warnings:estRSI>70?['RSI overbought — avoid FOMO']:[]},confluence:{probability:prob,signal:action},summary:{bias:score>0?'BULLISH':score<0?'BEARISH':'NEUTRAL',oneLiner:`${action} | ${ew.wave} | RSI ~${estRSI.toFixed(0)}`},astrology:astro,note:'Analisis berbasis CoinGecko data. Untuk full TA, gunakan koin yang ada di CryptoCompare.'};
   };
 
-  // ── GENERATE RECOMMENDATION ───────────────────────────────
-  const makeRecommendation = (score, rsi, macd, smc, ew, bb, atr) => {
-    const prob=Math.max(1,Math.min(99,50+score*5));
-    let action, explanation;
-    const reasons=[], warnings=[];
-
-    if(score>=5){action='🟢 STRONG BUY';explanation='Konfluensi bullish tinggi. Semua sistem aligned. Entry dengan sizing normal.';}
-    else if(score>=3){action='🟢 BUY';explanation='Bias bullish kuat. Entry valid dengan manajemen risiko.';}
-    else if(score>=1){action='🟡 MILD BUY';explanation='Bias bullish lemah. Entry selektif, sizing kecil (25-50%).';}
-    else if(score<=-5){action='🔴 STRONG SELL';explanation='Konfluensi bearish tinggi. Hindari long, pertimbangkan short.';}
-    else if(score<=-3){action='🔴 SELL/SHORT';explanation='Bias bearish dominan. Exit long atau short dengan risiko terukur.';}
-    else if(score<=-1){action='🔴 MILD SELL';explanation='Tekanan jual. Kurangi eksposur atau wait for better entry.';}
-    else{action='⚖️ NEUTRAL/WAIT';explanation='Tidak ada edge jelas. Tunggu konfirmasi breakout atau level kunci.';}
-
-    // Build reasons
-    if(rsi<30) reasons.push('RSI oversold — potensi reversal kuat');
-    else if(rsi>70) reasons.push('RSI overbought — waspada');
-    if(macd.crossUp) reasons.push('MACD golden cross — momentum baru');
-    if(macd.crossDown) warnings.push('MACD death cross — momentum melemah');
-    if(smc.hasBOS) reasons.push(`${smc.bos?.type} — konfirmasi struktur`);
-    if(smc.inBullOB) reasons.push('Harga di Bull Order Block — zona demand institusional');
-    if(smc.inBearOB) warnings.push('Harga di Bear Order Block — zona supply institusional');
-    if(smc.inBullFVG) reasons.push(`Bull FVG gap ${smc.bullFVG?.gapSize}% — zona rebalance`);
-    if(smc.liquiditySweep?.type?.includes('Bull')) reasons.push('Bullish liquidity sweep — short squeeze potential');
-    if(bb.squeeze) reasons.push('BB squeeze — ekspansi volatilitas imminent');
-    if(bb.expanding) reasons.push('BB expanding — momentum aktif');
-    if(ew.wave?.includes('Wave 3')) reasons.push(`${ew.wave} — fase terkuat dalam impulse`);
-    if(macd.divergence) warnings.push('MACD divergence — momentum melemah');
-    if(atr.volatility==='EXTREME') warnings.push('Volatilitas EXTREME — sizing kecil');
-
-    return {action,explanation,probability:prob,score,reasons:reasons.slice(0,5),warnings:warnings.slice(0,3)};
-  };
-
-  // ── MAIN ANALYSIS ─────────────────────────────────────────
+  // ── MAIN EXECUTION ────────────────────────────────────
   try {
     const sym = raw;
-    const symUsdt = sym+'USDT';
-
-    // Fetch all data parallel
-    const [cc4hR, cc1hR, cc1dR, byTickR, byLSR] = await Promise.allSettled([
-      sf(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${sym}&tsym=USD&limit=800&aggregate=4&e=CCCAGG`, 7000),
-      sf(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${sym}&tsym=USD&limit=96&aggregate=1&e=CCCAGG`, 6000),
-      sf(`https://min-api.cryptocompare.com/data/v2/histoday?fsym=${sym}&tsym=USD&limit=200&e=CCCAGG`, 6000),
-      sf(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symUsdt}`, 4000),
-      sf(`https://api.bybit.com/v5/market/account-ratio?category=linear&symbol=${symUsdt}&period=1h&limit=1`, 4000),
-    ]);
-
-    // Parse CryptoCompare data
-    const toKlines = (r, field='Data') => {
-      if(!r||r?.Response!=='Success') return [];
-      const data=(r?.Data?.[field]||r?.Data?.Data||[]);
-      return data.filter(d=>d.close>0).map(d=>({t:d.time,o:+d.open,h:+d.high,l:+d.low,c:+d.close,v:+(d.volumeto||0)}));
-    };
-
-    const K4h = cc4hR.status==='fulfilled'?toKlines(cc4hR.value):[];
-    const K1h = cc1hR.status==='fulfilled'?toKlines(cc1hR.value):[];
-    const K1d = cc1dR.status==='fulfilled'?toKlines(cc1dR.value,'Data'):[];
-
-    if(K4h.length<10&&K1h.length<10) {
-      return res.status(200).json({error:`Symbol ${sym} tidak ditemukan atau data tidak tersedia di CryptoCompare.`,price:0,symbol:symUsdt});
-    }
-
-    // Prices
-    const byTick = byTickR.status==='fulfilled'?byTickR.value?.result?.list?.[0]:null;
-    const byLS   = byLSR.status==='fulfilled'?byLSR.value?.result?.list?.[0]:null;
-
-    // Current price — Bybit if available, else last CryptoCompare candle
-    const latestCC = K1h.length?K1h[K1h.length-1]:K4h[K4h.length-1];
-    const price = byTick?.lastPrice?+(byTick.lastPrice):(latestCC?.c||0);
-
-    // 24h change
-    const price24hAgo = K1h.length>=24?K1h[K1h.length-24].c:(K4h.length>=6?K4h[K4h.length-6].c:price);
-    const change24h = price24hAgo>0?+((price-price24hAgo)/price24hAgo*100).toFixed(2):0;
-
-    // Volume 24h (sum last 24 hourly candles)
-    const vol24h = K1h.length>=24?K1h.slice(-24).reduce((s,k)=>s+k.v,0):0;
-
-    // Derivatives
-    const frPct = byTick?.fundingRate ? +(parseFloat(byTick.fundingRate)*100).toFixed(4) : null;
-    const frAnn = frPct!==null ? +(frPct*3*365).toFixed(1) : null;
-    const oiVal = byTick?.openInterestValue ? +(parseFloat(byTick.openInterestValue)/1e6).toFixed(1) : null;
-    let longPct=null, shortPct=null, lsRatio=null;
-    if(byLS?.buyRatio){const b=parseFloat(byLS.buyRatio);longPct=+(b*100).toFixed(1);shortPct=+((1-b)*100).toFixed(1);lsRatio=+(b/(1-b)).toFixed(3);}
-
-    // ── TA CALCULATIONS ────────────────────────────────────
-    // 4H
-    const c4=K4h.map(k=>k.c);
-    const rsi4h  = RSI14(c4);
-    const macd4h = MACD(c4);
-    const bb4h   = BB(c4,20);
-    const stoch4h= STOCH_RSI(c4);
-    const atr4h  = ATR(K4h,14);
-    const ema9_4 = EMA(c4,9),  ema21_4=EMA(c4,21),  ema50_4=EMA(c4,Math.min(50,c4.length-1));
-    const ema200_4=EMA(c4,Math.min(200,c4.length-1));
-    const pvt4h  = pivotPoints(K4h);
-
-    // 1H
-    const c1=K1h.length>=20?K1h.map(k=>k.c):c4.slice(-48);
-    const rsi1h  = RSI14(c1);
-    const macd1h = MACD(c1);
-    const ema21_1= EMA(c1,21), ema50_1=EMA(c1,Math.min(50,c1.length-1));
-    const bb1h   = BB(c1,20);
-
-    // 1D
-    const c1d=K1d.length>=20?K1d.map(k=>k.c):c4.filter((_,i)=>i%6===0);
-    const rsi1d  = RSI14(c1d);
-    const macd1d = MACD(c1d);
-    const ema50_1d=EMA(c1d,Math.min(50,c1d.length-1)), ema200_1d=EMA(c1d,Math.min(200,c1d.length-1));
-
-    // Trends
-    const trend4h=price>ema50_4&&rsi4h>50?'BULLISH':price<ema50_4&&rsi4h<50?'BEARISH':'NEUTRAL';
-    const trend1h=rsi1h>55?'BULLISH':rsi1h<45?'BEARISH':'NEUTRAL';
-    const trend1d=price>ema200_4&&rsi1d>50?'BULLISH':price<ema50_1d&&rsi1d<45?'BEARISH':'NEUTRAL';
-
-    // Confluence score
-    let confScore=0;
-    if(price>ema9_4)  confScore+=1;
-    if(price>ema21_4) confScore+=1;
-    if(price>ema50_4) confScore+=1;
-    if(price>ema200_4)confScore+=2;
-    if(macd4h.bullish)confScore+=1;
-    if(macd4h.crossUp)confScore+=2;
-    if(macd4h.crossDown)confScore-=2;
-    if(rsi4h>55)confScore+=1; else if(rsi4h<45)confScore-=1;
-    if(rsi4h<30)confScore+=2; else if(rsi4h>75)confScore-=2;
-    if(trend1d==='BULLISH')confScore+=1; else if(trend1d==='BEARISH')confScore-=1;
-    if(bb4h.squeeze)confScore+=1;
-
-    // SMC analysis
-    const smc4H = smcAnalysis(K4h, price);
-    const smc1H = smcAnalysis(K1h.length>=20?K1h:K4h.slice(-20), price);
-    if(smc4H.hasBOS&&smc4H.bos?.type?.includes('Bull'))confScore+=2;
-    if(smc4H.hasBOS&&smc4H.bos?.type?.includes('Bear'))confScore-=2;
-    if(smc4H.inBullOB)confScore+=2; if(smc4H.inBearOB)confScore-=2;
-    if(smc4H.inBullFVG)confScore+=1; if(smc4H.inBearFVG)confScore-=1;
-    if(smc4H.liquiditySweep?.type?.includes('Bull'))confScore+=2;
-
-    // Elliott Wave
-    const ew4H = elliottWave(K4h,rsi4h,macd4h,price,ema200_4);
-    const ew1D = elliottWave(K1d.length>=20?K1d:K4h,rsi1d,macd1d,price,ema200_1d);
-
-    // Chart Patterns
-    const patterns4h = detectPatterns(K4h);
-    const patterns1h = detectPatterns(K1h.length>=10?K1h:K4h);
-
-    // Market Structure
-    const ms4H = marketStructure(K4h,price,ema9_4,ema21_4,ema50_4,ema200_4);
-
-    // Key Levels
-    const highs50=K4h.slice(-50).map(k=>k.h).sort((a,b)=>b-a);
-    const lows50=K4h.slice(-50).map(k=>k.l).sort((a,b)=>a-b);
-    const resistance=highs50.find(h=>h>price)||price*1.05;
-    const support=lows50.find(l=>l<price)||price*0.95;
-    const res2=highs50.filter(h=>h>resistance)[0]||resistance*1.03;
-    const sup2=lows50.filter(l=>l<support)[0]||support*0.97;
-
-    // Setup
-    const setup = tradeSetup(price,smc4H,ew4H,atr4h,rsi4h,trend4h);
-    const rec   = makeRecommendation(confScore,rsi4h,macd4h,smc4H,ew4H,bb4h,atr4h);
     const astro = getAstro();
 
-    // Overall probability
-    const probability=rec.probability;
-    const bias=confScore>=3?'BULLISH':confScore<=-3?'BEARISH':'NEUTRAL';
+    // Step 1: Try CryptoCompare (full klines)
+    const [cc4hR, cc1hR, byTickR] = await Promise.allSettled([
+      sf(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${sym}&tsym=USD&limit=60&aggregate=4&e=CCCAGG`, 6000),
+      sf(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${sym}&tsym=USD&limit=48&aggregate=1&e=CCCAGG`, 5000),
+      sf(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${sym}USDT`, 4000),
+    ]);
 
-    return res.status(200).json({
-      ok:true, ts:Date.now(), elapsed:Date.now()-t0, version:'v16',
-      symbol:symUsdt, ticker:sym, name:sym,
-      price:+price.toFixed(8), change24h, volume24h:+vol24h.toFixed(0),
-      dataSource:`CryptoCompare (${K4h.length} 4H candles) + Bybit`,
+    const parseCC = (r) => {
+      if (!r||r?.Response!=='Success') return [];
+      return (r?.Data?.Data||[]).filter(d=>d.close>0).map(d=>({t:d.time,o:+d.open,h:+d.high,l:+d.low,c:+d.close,v:+(d.volumeto||0)}));
+    };
 
-      // Derivatives
-      derivatives:{frPct,frAnn,oiVal,longPct,shortPct,lsRatio,
-        frSignal:frPct===null?'—':frPct<-0.005?'Short Squeeze Risk':frPct>0.05?'Long Overloaded':'Normal',
-        hasDerivatives:!!byTick,
-      },
+    const K4h = cc4hR.status==='fulfilled' ? parseCC(cc4hR.value) : [];
+    const K1h = cc1hR.status==='fulfilled' ? parseCC(cc1hR.value) : [];
+    const byTick = byTickR.status==='fulfilled' ? byTickR.value?.result?.list?.[0] : null;
 
-      // Summary
-      summary:{bias,oneLiner:`${rec.action} — ${ew4H.wave} (${probability}%) | RSI ${rsi4h} | ${smc4H.signal}`,confluenceScore:confScore},
-      confluence:{probability,signal:rec.action,score:confScore},
-      recommendation:rec,
+    if (K4h.length >= 16) {
+      // Full analysis available
+      const price = byTick?.lastPrice ? +byTick.lastPrice : K4h[K4h.length-1].c;
+      const vol   = K1h.length>=24 ? K1h.slice(-24).reduce((s,k)=>s+k.v,0) : 0;
+      const result = analyzeFromKlines(sym, K4h, K1h, price, 0, vol, astro);
+      if (result) return res.status(200).json({ok:true,ts:Date.now(),elapsed:Date.now()-t0,version:'v17',...result});
+    }
 
-      // Technical
-      rsi:{'1h':rsi1h,'4h':rsi4h,'1d':rsi1d},
-      macd:{'4h':macd4h,'1h':macd1h,'1d':macd1d},
-      bb:{'4h':bb4h,'1h':bb1h},
-      stoch:{'4h':stoch4h},
-      atr:{'4h':atr4h},
-      ema:{'9':+ema9_4.toFixed(4),'21':+ema21_4.toFixed(4),'50':+ema50_4.toFixed(4),'200':+ema200_4.toFixed(4)},
+    // Step 2: Fallback to CoinGecko search
+    const cgSearchR = await sf(`https://api.coingecko.com/api/v3/search?query=${sym}`, 4000);
+    const cgCoins = cgSearchR?.coins || [];
+    // Find best match (exact symbol or first result)
+    const cgMatch = cgCoins.find(c=>c.symbol?.toUpperCase()===sym) || cgCoins.find(c=>c.symbol?.toUpperCase()===sym.slice(0,3)) || cgCoins[0];
 
-      // SMC/ICT
-      smc:{'4H':smc4H,'1H':smc1H},
-      marketStructure:{'4H':ms4H},
-      elliottWave:{'4H':ew4H,'1D':ew1D},
-      chartPatterns:patterns4h,
-      pivotPoints:{'4H':pvt4h},
-      keyLevels:{support:+support.toFixed(4),support2:+sup2.toFixed(4),resistance:+resistance.toFixed(4),resistance2:+res2.toFixed(4)},
+    if (!cgMatch) {
+      return res.status(200).json({ok:false,error:`Symbol ${sym} tidak ditemukan di CryptoCompare maupun CoinGecko. Coba: BTC, ETH, SOL, RON, HYPE`,price:0,symbol:sym+'USDT',ts:Date.now(),version:'v17'});
+    }
 
-      // Timeframes
-      timeframes:{
-        '1H':{rsi:rsi1h,trend:trend1h,ema50:+ema50_1.toFixed(4),bb:bb1h,macd:macd1h,smc:smc1H.signal,elliottWave:ew4H},
-        '4H':{rsi:rsi4h,trend:trend4h,ema50:+ema50_4.toFixed(4),ema200:+ema200_4.toFixed(4),bb:bb4h,macd:macd4h,smc:smc4H,elliottWave:ew4H},
-        '1D':{rsi:rsi1d,trend:trend1d,ema50:+ema50_1d.toFixed(4),ema200:+ema200_1d.toFixed(4),macd:macd1d,elliottWave:ew1D},
-      },
+    // Fetch market data for this coin
+    const cgDataR = await sf(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${cgMatch.id}&sparkline=false&price_change_percentage=24h,7d`, 5000);
+    const cgData  = Array.isArray(cgDataR) ? cgDataR[0] : null;
 
-      // Trade Setup
-      tradeSetup:setup,
+    if (!cgData||!cgData.current_price) {
+      return res.status(200).json({ok:false,error:`Data market untuk ${sym} (${cgMatch.name}) tidak tersedia.`,price:0,symbol:sym+'USDT',ts:Date.now(),version:'v17'});
+    }
 
-      // Astrology
-      astrology:astro,
-
-      // Data coverage
-      candleCount:{'4H':K4h.length,'1H':K1h.length,'1D':K1d.length},
-    });
+    // Lite analysis from CoinGecko
+    const result = analyzeFromBasic(sym, cgData, astro);
+    return res.status(200).json({ok:true,ts:Date.now(),elapsed:Date.now()-t0,version:'v17',...result});
 
   } catch(e) {
-    return res.status(200).json({error:e.message,price:0,symbol:raw+'USDT',ts:Date.now(),version:'v16'});
+    return res.status(200).json({ok:false,error:e.message,price:0,symbol:raw+'USDT',ts:Date.now(),version:'v17'});
   }
 }
