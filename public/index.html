@@ -702,19 +702,19 @@ function buildSearchCard(d){
   var conf=d.confluence||{},sum=d.summary||{};
   var ew4h=d.elliottWave?.['4H']||d.elliottWave||{};
   var tf1h=d.timeframes?.['1H']||{},tf4h=d.timeframes?.['4H']||{},tf1d=d.timeframes?.['1D']||{};
-  var astro=d.astrology||{};
-  var pivots=d.pivotPoints?.['4H']||{};
-  var ict=d.ict||{};
-  var str=ict.structure||{},obs=ict.orderBlocks||{},fvgs=ict.fvg||{};
-  var liq=ict.liquidity||{},zones=ict.zones||{},wyk=ict.wyckoff||{},hpz=ict.highProbZones||{};
+  var astro=d.astrology||{},pivots=d.pivotPoints?.['4H']||{};
+  var ict=d.ict||{},str=ict.structure||{},obs=ict.orderBlocks||{};
+  var fvgs=ict.fvg||{},liq=ict.liquidity||{},zones=ict.zones||{};
+  var wyk=ict.wyckoff||{},hpz=ict.highProbZones||{};
   var pats=d.chartPatterns||[];
+  var stoch=d.stochRSI?.['4H']||null,adx=d.adx?.['4H']||null;
+  var atr=d.atr?.['4H']||null,fib=d.fibonacci||null;
+  var vol=d.volume||null,emaA=d.emaAnalysis||null,rsiDiv=d.rsiDivergence||null;
+  var macd4h=d.macd?.['4H']||null,bb4h=d.bb?.['4H']||null;
+  var rsiMap=d.rsi||{};
   var prob=+(conf.probability||sum.probability||50);
   var probC=prob>=75?'var(--g)':prob>=60?'var(--g2)':prob>=48?'var(--amber)':'var(--red)';
   var biasC=sum.bias==='BULLISH'?'var(--g)':sum.bias==='BEARISH'?'var(--red)':'var(--amber)';
-  var rsiMap=d.rsi||{};
-  var macd4h=d.macd?.['4H']||null;
-  var bb4h=d.bb?.['4H']||null;
-
   var h='<div class="src">';
 
   // ── HEADER ────────────────────────────────────────────
@@ -736,91 +736,46 @@ function buildSearchCard(d){
 
   // ── ICT MARKET STRUCTURE ──────────────────────────────
   var bosD=str.bos||null,chochD=str.choch||null;
-  var bosC=bosD?(bosD.type?.includes('Bull')?'var(--g)':'var(--red)'):'var(--dim)';
+  var bosC=bosD?(bosD.type&&bosD.type.includes('Bull')?'var(--g)':'var(--red)'):'var(--dim)';
   var wykBias=wyk.bias==='bullish'?'var(--g)':wyk.bias==='bearish'?'var(--red)':'var(--amber)';
   h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'
     +'<div style="font-size:10px;font-weight:700;color:var(--g);letter-spacing:1px;margin-bottom:7px">🏛️ ICT MARKET STRUCTURE</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">';
-  // BOS / CHoCH
-  if(bosD){
-    h+='<div style="background:rgba(255,255,255,.02);border-left:3px solid '+bosC+';padding:7px 9px;border-radius:4px">'
-      +'<div style="font-size:9px;font-weight:700;color:'+bosC+'">'+bosD.type+'</div>'
-      +'<div style="font-family:var(--m);font-size:12px;font-weight:800;margin-top:2px">$'+fP(bosD.level)+'</div>'
-      +'<div style="font-size:8px;color:var(--dim)">Structure break confirmed</div></div>';
-  } else if(chochD){
-    var cc=chochD.type?.includes('Bull')?'var(--g)':'var(--red)';
-    h+='<div style="background:rgba(255,255,255,.02);border-left:3px solid '+cc+';padding:7px 9px;border-radius:4px">'
-      +'<div style="font-size:9px;font-weight:700;color:'+cc+'">'+chochD.type+'</div>'
-      +'<div style="font-family:var(--m);font-size:12px;font-weight:800;margin-top:2px">$'+fP(chochD.level)+'</div>'
-      +'<div style="font-size:8px;color:var(--dim)">'+( chochD.desc||'MSS confirmed')+'</div></div>';
-  } else {
-    h+='<div style="background:rgba(255,255,255,.02);border-left:3px solid var(--dim);padding:7px 9px;border-radius:4px">'
-      +'<div style="font-size:9px;color:var(--dim)">No BOS/CHoCH</div>'
-      +'<div style="font-size:8px;color:var(--dim);margin-top:3px">No confirmed structure break</div></div>';
-  }
-  // Wyckoff
+  if(bosD){h+='<div style="background:rgba(255,255,255,.02);border-left:3px solid '+bosC+';padding:7px 9px;border-radius:4px"><div style="font-size:9px;font-weight:700;color:'+bosC+'">'+bosD.type+'</div><div style="font-family:var(--m);font-size:12px;font-weight:800;margin-top:2px">$'+fP(bosD.level)+'</div><div style="font-size:8px;color:var(--dim)">Structure break confirmed</div></div>';}
+  else if(chochD){var cc2=chochD.type&&chochD.type.includes('Bull')?'var(--g)':'var(--red)';h+='<div style="background:rgba(255,255,255,.02);border-left:3px solid '+cc2+';padding:7px 9px;border-radius:4px"><div style="font-size:9px;font-weight:700;color:'+cc2+'">'+chochD.type+'</div><div style="font-family:var(--m);font-size:12px;font-weight:800;margin-top:2px">$'+fP(chochD.level)+'</div><div style="font-size:8px;color:var(--dim)">'+(chochD.desc||'MSS confirmed')+'</div></div>';}
+  else{h+='<div style="background:rgba(255,255,255,.02);border-left:3px solid var(--dim);padding:7px 9px;border-radius:4px"><div style="font-size:9px;color:var(--dim)">No BOS/CHoCH</div><div style="font-size:8px;color:var(--dim);margin-top:3px">No confirmed structure break yet</div></div>';}
   h+='<div style="background:rgba(255,255,255,.02);border-left:3px solid '+wykBias+';padding:7px 9px;border-radius:4px">'
     +'<div style="font-size:9px;font-weight:700;color:'+wykBias+'">'+(wyk.phase||'—')+'</div>'
-    +'<div style="font-size:8px;color:var(--dim);margin-top:2px;line-height:1.4">'+(wyk.desc||'').substring(0,70)+(wyk.desc?.length>70?'…':'')+'</div></div>';
-  h+='</div>';
-  // Zone badge
+    +'<div style="font-size:8px;color:var(--dim);margin-top:2px;line-height:1.4">'+(wyk.desc||'').substring(0,75)+(wyk.desc&&wyk.desc.length>75?'…':'')+'</div></div></div>';
   var pipV=+(zones.pip||50),zoneC=pipV>65?'var(--red)':pipV<35?'var(--g)':'var(--amber)';
   h+='<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
     +'<span style="font-size:10px;color:var(--muted)">Zone:</span>'
     +'<span style="font-size:10px;font-weight:700;color:'+zoneC+'">'+(zones.zone||'—')+'</span>'
     +'<span style="font-size:9px;color:var(--dim)">'+pipV.toFixed(0)+'% of range</span>'
-    +(zones.inOTELong?'<span style="font-size:9px;background:rgba(0,255,200,.1);color:var(--g);padding:1px 6px;border-radius:3px">✅ OTE Long Zone</span>':'')
+    +(zones.inOTELong?'<span style="font-size:9px;background:rgba(0,255,200,.1);color:var(--g);padding:1px 6px;border-radius:3px">✅ ICT OTE Long Zone</span>':'')
     +'</div></div>';
 
   // ── ORDER BLOCKS ──────────────────────────────────────
-  var bOBs=(obs.bullish||[]).filter(function(o){return o.fresh;});
-  var beOBs=(obs.bearish||[]).filter(function(o){return o.fresh;});
+  var bOBs=(obs.bullish||[]).filter(function(o){return o&&o.fresh;});
+  var beOBs=(obs.bearish||[]).filter(function(o){return o&&o.fresh;});
   if(bOBs.length||beOBs.length){
     h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'
       +'<div style="font-size:10px;font-weight:700;color:var(--g);letter-spacing:1px;margin-bottom:7px">📦 ICT ORDER BLOCKS (Fresh)</div>'
       +'<div style="display:flex;flex-direction:column;gap:6px">';
-    bOBs.slice(0,2).forEach(function(ob){
-      var dist=+(ob.dist||0),distS=(dist>0?'+':'')+dist.toFixed(1)+'% from price';
-      h+='<div style="background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.2);border-radius:7px;padding:8px 11px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">'
-        +'<div><div style="font-size:9px;font-weight:700;color:var(--g)">🟢 BULL OB'+(ob.inZone?' <span style="background:rgba(0,255,200,.15);padding:1px 5px;border-radius:3px">📍 IN ZONE</span>':'')+'</div>'
-        +'<div style="font-family:var(--m);font-size:13px;font-weight:900;margin-top:2px;color:var(--txt)">$'+fP(ob.L)+' — $'+fP(ob.H)+'</div>'
-        +'<div style="font-size:8px;color:var(--dim)">Mid: $'+fP(ob.mid)+' · '+distS+'</div></div>'
-        +'<div style="text-align:right"><div style="font-size:10px;color:var(--g)">Fresh'+(ob.age<5?' 🔥':'')+'</div>'
-        +'<div style="font-size:8px;color:var(--dim)">'+ob.age+' candles ago</div></div></div>';
-    });
-    beOBs.slice(0,2).forEach(function(ob){
-      var dist=+(ob.dist||0),distS=(dist>0?'+':'')+dist.toFixed(1)+'% from price';
-      h+='<div style="background:rgba(255,68,100,.04);border:1px solid rgba(255,68,100,.2);border-radius:7px;padding:8px 11px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">'
-        +'<div><div style="font-size:9px;font-weight:700;color:var(--red)">🔴 BEAR OB'+(ob.inZone?' <span style="background:rgba(255,68,100,.15);padding:1px 5px;border-radius:3px">📍 IN ZONE</span>':'')+'</div>'
-        +'<div style="font-family:var(--m);font-size:13px;font-weight:900;margin-top:2px;color:var(--txt)">$'+fP(ob.L)+' — $'+fP(ob.H)+'</div>'
-        +'<div style="font-size:8px;color:var(--dim)">Mid: $'+fP(ob.mid)+' · '+distS+'</div></div>'
-        +'<div style="text-align:right"><div style="font-size:10px;color:var(--red)">Fresh'+(ob.age<5?' 🔥':'')+'</div>'
-        +'<div style="font-size:8px;color:var(--dim)">'+ob.age+' candles ago</div></div></div>';
-    });
+    bOBs.slice(0,2).forEach(function(ob){var dist=+(ob.dist||0),ds=(dist>0?'+':'')+dist.toFixed(1)+'% from price';h+='<div style="background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.2);border-radius:7px;padding:8px 11px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px"><div><div style="font-size:9px;font-weight:700;color:var(--g)">🟢 BULL OB'+(ob.inZone?' <span style="background:rgba(0,255,200,.15);padding:1px 5px;border-radius:3px">📍 IN ZONE</span>':'')+'</div><div style="font-family:var(--m);font-size:13px;font-weight:900;margin-top:2px">$'+fP(ob.L)+' — $'+fP(ob.H)+'</div><div style="font-size:8px;color:var(--dim)">Mid: $'+fP(ob.mid)+' · '+ds+'</div></div><div style="text-align:right"><div style="font-size:10px;color:var(--g)">Fresh'+(ob.age<5?' 🔥':'')+'</div><div style="font-size:8px;color:var(--dim)">'+ob.age+' candles ago</div></div></div>';});
+    beOBs.slice(0,2).forEach(function(ob){var dist=+(ob.dist||0),ds=(dist>0?'+':'')+dist.toFixed(1)+'% from price';h+='<div style="background:rgba(255,68,100,.04);border:1px solid rgba(255,68,100,.2);border-radius:7px;padding:8px 11px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px"><div><div style="font-size:9px;font-weight:700;color:var(--red)">🔴 BEAR OB'+(ob.inZone?' <span style="background:rgba(255,68,100,.15);padding:1px 5px;border-radius:3px">📍 IN ZONE</span>':'')+'</div><div style="font-family:var(--m);font-size:13px;font-weight:900;margin-top:2px">$'+fP(ob.L)+' — $'+fP(ob.H)+'</div><div style="font-size:8px;color:var(--dim)">Mid: $'+fP(ob.mid)+' · '+ds+'</div></div><div style="text-align:right"><div style="font-size:10px;color:var(--red)">Fresh'+(ob.age<5?' 🔥':'')+'</div><div style="font-size:8px;color:var(--dim)">'+ob.age+' candles ago</div></div></div>';});
     h+='</div></div>';
   }
 
   // ── FVG ───────────────────────────────────────────────
-  var bFVGs=(fvgs.bullish||[]).filter(function(f){return !f.filled;});
-  var beFVGs=(fvgs.bearish||[]).filter(function(f){return !f.filled;});
+  var bFVGs=(fvgs.bullish||[]).filter(function(f){return f&&!f.filled;});
+  var beFVGs=(fvgs.bearish||[]).filter(function(f){return f&&!f.filled;});
   if(bFVGs.length||beFVGs.length){
     h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'
       +'<div style="font-size:10px;font-weight:700;color:#4af0ff;letter-spacing:1px;margin-bottom:7px">🌊 FAIR VALUE GAPS — Unfilled</div>'
       +'<div style="display:flex;flex-direction:column;gap:5px">';
-    bFVGs.slice(0,2).forEach(function(f){
-      h+='<div style="background:rgba(74,240,255,.04);border:1px solid rgba(74,240,255,.15);border-radius:7px;padding:8px 11px;display:flex;justify-content:space-between;align-items:center">'
-        +'<div><div style="font-size:9px;font-weight:700;color:#4af0ff">🔵 BULL FVG'+(f.inGap?' <span style="background:rgba(74,240,255,.15);padding:1px 5px;border-radius:3px">📍 IN GAP</span>':'')+'</div>'
-        +'<div style="font-family:var(--m);font-size:12px;font-weight:800;margin-top:2px">$'+fP(f.L)+' — $'+fP(f.H)+'</div></div>'
-        +'<div style="text-align:right"><div style="color:#4af0ff;font-size:12px;font-weight:700">'+f.pct+'%</div>'
-        +'<div style="font-size:8px;color:var(--dim)">gap size</div></div></div>';
-    });
-    beFVGs.slice(0,1).forEach(function(f){
-      h+='<div style="background:rgba(255,68,100,.04);border:1px solid rgba(255,68,100,.15);border-radius:7px;padding:8px 11px;display:flex;justify-content:space-between;align-items:center">'
-        +'<div><div style="font-size:9px;font-weight:700;color:var(--red)">🔴 BEAR FVG</div>'
-        +'<div style="font-family:var(--m);font-size:12px;font-weight:800;margin-top:2px">$'+fP(f.L)+' — $'+fP(f.H)+'</div></div>'
-        +'<div style="text-align:right"><div style="color:var(--red);font-size:12px;font-weight:700">'+f.pct+'%</div>'
-        +'<div style="font-size:8px;color:var(--dim)">gap size</div></div></div>';
-    });
+    bFVGs.slice(0,2).forEach(function(f){h+='<div style="background:rgba(74,240,255,.04);border:1px solid rgba(74,240,255,.15);border-radius:7px;padding:8px 11px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:9px;font-weight:700;color:#4af0ff">🔵 BULL FVG'+(f.inGap?' <span style="background:rgba(74,240,255,.15);padding:1px 5px;border-radius:3px">📍 IN GAP</span>':'')+'</div><div style="font-family:var(--m);font-size:12px;font-weight:800;margin-top:2px">$'+fP(f.L)+' — $'+fP(f.H)+'</div></div><div style="text-align:right"><div style="color:#4af0ff;font-size:12px;font-weight:700">'+(f.pct||0)+'%</div><div style="font-size:8px;color:var(--dim)">gap size</div></div></div>';});
+    beFVGs.slice(0,1).forEach(function(f){h+='<div style="background:rgba(255,68,100,.04);border:1px solid rgba(255,68,100,.15);border-radius:7px;padding:8px 11px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:9px;font-weight:700;color:var(--red)">🔴 BEAR FVG</div><div style="font-family:var(--m);font-size:12px;font-weight:800;margin-top:2px">$'+fP(f.L)+' — $'+fP(f.H)+'</div></div><div style="text-align:right"><div style="color:var(--red);font-size:12px;font-weight:700">'+(f.pct||0)+'%</div><div style="font-size:8px;color:var(--dim)">gap size</div></div></div>';});
     h+='</div></div>';
   }
 
@@ -829,29 +784,13 @@ function buildSearchCard(d){
   if(hasLiq){
     h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'
       +'<div style="font-size:10px;font-weight:700;color:var(--amber);letter-spacing:1px;margin-bottom:7px">💧 LIQUIDITY ZONES (BSL / SSL)</div>';
-    if(liq.lastSweep){
-      var swC=liq.lastSweep.bullish?'var(--g)':'var(--red)';
-      h+='<div style="background:'+(liq.lastSweep.bullish?'rgba(0,255,136,.05)':'rgba(255,68,100,.05)')+';border:1px solid '+(liq.lastSweep.bullish?'rgba(0,255,200,.3)':'rgba(255,68,100,.3)')+';border-radius:7px;padding:8px 10px;margin-bottom:6px">'
-        +'<div style="font-size:9px;font-weight:700;color:'+swC+'">⚡ '+liq.lastSweep.type+'</div>'
-        +'<div style="font-family:var(--m);font-size:12px;font-weight:800;margin-top:2px">Level: $'+fP(liq.lastSweep.level)+'</div>'
-        +'<div style="font-size:9px;color:var(--muted);margin-top:2px">'+(liq.lastSweep.desc||'Liquidity taken')+'</div></div>';
-    }
+    if(liq.lastSweep){var swC=liq.lastSweep.bullish?'var(--g)':'var(--red)';h+='<div style="background:'+(liq.lastSweep.bullish?'rgba(0,255,136,.05)':'rgba(255,68,100,.05)')+';border:1px solid '+(liq.lastSweep.bullish?'rgba(0,255,200,.3)':'rgba(255,68,100,.3)')+';border-radius:7px;padding:8px 10px;margin-bottom:6px"><div style="font-size:9px;font-weight:700;color:'+swC+'">⚡ '+liq.lastSweep.type+'</div><div style="font-family:var(--m);font-size:12px;font-weight:800;margin-top:2px">Level: $'+fP(liq.lastSweep.level)+'</div><div style="font-size:9px;color:var(--muted);margin-top:2px">'+(liq.lastSweep.desc||'Liquidity taken')+'</div></div>';}
     var liqItems=[];
-    (liq.bsl||[]).slice(0,2).filter(function(x){return !x.taken;}).forEach(function(b){liqItems.push({label:'BSL',level:b.level,dist:b.dist,color:'var(--red)',desc:'Buy-side stops above'});});
-    (liq.ssl||[]).slice(0,2).filter(function(x){return !x.taken;}).forEach(function(s){liqItems.push({label:'SSL',level:s.level,dist:s.dist,color:'var(--g)',desc:'Sell-side stops below'});});
-    if(liq.eqH) liqItems.push({label:'EQH',level:liq.eqH.level,dist:liq.eqH.dist,color:'var(--red)',desc:'Equal Highs — BSL cluster'});
-    if(liq.eqL) liqItems.push({label:'EQL',level:liq.eqL.level,dist:liq.eqL.dist,color:'var(--g)',desc:'Equal Lows — SSL cluster'});
-    if(liqItems.length){
-      h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
-      liqItems.slice(0,4).forEach(function(item){
-        var d2=+(item.dist||0);
-        h+='<div style="background:rgba(255,255,255,.02);border-left:3px solid '+item.color+';padding:6px 9px;border-radius:4px">'
-          +'<div style="font-size:9px;font-weight:700;color:'+item.color+'">'+item.label+' — '+item.desc+'</div>'
-          +'<div style="font-family:var(--m);font-size:11px;font-weight:800;margin-top:2px">$'+fP(item.level)+'</div>'
-          +'<div style="font-size:8px;color:var(--dim)">'+(d2>0?'+':'')+d2.toFixed(1)+'% away</div></div>';
-      });
-      h+='</div>';
-    }
+    (liq.bsl||[]).slice(0,2).filter(function(x){return x&&!x.taken;}).forEach(function(b){liqItems.push({label:'BSL',level:b.level,dist:b.dist,color:'var(--red)',desc:'Buy-side stops above'});});
+    (liq.ssl||[]).slice(0,2).filter(function(x){return x&&!x.taken;}).forEach(function(s){liqItems.push({label:'SSL',level:s.level,dist:s.dist,color:'var(--g)',desc:'Sell-side stops below'});});
+    if(liq.eqH)liqItems.push({label:'EQH',level:liq.eqH.level,dist:liq.eqH.dist,color:'var(--red)',desc:'Equal Highs — BSL cluster'});
+    if(liq.eqL)liqItems.push({label:'EQL',level:liq.eqL.level,dist:liq.eqL.dist,color:'var(--g)',desc:'Equal Lows — SSL cluster'});
+    if(liqItems.length){h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';liqItems.slice(0,4).forEach(function(item){var d2=+(item.dist||0);h+='<div style="background:rgba(255,255,255,.02);border-left:3px solid '+item.color+';padding:6px 9px;border-radius:4px"><div style="font-size:9px;font-weight:700;color:'+item.color+'">'+item.label+' — '+item.desc+'</div><div style="font-family:var(--m);font-size:11px;font-weight:800;margin-top:2px">$'+fP(item.level)+'</div><div style="font-size:8px;color:var(--dim)">'+(d2>0?'+':'')+d2.toFixed(1)+'% away</div></div>';});h+='</div>';}
     h+='</div>';
   }
 
@@ -860,32 +799,10 @@ function buildSearchCard(d){
     h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'
       +'<div style="font-size:10px;font-weight:700;color:#fff;letter-spacing:1px;margin-bottom:7px">🎯 HIGH PROBABILITY ZONES</div>'
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
-    if(hpz.long){
-      var ls=+(hpz.long.strength||50);
-      h+='<div style="background:rgba(0,255,136,.05);border:1px solid rgba(0,255,200,.25);border-radius:8px;padding:10px">'
-        +'<div style="font-size:9px;font-weight:700;color:var(--g);margin-bottom:4px">⬆️ LONG SETUP ZONE</div>'
-        +'<div style="font-family:var(--m);font-size:13px;font-weight:900;color:var(--txt)">$'+fP(hpz.long.low)+' — $'+fP(hpz.long.high)+'</div>'
-        +'<div style="font-size:9px;color:var(--g2);margin:3px 0">Mid: $'+fP(hpz.long.midpoint)+'</div>'
-        +'<div style="font-size:8px;color:var(--dim);line-height:1.4">'+(hpz.long.sources||'')+'</div>'
-        +'<div style="display:flex;align-items:center;gap:5px;margin-top:6px">'
-        +'<div style="flex:1;height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden"><div style="height:4px;background:var(--g);border-radius:2px;width:'+ls+'%"></div></div>'
-        +'<span style="font-family:var(--m);font-size:10px;color:var(--g);font-weight:700">'+ls+'%</span></div></div>';
-    } else {
-      h+='<div style="background:rgba(255,255,255,.02);border:1px dashed rgba(255,255,255,.08);border-radius:8px;padding:10px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--dim)">No long zone</div>';
-    }
-    if(hpz.short){
-      var ss=+(hpz.short.strength||50);
-      h+='<div style="background:rgba(255,68,100,.05);border:1px solid rgba(255,68,100,.25);border-radius:8px;padding:10px">'
-        +'<div style="font-size:9px;font-weight:700;color:var(--red);margin-bottom:4px">⬇️ SHORT SETUP ZONE</div>'
-        +'<div style="font-family:var(--m);font-size:13px;font-weight:900;color:var(--txt)">$'+fP(hpz.short.low)+' — $'+fP(hpz.short.high)+'</div>'
-        +'<div style="font-size:9px;color:var(--red);margin:3px 0">Mid: $'+fP(hpz.short.midpoint)+'</div>'
-        +'<div style="font-size:8px;color:var(--dim);line-height:1.4">'+(hpz.short.sources||'')+'</div>'
-        +'<div style="display:flex;align-items:center;gap:5px;margin-top:6px">'
-        +'<div style="flex:1;height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden"><div style="height:4px;background:var(--red);border-radius:2px;width:'+ss+'%"></div></div>'
-        +'<span style="font-family:var(--m);font-size:10px;color:var(--red);font-weight:700">'+ss+'%</span></div></div>';
-    } else {
-      h+='<div style="background:rgba(255,255,255,.02);border:1px dashed rgba(255,255,255,.08);border-radius:8px;padding:10px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--dim)">No short zone</div>';
-    }
+    if(hpz.long){var ls=+(hpz.long.strength||50);h+='<div style="background:rgba(0,255,136,.05);border:1px solid rgba(0,255,200,.25);border-radius:8px;padding:10px"><div style="font-size:9px;font-weight:700;color:var(--g);margin-bottom:4px">⬆️ LONG SETUP ZONE</div><div style="font-family:var(--m);font-size:13px;font-weight:900">$'+fP(hpz.long.low)+' — $'+fP(hpz.long.high)+'</div><div style="font-size:9px;color:var(--g2);margin:3px 0">Mid: $'+fP(hpz.long.midpoint)+'</div><div style="font-size:8px;color:var(--dim);line-height:1.4">'+(hpz.long.sources||'')+'</div><div style="display:flex;align-items:center;gap:5px;margin-top:6px"><div style="flex:1;height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden"><div style="height:4px;background:var(--g);border-radius:2px;width:'+ls+'%"></div></div><span style="font-family:var(--m);font-size:10px;color:var(--g);font-weight:700">'+ls+'%</span></div></div>';}
+    else h+='<div style="background:rgba(255,255,255,.02);border:1px dashed rgba(255,255,255,.08);border-radius:8px;padding:10px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--dim)">No long zone</div>';
+    if(hpz.short){var ss=+(hpz.short.strength||50);h+='<div style="background:rgba(255,68,100,.05);border:1px solid rgba(255,68,100,.25);border-radius:8px;padding:10px"><div style="font-size:9px;font-weight:700;color:var(--red);margin-bottom:4px">⬇️ SHORT SETUP ZONE</div><div style="font-family:var(--m);font-size:13px;font-weight:900">$'+fP(hpz.short.low)+' — $'+fP(hpz.short.high)+'</div><div style="font-size:9px;color:var(--red);margin:3px 0">Mid: $'+fP(hpz.short.midpoint)+'</div><div style="font-size:8px;color:var(--dim);line-height:1.4">'+(hpz.short.sources||'')+'</div><div style="display:flex;align-items:center;gap:5px;margin-top:6px"><div style="flex:1;height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden"><div style="height:4px;background:var(--red);border-radius:2px;width:'+ss+'%"></div></div><span style="font-family:var(--m);font-size:10px;color:var(--red);font-weight:700">'+ss+'%</span></div></div>';}
+    else h+='<div style="background:rgba(255,255,255,.02);border:1px dashed rgba(255,255,255,.08);border-radius:8px;padding:10px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--dim)">No short zone</div>';
     h+='</div></div>';
   }
 
@@ -894,20 +811,13 @@ function buildSearchCard(d){
     h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'
       +'<div style="font-size:10px;font-weight:700;color:var(--amber);letter-spacing:1px;margin-bottom:7px">🕯️ CHART PATTERNS (≥75% Win Rate)</div>'
       +'<div style="display:flex;flex-direction:column;gap:6px">';
-    pats.forEach(function(pat){
-      var pc=pat.signal==='bullish'?'var(--g)':pat.signal==='bearish'?'var(--red)':'var(--amber)';
-      h+='<div style="background:rgba(255,255,255,.02);border-left:3px solid '+pc+';padding:8px 10px;border-radius:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">'
-        +'<div><div style="font-size:11px;font-weight:700;color:'+pc+'">'+pat.name+'</div>'
-        +'<div style="font-size:9px;color:var(--dim);margin-top:2px">'+(pat.desc||'')+'</div></div>'
-        +'<div style="text-align:right"><div style="font-family:var(--m);font-size:14px;font-weight:900;color:'+pc+'">'+pat.winRate+'%</div>'
-        +'<div style="font-size:8px;color:var(--dim)">win rate</div></div></div>';
-    });
+    pats.forEach(function(pat){var pc=pat.signal==='bullish'?'var(--g)':pat.signal==='bearish'?'var(--red)':'var(--amber)';h+='<div style="background:rgba(255,255,255,.02);border-left:3px solid '+pc+';padding:8px 10px;border-radius:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px"><div><div style="font-size:11px;font-weight:700;color:'+pc+'">'+pat.name+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">'+(pat.desc||'')+'</div></div><div style="text-align:right"><div style="font-family:var(--m);font-size:14px;font-weight:900;color:'+pc+'">'+pat.winRate+'%</div><div style="font-size:8px;color:var(--dim)">win rate</div></div></div>';});
     h+='</div></div>';
   }
 
   // ── ELLIOTT WAVE ──────────────────────────────────────
   var ewW=ew4h.w||ew4h.wave||'—',ewC2=ew4h.c||ew4h.confidence||0,ewD=ew4h.d||ew4h.description||'';
-  var ewCol=ewW.includes('Wave 3')||ewW.includes('Impulse')?'var(--g)':ewW.includes('Bear')||ewW.includes('C')?'var(--red)':'var(--purple)';
+  var ewCol=ewW.includes('Wave 3')||ewW.includes('Impulse')?'var(--g)':ewW.includes('Bear')||ewW.includes('Capitulation')?'var(--red)':'var(--purple)';
   h+='<div style="background:rgba(168,85,247,.04);border:1px solid rgba(168,85,247,.15);border-radius:9px;padding:9px 11px;margin-bottom:8px">'
     +'<div style="font-size:10px;font-weight:700;color:var(--purple);letter-spacing:1px;margin-bottom:5px">🌊 ELLIOTT WAVE (4H)</div>'
     +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">'
@@ -916,37 +826,150 @@ function buildSearchCard(d){
     +'<div style="text-align:center"><div style="font-family:var(--m);font-size:20px;font-weight:900;color:var(--purple)">'+ewC2+'%</div>'
     +'<div style="font-size:8px;color:var(--dim)">confidence</div></div></div></div>';
 
-  // ── MULTI-TF ──────────────────────────────────────────
+  // ── RSI + STOCH RSI ────────────────────────────────────
   h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'
-    +'<div style="font-size:10px;font-weight:700;color:var(--dim);letter-spacing:1px;margin-bottom:7px">⏱ MULTI-TIMEFRAME</div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">';
+    +'<div style="font-size:10px;font-weight:700;color:var(--dim);letter-spacing:1px;margin-bottom:7px">📊 RSI ANALYSIS</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">';
   [['1H',tf1h],['4H',tf4h],['1D',tf1d]].forEach(function(pair){
     var lbl=pair[0],tf=pair[1];
     var rsi=+(rsiMap[lbl]||tf.rsi||50);
     var trend=tf.trend||(rsi>55?'BULLISH':rsi<45?'BEARISH':'NEUTRAL');
-    var tc=String(trend).includes('BULL')?'var(--g)':String(trend).includes('BEAR')?'var(--red)':'var(--amber)';
+    var tc=trend.includes('BULL')?'var(--g)':trend.includes('BEAR')?'var(--red)':'var(--amber)';
+    var zone=rsi<=30?'Oversold 🎯':rsi<=44?'Bearish':rsi>=75?'Overbought':rsi>=65?'Bullish Zone':'Neutral';
     h+='<div style="background:rgba(255,255,255,.02);border-radius:7px;padding:8px;text-align:center">'
       +'<div style="font-size:9px;color:var(--dim);margin-bottom:3px">'+lbl+'</div>'
       +'<div style="font-family:var(--m);font-size:17px;font-weight:900;color:'+rsiCol(rsi)+'">'+rsi.toFixed(0)+'</div>'
-      +'<div style="font-size:8px;color:var(--dim)">RSI</div>'
-      +'<div style="font-size:9px;font-weight:700;color:'+tc+';margin-top:3px">'+trend+'</div></div>';
+      +'<div style="font-size:8px;color:var(--dim);margin-top:1px">'+zone+'</div>'
+      +'<div style="font-size:8px;font-weight:700;color:'+tc+';margin-top:3px">'+trend+'</div></div>';
   });
   h+='</div>';
-  // MACD + BB row
+  // RSI Divergence
+  if(rsiDiv){var dvC=rsiDiv.bullish?'var(--g)':'var(--red)';h+='<div style="background:'+(rsiDiv.bullish?'rgba(0,255,136,.06)':'rgba(255,68,100,.06)')+';border:1px solid '+(rsiDiv.bullish?'rgba(0,255,200,.25)':'rgba(255,68,100,.25)')+';border-radius:6px;padding:7px 9px;margin-bottom:7px"><div style="font-size:10px;font-weight:700;color:'+dvC+'">⚡ '+rsiDiv.type+'</div><div style="font-size:9px;color:var(--muted);margin-top:2px">'+rsiDiv.desc+'</div></div>';}
+  // Stochastic RSI
+  if(stoch){
+    var sK=stoch.k,sD=stoch.d;
+    var skC=sK<20?'var(--g)':sK>80?'var(--red)':'var(--muted)';
+    h+='<div style="background:rgba(255,255,255,.02);border-radius:6px;padding:7px 9px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'
+      +'<div style="font-size:10px;font-weight:700;color:var(--muted)">Stochastic RSI (4H)</div>'
+      +'<div style="font-size:10px;font-weight:700;color:'+skC+'">'+stoch.zone+'</div></div>'
+      +'<div style="display:flex;gap:10px;font-size:10px">'
+      +'<span style="color:var(--dim)">K: <span style="font-family:var(--m);font-weight:700;color:'+skC+'">'+sK.toFixed(1)+'</span></span>'
+      +'<span style="color:var(--dim)">D: <span style="font-family:var(--m);font-weight:700;color:var(--muted)">'+sD.toFixed(1)+'</span></span>'
+      +(stoch.crossUp?'<span style="background:rgba(0,255,136,.1);color:var(--g);padding:1px 6px;border-radius:3px;font-size:9px">⬆️ Cross Up</span>':'')
+      +(stoch.crossDown?'<span style="background:rgba(255,68,100,.1);color:var(--red);padding:1px 6px;border-radius:3px;font-size:9px">⬇️ Cross Down</span>':'')
+      +(stoch.oversold?'<span style="background:rgba(0,255,200,.1);color:var(--g);padding:1px 6px;border-radius:3px;font-size:9px">Oversold 🎯</span>':'')
+      +(stoch.overbought?'<span style="background:rgba(255,68,100,.1);color:var(--red);padding:1px 6px;border-radius:3px;font-size:9px">Overbought</span>':'')
+      +'</div></div>';
+  }
+  h+='</div>';
+
+  // ── ADX + VOLUME + ATR ────────────────────────────────
+  if(adx||vol||atr){
+    h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'
+      +'<div style="font-size:10px;font-weight:700;color:var(--dim);letter-spacing:1px;margin-bottom:7px">📈 TECHNICAL INDICATORS</div>';
+    if(adx){
+      var adxC=adx.adx>=40?'var(--g)':adx.adx>=25?'var(--g2)':adx.adx>=20?'var(--amber)':'var(--muted)';
+      var adxTrC=adx.trend&&adx.trend.includes('Bullish')?'var(--g)':adx.trend&&adx.trend.includes('Bearish')?'var(--red)':'var(--muted)';
+      h+='<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 9px;background:rgba(255,255,255,.02);border-radius:6px;margin-bottom:6px;flex-wrap:wrap;gap:5px">'
+        +'<div><div style="font-size:10px;font-weight:700;color:var(--muted)">ADX (Trend Strength)</div>'
+        +'<div style="font-size:9px;color:var(--dim);margin-top:1px">'+(adx.strength||'—')+' · '+( adx.trend||'—')+'</div></div>'
+        +'<div style="display:flex;gap:8px;font-family:var(--m);font-size:11px">'
+        +'<span style="font-weight:900;color:'+adxC+'">ADX '+adx.adx.toFixed(0)+'</span>'
+        +'<span style="color:var(--g)">DI+ '+adx.diPlus.toFixed(0)+'</span>'
+        +'<span style="color:var(--red)">DI- '+adx.diMinus.toFixed(0)+'</span></div></div>';
+    }
+    if(vol){
+      var volC=vol.ratio>200?'var(--g)':vol.ratio<50?'var(--red)':'var(--muted)';
+      var obvC=vol.obv&&vol.obv.trend&&vol.obv.trend.includes('Rising')?'var(--g)':'var(--red)';
+      h+='<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 9px;background:rgba(255,255,255,.02);border-radius:6px;margin-bottom:6px;flex-wrap:wrap;gap:5px">'
+        +'<div><div style="font-size:10px;font-weight:700;color:var(--muted)">Volume Analysis</div>'
+        +(vol.divergence?'<div style="font-size:8px;color:var(--amber);margin-top:1px">'+vol.divergence+'</div>':'')
+        +(vol.obv?'<div style="font-size:8px;color:'+obvC+';margin-top:1px">OBV: '+(vol.obv.signal||vol.obv.trend||'—')+'</div>':'')+'</div>'
+        +'<div style="text-align:right">'
+        +'<div style="font-family:var(--m);font-size:12px;font-weight:700;color:'+volC+'">'+vol.ratio+'% vs avg</div>'
+        +'<div style="font-size:9px;color:var(--dim)">'+(vol.trend||'—')+'</div>'
+        +(vol.spike?'<div style="font-size:8px;color:var(--g)">🔥 Volume Spike!</div>':'')
+        +(vol.dry?'<div style="font-size:8px;color:var(--red)">Low volume</div>':'')+'</div></div>';
+    }
+    if(atr){
+      var atrC=atr.volatility==='HIGH'||atr.volatility==='EXTREME'?'var(--red)':atr.volatility==='MEDIUM'?'var(--amber)':'var(--g)';
+      h+='<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 9px;background:rgba(255,255,255,.02);border-radius:6px;flex-wrap:wrap;gap:5px">'
+        +'<div><div style="font-size:10px;font-weight:700;color:var(--muted)">ATR — Volatility</div>'
+        +'<div style="font-size:8px;color:var(--dim);margin-top:1px">Average True Range (14)</div></div>'
+        +'<div style="text-align:right"><div style="font-family:var(--m);font-size:12px;font-weight:700;color:'+atrC+'">'+atr.pct+'% / candle</div>'
+        +'<div style="font-size:9px;color:'+atrC+'">'+atr.volatility+' volatility</div></div></div>';
+    }
+    h+='</div>';
+  }
+
+  // ── EMA ALIGNMENT ─────────────────────────────────────
+  if(emaA){
+    var emaAlignC=emaA.bullStack?'var(--g)':emaA.bearStack?'var(--red)':'var(--amber)';
+    h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'
+      +'<div style="font-size:10px;font-weight:700;color:var(--dim);letter-spacing:1px;margin-bottom:7px">📊 EMA ALIGNMENT</div>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;flex-wrap:wrap;gap:5px">'
+      +'<div style="font-size:12px;font-weight:800;color:'+emaAlignC+'">'+(emaA.alignment||'—')+'</div>'
+      +'<div style="display:flex;gap:5px;flex-wrap:wrap">';
+    emaA.above&&emaA.above.forEach(function(e){h+='<span style="font-size:9px;background:rgba(0,255,136,.1);color:var(--g);padding:1px 6px;border-radius:3px">Above '+e+'</span>';});
+    emaA.below&&emaA.below.forEach(function(e){h+='<span style="font-size:9px;background:rgba(255,68,100,.1);color:var(--red);padding:1px 6px;border-radius:3px">Below '+e+'</span>';});
+    h+='</div></div>';
+    // EMA levels
+    var emaLvls=emaA.levels||{};
+    if(emaLvls.ema9||emaLvls.ema200){
+      h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">';
+      [['EMA9',emaLvls.ema9],['EMA21',emaLvls.ema21],['EMA50',emaLvls.ema50],['EMA200',emaLvls.ema200]].forEach(function(pair){if(!pair[1])return;var vc=+(pair[1])>+(p)?'var(--red)':'var(--g)';h+='<div style="background:rgba(255,255,255,.02);border-radius:4px;padding:5px 6px;text-align:center"><div style="font-size:8px;color:var(--dim)">'+pair[0]+'</div><div style="font-family:var(--m);font-size:9px;font-weight:700;color:'+vc+'">$'+fP(pair[1])+'</div></div>';});
+      h+='</div>';
+    }
+    h+='</div>';
+  }
+
+  // ── FIBONACCI LEVELS ──────────────────────────────────
+  if(fib){
+    h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'
+      +'<div style="font-size:10px;font-weight:700;color:var(--amber);letter-spacing:1px;margin-bottom:7px">📐 FIBONACCI RETRACEMENT</div>'
+      +'<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--dim);margin-bottom:6px;flex-wrap:wrap;gap:4px">'
+      +'<span>Swing H: <span style="color:var(--red);font-family:var(--m)">$'+fP(fib.swH)+'</span></span>'
+      +'<span>'+fib.direction+'</span>'
+      +'<span>Swing L: <span style="color:var(--g);font-family:var(--m)">$'+fP(fib.swL)+'</span></span></div>';
+    if(fib.ote&&fib.ote.inZone){h+='<div style="background:rgba(0,255,200,.06);border:1px solid rgba(0,255,200,.2);border-radius:5px;padding:5px 8px;margin-bottom:6px;font-size:9px;color:var(--g)">✅ Price in OTE Zone (61.8–78.6%) — Optimal Trade Entry Level</div>';}
+    var fibLvls=fib.levels||{};
+    var fibEntries=[[0,'0.0%','Swing High/Low'],[0.236,'23.6%','Shallow retrace'],[0.382,'38.2%','Key support'],[0.5,'50.0%','Mid point'],[0.618,'61.8%','Golden ratio 🎯'],[0.786,'78.6%','Deep OTE'],[1.0,'100%','Full retrace']];
+    h+='<div style="display:flex;flex-direction:column;gap:3px">';
+    fibEntries.forEach(function(fe){
+      var lvl=fibLvls[fe[0]];if(!lvl)return;
+      var isNearest=fib.nearestFib===fe[0];
+      var isOTE=fe[0]===0.618||fe[0]===0.786;
+      var lc=isNearest?'var(--g)':isOTE?'var(--amber)':'var(--muted)';
+      h+='<div style="display:flex;justify-content:space-between;padding:3px 6px;border-radius:4px;background:'+(isNearest?'rgba(0,255,200,.06)':isOTE?'rgba(255,179,0,.04)':'transparent')+';border:'+(isNearest?'1px solid rgba(0,255,200,.2)':isOTE?'1px solid rgba(255,179,0,.15)':'1px solid transparent')+'">'
+        +'<span style="font-size:9px;color:'+lc+'">'+fe[1]+(isOTE?' ⭐':'')+(isNearest?' ← current':'')+'</span>'
+        +'<span style="font-family:var(--m);font-size:9px;font-weight:700;color:'+lc+'">$'+fP(lvl)+'</span></div>';
+    });
+    h+='</div></div>';
+  }
+
+  // ── MACD + BB ─────────────────────────────────────────
+  h+='<div style="background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;margin-bottom:8px">'
+    +'<div style="font-size:10px;font-weight:700;color:var(--dim);letter-spacing:1px;margin-bottom:7px">⚡ MOMENTUM INDICATORS</div>';
   if(macd4h){
     var mc=macd4h.bull?'var(--g)':macd4h.bear?'var(--red)':'var(--muted)';
-    var ms=macd4h.xUp?'⬆️ Golden Cross':macd4h.xDown?'⬇️ Death Cross':macd4h.bull?'🟢 Bullish':macd4h.bear?'🔴 Bearish':'⚖️ Neutral';
-    h+='<div style="margin-top:6px;display:flex;align-items:center;gap:7px;padding:6px 8px;background:rgba(255,255,255,.02);border-radius:6px;flex-wrap:wrap">'
-      +'<span style="font-size:10px;color:var(--dim)">MACD 4H:</span>'
-      +'<span style="font-size:11px;font-weight:700;color:'+mc+'">'+ms+'</span>'
-      +(macd4h.div?'<span style="font-size:9px;background:rgba(255,68,100,.1);color:var(--red);padding:1px 6px;border-radius:3px">⚠️ Divergence</span>':'')+'</div>';
+    var ms=macd4h.xUp?'⬆️ Golden Cross — new bullish momentum':macd4h.xDown?'⬇️ Death Cross — new bearish momentum':macd4h.bull?'🟢 Bullish (above zero)':macd4h.bear?'🔴 Bearish (below zero)':'⚖️ Neutral';
+    h+='<div style="padding:7px 9px;background:rgba(255,255,255,.02);border-radius:6px;margin-bottom:6px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">'
+      +'<div><div style="font-size:10px;font-weight:700;color:var(--muted)">MACD (4H)</div>'
+      +'<div style="font-size:10px;color:'+mc+';margin-top:2px">'+ms+'</div></div>'
+      +(macd4h.div?'<span style="font-size:9px;background:rgba(255,179,0,.1);color:var(--amber);padding:2px 8px;border-radius:4px">⚠️ Divergence Detected</span>':'')+'</div></div>';
   }
   if(bb4h){
     var bbC=bb4h.position>80?'var(--red)':bb4h.position<20?'var(--g)':'var(--muted)';
-    h+='<div style="margin-top:4px;display:flex;align-items:center;gap:7px;padding:6px 8px;background:rgba(255,255,255,.02);border-radius:6px;flex-wrap:wrap">'
-      +'<span style="font-size:10px;color:var(--dim)">BB 4H:</span>'
-      +'<span style="font-size:11px;font-weight:700;color:'+bbC+'">Position: '+bb4h.position.toFixed(0)+'%</span>'
-      +(bb4h.squeeze?'<span style="font-size:9px;background:rgba(255,179,0,.1);color:var(--amber);padding:1px 6px;border-radius:3px">🔥 Squeeze</span>':'')+'</div>';
+    var bbZone=bb4h.position>80?'Upper Band — Overbought':bb4h.position<20?'Lower Band — Oversold':bb4h.position>60?'Upper Half':'Lower Half';
+    h+='<div style="padding:7px 9px;background:rgba(255,255,255,.02);border-radius:6px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">'
+      +'<div><div style="font-size:10px;font-weight:700;color:var(--muted)">Bollinger Bands (4H, 20)</div>'
+      +'<div style="font-size:9px;color:'+bbC+';margin-top:2px">'+bbZone+'</div></div>'
+      +'<div style="text-align:right">'
+      +'<div style="font-family:var(--m);font-size:12px;font-weight:700;color:'+bbC+'">Pos: '+bb4h.position.toFixed(0)+'%</div>'
+      +(bb4h.squeeze?'<div style="font-size:9px;color:var(--amber)">🔥 BB Squeeze — breakout imminent</div>':'')+'</div></div></div>';
   }
   h+='</div>';
 
@@ -960,6 +983,7 @@ function buildSearchCard(d){
       +(pivots.P?'<div><span style="color:var(--muted)">Pivot </span><span style="font-family:var(--m);font-weight:700">$'+fP(pivots.P)+'</span></div>':'')
       +(pivots.S1?'<div><span style="color:var(--g)">S1 </span><span style="font-family:var(--m);font-weight:700;color:var(--g)">$'+fP(pivots.S1)+'</span></div>':'')
       +(pivots.S2?'<div><span style="color:var(--g)">S2 </span><span style="font-family:var(--m);font-weight:700;color:var(--g)">$'+fP(pivots.S2)+'</span></div>':'')
+      +(pivots.S3?'<div><span style="color:var(--g)">S3 </span><span style="font-family:var(--m);font-weight:700;color:var(--g)">$'+fP(pivots.S3)+'</span></div>':'')
       +'</div></div>';
   }
 
