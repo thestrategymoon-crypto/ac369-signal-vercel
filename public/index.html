@@ -234,6 +234,7 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
   <button class="tab" onclick="showTab('ewSetups',this)">🌊 Wave 3</button>
   <button class="tab" onclick="showTab('volumeBreakout',this)">💥 Vol Breakout</button>
   <button class="tab" onclick="showTab('strongSell',this)">🔴 Short/Sell</button>
+  <button class="tab" onclick="showTab('whaleSetups',this)">🐋 Whale</button>
   <button class="tab" onclick="showTab('bullish',this)">📋 Semua</button>
 </div>
 <div class="mchips" id="sc-chips" style="display:none"></div>
@@ -1044,9 +1045,25 @@ function showTab(tab,el){document.querySelectorAll('.tab').forEach(b=>b.classLis
 function renderTable(tab){
   var data=window._scanData;if(!data)return;
   var ts=data.topSetups||{};
-  var coins={'institutional':(ts.institutional||[]).slice(0,60),'fullSend':(ts.fullSend||[]).slice(0,60),'highProbBull':(ts.highProbBull||[]).slice(0,60),'smcSetups':(ts.smcSetups||[]).slice(0,60),'ewSetups':(ts.ewSetups||[]).slice(0,60),'volumeBreakout':(ts.volumeBreakout||[]).slice(0,60),'strongSell':(ts.strongSell||[]).slice(0,60),'bullish':(data.results||[]).filter(r=>r.score>0).slice(0,100)}[tab]||(data.results||[]).slice(0,60);
+  var coins={'institutional':(ts.institutional||[]).slice(0,60),'fullSend':(ts.fullSend||[]).slice(0,60),'highProbBull':(ts.highProbBull||[]).slice(0,60),'smcSetups':(ts.smcSetups||[]).slice(0,60),'ewSetups':(ts.ewSetups||[]).slice(0,60),'volumeBreakout':(ts.volumeBreakout||[]).slice(0,60),'strongSell':(ts.strongSell||[]).slice(0,60),'whaleSetups':(ts.whaleSetups||[]).slice(0,60),'bullish':(data.results||[]).filter(r=>r.score>0).slice(0,100)}[tab]||(data.results||[]).slice(0,60);
   var body=$('sc-body');if(!body)return;
   if(!coins.length){body.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--muted);font-size:11px;padding:16px">Tidak ada setup untuk tab ini</td></tr>';return;}
+
+  // Special rendering for whale tab
+  if(tab==='whaleSetups'){
+    body.innerHTML=coins.map((c,i)=>{
+      var chg=parseFloat(c.change24h||0),up=chg>=0;
+      var wh=c.whale||{};
+      var wScore=wh.score||0;
+      var wLevel=wh.level||'🔍';
+      var wSigs=wh.signals||[];
+      var wCol=wScore>=14?'#00d4aa':wScore>=9?'#4af0ff':'#f0c040';
+      var vol=c.volume24h||0,volT=vol>=1e9?'$'+(vol/1e9).toFixed(1)+'B':vol>=1e6?'$'+(vol/1e6).toFixed(0)+'M':'$'+(vol/1e3).toFixed(0)+'K';
+      var pPos=c.pricePos||0.5,vR=c.mcap>0?(c.volume24h/c.mcap*100).toFixed(1):'—';
+      return '<tr style="cursor:pointer;background:rgba(0,212,170,0.03);border-bottom:1px solid rgba(0,212,170,0.08)" onclick="clickCoin(\''+c.symbol+'\')"><td><span class="rkb '+(i<5?'top':'')+'">'+c.rank+'</span></td><td><div style="font-weight:900;font-family:var(--m)">'+c.symbol+'</div><div style="font-size:9px;color:var(--dim)">'+c.name+'</div></td><td style="font-family:var(--m);font-size:11px">$'+fP(c.price)+'</td><td class="'+(up?'chgu':'chgd')+'">'+(up?'+':'')+chg.toFixed(2)+'%</td><td style="color:var(--blue)">'+volT+'</td><td style="font-size:9px;color:var(--dim)">Vol/MCap:<br><span style="color:'+wCol+';font-weight:700">'+vR+'%</span></td><td colspan="2"><div style="font-size:11px;font-weight:800;color:'+wCol+'">'+wLevel+'</div><div style="font-family:var(--m);font-size:10px;color:var(--txt);margin-top:1px">Score: '+wScore+'</div></td><td colspan="3" style="max-width:240px">'+wSigs.slice(0,3).map(s=>'<div style="font-size:9px;color:var(--muted);padding:1px 0;line-height:1.4">• '+s+'</div>').join('')+'</td><td><span class="pp '+(c.probability>=65?'pp-good':'pp-watch')+'">'+c.probability+'%</span></td></tr>';
+    }).join('');
+    return;
+  }
   body.innerHTML=coins.map((c,i)=>{
     var chg=parseFloat(c.change24h||0),up=chg>=0;
     var prob=c.probability||50;
