@@ -304,7 +304,7 @@ export default async function handler(req, res) {
     for(const c of mxList){if(!seen.has(c.sym)){seen.add(c.sym);pool.push(c);}}
 
     if(pool.length===0){
-      return res.status(200).json({ok:false,error:'Semua data source tidak merespons. Coba refresh dalam 30 detik.',ts:Date.now(),totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
+      return res.status(200).json({ok:false,error:'Semua data source tidak merespons. Coba refresh dalam 30 detik.',ts:Date.now(),totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
     }
 
     // ── Parse CryptoCompare klines ────────────────────────
@@ -367,6 +367,79 @@ export default async function handler(req, res) {
         const ewC=ew.w.includes('Wave 3')?4:ew.w.includes('Wave 2')?2:ew.w.includes('C Complete')||ew.w.includes('Capitulation')?3:ew.w.includes('Bearish')||ew.w.includes('5 End')?-2:0;
         const prob=clamp(Math.round(50+tC+rC+mW+m24+mC+smcC+pC+ewC),2,98);
         const score=tC+rC+mW+m24+mC+smcC;
+
+        // ── WHALE / SMART MONEY DETECTOR ──────────────────
+        // Metode: deteksi jejak institusi dari volume, OB, likuiditas, OBV
+        let wScore=0;
+        const wSigs=[];
+        try{
+          // 1. Volume Anomaly (vol/mcap ratio)
+          const vR=mcap>0?vol/mcap:0;
+          if(vR>0.20){wScore+=5;wSigs.push('🔥 Volume EKSTREM: '+( vR*100).toFixed(1)+'% dari market cap — aktivitas institusional sangat tinggi');}
+          else if(vR>0.12){wScore+=3;wSigs.push('📈 Volume tinggi: '+(vR*100).toFixed(1)+'% dari market cap — unusual activity terdeteksi');}
+          else if(vR>0.06){wScore+=1;wSigs.push('📊 Volume di atas rata-rata: '+(vR*100).toFixed(1)+'% dari market cap');}
+
+          // 2. Stealth Accumulation: harga turun mingguan tapi naik 24h + volume besar
+          const isStealthy=(c7d||0)<-5&&c24>1.5&&vR>0.05&&pPos>0.3;
+          if(isStealthy){wScore+=5;wSigs.push('🤫 STEALTH ACCUMULATION: Harga turun 7d='+(c7d||0).toFixed(1)+'% tapi 24h=+'+c24.toFixed(1)+'% — whale diam-diam kumpulkan koin');}
+
+          // 3. Liquidity Sweep (kunci utama whale entry)
+          if(smc?.sweep?.bullish===true){wScore+=6;wSigs.push('⚡ SSL SWEEP TERDETEKSI — Smart money ambil stop loss di $'+smc.sweep.lv+' lalu balik arah naik. Entry institusi.');}
+          else if(smc?.sweep?.bullish===false){wScore-=2;wSigs.push('⚡ BSL SWEEP — Smart money ambil stop loss atas, potensi distribusi');}
+
+          // 4. Fresh Bull OB (in zone) = institusi sudah masuk di level ini
+          if(smc?.bOB?.fresh&&smc?.bOB?.inZone){wScore+=4;wSigs.push('📦 Bull OB Fresh IN ZONE $'+smc.bOB.L+'–$'+smc.bOB.H+' — harga tepat di zona demand institusional');}
+          else if(smc?.bOB?.fresh){wScore+=2;}
+
+          // 5. CHoCH = struktur market berubah arah = whale sudah masuk
+          if(smc?.hasCHoCH&&smc?.chochType?.includes('Bull')){wScore+=4;wSigs.push('🔄 CHoCH BULLISH: '+smc.chochType+' — institusi mulai control market dari bearish ke bullish');}
+
+          // 6. Wyckoff Accumulation / Spring
+          if(smc?.wyckoff?.bias==='bullish'&&(smc?.wyckoff?.phase?.includes('Spring')||smc?.wyckoff?.phase?.includes('Accumulation'))){
+            wScore+=4;wSigs.push('🐋 Wyckoff '+smc.wyckoff.phase+' — fase akumulasi institusional aktif');
+          }
+
+          // 7. OBV dari klines (paling akurat)
+          if(kd?.ok&&kd.cls&&kd.cls.length>=10){
+            // Hitung OBV sederhana dari klines
+            let obvRise=0,obvFall=0;
+            for(let i=1;i<Math.min(kd.K.length,20);i++){
+              if(kd.K[i]?.c>kd.K[i-1]?.c)obvRise+=N(kd.K[i].v);
+              else if(kd.K[i]?.c<kd.K[i-1]?.c)obvFall+=N(kd.K[i].v);
+            }
+            const obvBullish=obvRise>obvFall*1.4;
+            const obvBearish=obvFall>obvRise*1.4;
+            // Stealth: OBV naik tapi harga flat/turun = akumulasi tersembunyi
+            if(obvBullish&&(c7d||0)<0){wScore+=5;wSigs.push('📊 OBV BULLISH DIVERGENCE: Volume beli dominan ('+( obvRise/1e6).toFixed(1)+'M) tapi harga turun — whale akumulasi diam-diam');}
+            else if(obvBullish){wScore+=2;wSigs.push('📊 OBV Rising — tekanan beli institusional terdeteksi');}
+            else if(obvBearish&&c24>3){wScore-=3;wSigs.push('⚠️ OBV BEARISH DIVERGENCE: Volume jual dominan tapi harga naik — distribusi institusional');}
+
+            // Displacement candle detection
+            const atrArr=kd.K.slice(1).map((k,i)=>Math.max(N(k.h)-N(k.l),Math.abs(N(k.h)-N(kd.K[i].c)),Math.abs(N(k.l)-N(kd.K[i].c))));
+            const avgATR=atrArr.slice(-14).reduce((s,v)=>s+v,0)/14;
+            const lastCndl=kd.K[kd.K.length-1];
+            if(lastCndl&&avgATR>0){
+              const lastRange=N(lastCndl.h)-N(lastCndl.l);
+              if(lastRange>avgATR*2.8&&N(lastCndl.v)>0){
+                wScore+=4;
+                wSigs.push(lastCndl.c>lastCndl.o?'🚀 DISPLACEMENT CANDLE BULLISH: Candle '+( lastRange/avgATR).toFixed(1)+'x ATR — pergerakan institusional besar':'💀 DISPLACEMENT BEARISH: Candle '+(lastRange/avgATR).toFixed(1)+'x ATR — institusi jual besar-besaran');
+              }
+            }
+          }
+
+          // 8. MACD Golden Cross + high volume = konfirmasi institusi masuk
+          if(kd?.macd?.xUp&&vt>=3){wScore+=3;wSigs.push('✅ MACD Golden Cross + Volume tinggi — konfirmasi entry institusional');}
+
+          // 9. Price di Discount Zone dengan reversal
+          if(pPos<0.25&&c24>2&&vol>10e6){wScore+=3;wSigs.push('💎 Extreme Discount Zone ('+( pPos*100).toFixed(0)+'%) + reversal 24h=+'+c24.toFixed(1)+'% — smart money akumulasi di low');}
+
+          // 10. Equal Lows diambil lalu reversal (classic whale trap)
+          if(smc?.eqL&&c24>1.5&&pPos>0.3){wScore+=3;wSigs.push('🎯 Equal Lows $'+smc.eqL+' diambil + harga reversal — whale trap selesai, arah naik');}
+
+        }catch{}
+
+        const wLevel=wScore>=14?'🐋 STRONG WHALE':wScore>=9?'🐳 WHALE DETECTED':wScore>=5?'🔍 UNUSUAL ACTIVITY':'';
+        const whaleData=wScore>=5?{score:wScore,level:wLevel,signals:wSigs.slice(0,4)}:null;
         // Label
         let taLabel='⚖️ SIDEWAYS',taColor='neutral';
         if(bTF===3){taLabel='🚀 FULL SEND';taColor='full-bull';}
@@ -409,6 +482,7 @@ export default async function handler(req, res) {
           elliottWave:{wave:ew.w,confidence:ew.c,description:ew.d},
           chartPatterns:pats.length>0?pats:[{name:c24>=0?'Bullish Candle':'Bearish Candle',signal:c24>=0?'bullish':'bearish',winRate:0}],
           probability:prob,score,
+          whale:whaleData,
           signals:sigs.slice(0,5),
           astrology:{moonPhase:astro.moonPhase,moonEmoji:astro.moonEmoji,halvingPhase:astro.halvingPhase,chaotic:astro.chaotic},
           hasRealData:rsiR,
@@ -427,6 +501,8 @@ export default async function handler(req, res) {
     const ewSetups       =results.filter(r=>{const w=r.elliottWave?.wave||'';return(w.includes('Wave 3')||w.includes('Wave 2'))?r.probability>=52:(w.includes('C Complete')||w.includes('Capitulation'))?r.probability>=50:(r.rsi<38&&r.change24h>0)?r.probability>=48:false;}).sort((a,b)=>b.probability-a.probability).slice(0,60);
     const volumeBreakout =results.filter(r=>r.vt>=3&&r.change24h>1.5&&r.probability>50).sort((a,b)=>b.volume24h-a.volume24h).slice(0,60);
     const strongSell     =results.filter(r=>r.probability<38||r.taColor==='full-bear').sort((a,b)=>a.probability-b.probability).slice(0,40);
+    // 🐋 Whale / Smart Money Detector
+    const whaleSetups    =results.filter(r=>r.whale&&r.whale.score>=9).sort((a,b)=>b.whale.score-a.whale.score).slice(0,60);
 
     const bullC=results.filter(r=>r.probability>55).length;
     const bearC=results.filter(r=>r.probability<45).length;
@@ -439,12 +515,12 @@ export default async function handler(req, res) {
       fg,totalScanned:pool.length,totalQualified:results.length,
       rsiRealCount:Object.keys(kMap).length,
       results,
-      topSetups:{institutional,fullSend,highProbBull,smcSetups,ewSetups,volumeBreakout,strongSell},
+      topSetups:{institutional,fullSend,highProbBull,smcSetups,ewSetups,volumeBreakout,strongSell,whaleSetups},
       marketOverview:{marketMood:mood,bullishCount:bullC,bearishCount:bearC,avgChange24h:avgCh,totalCoins:results.length},
       astroContext:astro,
     });
 
   }catch(e){
-    return res.status(200).json({ok:false,error:e.message,ts:Date.now(),elapsed:Date.now()-t0,version:'v25',totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
+    return res.status(200).json({ok:false,error:e.message,ts:Date.now(),elapsed:Date.now()-t0,version:'v25',totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
   }
 }
