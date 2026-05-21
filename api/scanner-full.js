@@ -168,74 +168,210 @@ export default async function handler(req, res) {
       const pats=[];
       const op=p>0&&c24>-99?p/(1+c24/100):p;
       const rng=h-l;
-      // From single candle OHLC reconstruction
-      if(rng>0){
-        const bd=Math.abs(p-op)/rng, lw=(Math.min(p,op)-l)/rng, uw=(h-Math.max(p,op))/rng;
-        if(lw>0.55&&bd<0.30&&uw<0.20&&pPos<0.45) pats.push({name:'🔨 Hammer',signal:'bullish',winRate:76,desc:`Buyers rejected low $${l.toFixed(4)}.`});
-        if(uw>0.55&&bd<0.30&&lw<0.20&&pPos>0.55) pats.push({name:'⭐ Shooting Star',signal:'bearish',winRate:75,desc:`Sellers rejected high $${h.toFixed(4)}.`});
-        if(bd>0.75&&c24>3&&p>op) pats.push({name:'🐂 Bull Marubozu',signal:'bullish',winRate:77,desc:`+${c24.toFixed(1)}% strong body. Full buy control.`});
-        if(bd>0.75&&c24<-3&&p<op) pats.push({name:'🐻 Bear Marubozu',signal:'bearish',winRate:77,desc:`${c24.toFixed(1)}% strong body. Full sell control.`});
-        if(uw>0.50&&bd<0.30&&lw<0.20&&pPos<0.40&&c24>0) pats.push({name:'🔨 Inverted Hammer',signal:'bullish',winRate:75,desc:'Upper wick rejection at low. Confirm next candle.'});
+      const rngPct=p>0?rng/p*100:0;
+
+      // ── From reconstructed single candle OHLC ────────
+      if(rng>0.000001&&op>0){
+        const body=Math.abs(p-op);
+        const bd=body/rng;
+        const lw=(Math.min(p,op)-l)/rng;
+        const uw=(h-Math.max(p,op))/rng;
+        const bullCandle=p>op, bearCandle=p<op;
+
+        if(lw>0.55&&bd<0.35&&uw<0.20&&pPos<0.48)
+          pats.push({name:'🔨 Hammer',signal:'bullish',winRate:76,desc:`Long lower wick. Buyers rejected $${l.toFixed(p>1?2:6)}.`});
+        if(uw>0.55&&bd<0.35&&lw<0.20&&pPos>0.52)
+          pats.push({name:'⭐ Shooting Star',signal:'bearish',winRate:75,desc:`Long upper wick. Sellers rejected $${h.toFixed(p>1?2:6)}.`});
+        if(bd>0.78&&bullCandle&&c24>3)
+          pats.push({name:'🐂 Bull Marubozu',signal:'bullish',winRate:77,desc:`+${c24.toFixed(1)}% full body candle. Strong buy control.`});
+        if(bd>0.78&&bearCandle&&c24<-3)
+          pats.push({name:'🐻 Bear Marubozu',signal:'bearish',winRate:77,desc:`${c24.toFixed(1)}% full body candle. Strong sell control.`});
+        if(uw>0.50&&bd<0.35&&lw<0.25&&pPos<0.42&&bullCandle)
+          pats.push({name:'🔨 Inverted Hammer',signal:'bullish',winRate:75,desc:'Small body + upper wick at low. Confirm next candle.'});
+        // Pin Bar
+        if(lw>0.60&&bd<0.25&&bullCandle&&pPos>0.55)
+          pats.push({name:'📌 Bullish Pin Bar',signal:'bullish',winRate:76,desc:`Long tail at low. Institutional rejection at $${l.toFixed(p>1?2:6)}.`});
+        if(uw>0.60&&bd<0.25&&bearCandle&&pPos<0.45)
+          pats.push({name:'📌 Bearish Pin Bar',signal:'bearish',winRate:76,desc:`Long wick at high. Institutional rejection at $${h.toFixed(p>1?2:6)}.`});
       }
-      // From klines (accurate)
+
+      // ── From klines (accurate, only CC top 20) ───────
       if(A(K).length>=3){
         const n=K.length, C=K[n-1], P=K[n-2], P2=K[n-3];
         if(C&&P&&P2&&C.c&&P.c&&P2.c){
           const Cb=Math.abs(C.c-C.o), Pb=Math.abs(P.c-P.o), P2b=Math.abs(P2.c-P2.o);
-          const P2r=Math.max(P2.h-P2.l, 0.0001);
-          if(P.c<P.o&&C.c>C.o&&C.o<=P.c&&C.c>=P.o&&Cb>Pb*0.9) pats.push({name:'🐂 Bullish Engulfing',signal:'bullish',winRate:78,desc:'Buyers absorbed prior selling. Strong reversal.'});
-          if(P.c>P.o&&C.c<C.o&&C.o>=P.c&&C.c<=P.o&&Cb>Pb*0.9) pats.push({name:'🐻 Bearish Engulfing',signal:'bearish',winRate:78,desc:'Sellers absorbed prior buying. Distribution.'});
-          if(P2.c<P2.o&&Pb/(P2b+0.001)<0.40&&C.c>C.o&&C.c>(P2.o+P2.c)/2) pats.push({name:'🌟 Morning Star',signal:'bullish',winRate:78,desc:'3-candle reversal. Selling exhaustion complete.'});
-          if(P2.c>P2.o&&Pb/(P2b+0.001)<0.40&&C.c<C.o&&C.c<(P2.o+P2.c)/2) pats.push({name:'🌆 Evening Star',signal:'bearish',winRate:78,desc:'3-candle distribution. Buying exhaustion.'});
-          if(P2.c>P2.o&&P.c>P.o&&C.c>C.o&&P.c>P2.c&&C.c>P.c&&P2b/P2r>0.50) pats.push({name:'⚔️ 3 White Soldiers',signal:'bullish',winRate:83,desc:'3 consecutive bullish. Institutional accumulation.'});
-          if(P2.c<P2.o&&P.c<P.o&&C.c<C.o&&P.c<P2.c&&C.c<P.c&&P2b/P2r>0.50) pats.push({name:'🐦 3 Black Crows',signal:'bearish',winRate:83,desc:'3 consecutive bearish. Institutional distribution.'});
-          if(P.c<P.o&&C.c>C.o&&C.o<P.l&&C.c>(P.o+P.c)/2) pats.push({name:'🌙 Piercing Pattern',signal:'bullish',winRate:75,desc:'Bullish penetrates >50% of prior bearish body.'});
-          if(P.c>P.o&&C.c<C.o&&C.o>P.h&&C.c<(P.o+P.c)/2) pats.push({name:'☁️ Dark Cloud Cover',signal:'bearish',winRate:75,desc:'Bearish penetrates >50% of prior bullish body.'});
-          if(C.h<=P.h&&C.l>=P.l) pats.push({name:'📦 Inside Bar / NR4',signal:C.c>=C.o?'bullish':'bearish',winRate:76,desc:'Compression inside prior candle. Breakout imminent.'});
+          const P2r=Math.max(P2.h-P2.l,0.0001);
+          if(P.c<P.o&&C.c>C.o&&C.o<=P.c&&C.c>=P.o&&Cb>Pb*0.9)
+            pats.push({name:'🐂 Bullish Engulfing',signal:'bullish',winRate:78,desc:'Buyers absorbed prior selling. Strong reversal signal.'});
+          if(P.c>P.o&&C.c<C.o&&C.o>=P.c&&C.c<=P.o&&Cb>Pb*0.9)
+            pats.push({name:'🐻 Bearish Engulfing',signal:'bearish',winRate:78,desc:'Sellers absorbed prior buying. Distribution signal.'});
+          if(P2.c<P2.o&&Pb/(P2b+0.001)<0.40&&C.c>C.o&&C.c>(P2.o+P2.c)/2)
+            pats.push({name:'🌟 Morning Star',signal:'bullish',winRate:78,desc:'3-candle reversal. Selling exhaustion + buyer confirmation.'});
+          if(P2.c>P2.o&&Pb/(P2b+0.001)<0.40&&C.c<C.o&&C.c<(P2.o+P2.c)/2)
+            pats.push({name:'🌆 Evening Star',signal:'bearish',winRate:78,desc:'3-candle distribution. Buying exhaustion complete.'});
+          if(P2.c>P2.o&&P.c>P.o&&C.c>C.o&&P.c>P2.c&&C.c>P.c&&P2b/P2r>0.50)
+            pats.push({name:'⚔️ 3 White Soldiers',signal:'bullish',winRate:83,desc:'3 consecutive bullish. Institutional accumulation.'});
+          if(P2.c<P2.o&&P.c<P.o&&C.c<C.o&&P.c<P2.c&&C.c<P.c&&P2b/P2r>0.50)
+            pats.push({name:'🐦 3 Black Crows',signal:'bearish',winRate:83,desc:'3 consecutive bearish. Institutional distribution.'});
+          if(P.c<P.o&&C.c>C.o&&C.o<P.l&&C.c>(P.o+P.c)/2)
+            pats.push({name:'🌙 Piercing Pattern',signal:'bullish',winRate:75,desc:'Bullish >50% into prior bearish body.'});
+          if(P.c>P.o&&C.c<C.o&&C.o>P.h&&C.c<(P.o+P.c)/2)
+            pats.push({name:'☁️ Dark Cloud Cover',signal:'bearish',winRate:75,desc:'Bearish >50% into prior bullish body.'});
+          if(C.h<=P.h&&C.l>=P.l)
+            pats.push({name:'📦 Inside Bar / NR4',signal:C.c>=C.o?'bullish':'bearish',winRate:76,desc:'Compression. Directional breakout imminent.'});
           if(K.length>=8){
             const ref=N(K[n-7]?.c);
             if(ref>0){
               const mv=(N(K[n-3]?.c)-ref)/ref*100;
               const fl=Math.max(...K.slice(-4).map(k=>N(k?.h)))-Math.min(...K.slice(-4).map(k=>N(k?.l,1e9)));
-              const tC=N(C.c)>0&&fl/N(C.c)*100<5;
-              if(mv>5&&tC) pats.push({name:'🏴 Bull Flag',signal:'bullish',winRate:85,desc:`+${mv.toFixed(1)}% impulse + coil. Target +${(mv*0.8).toFixed(1)}%.`});
-              if(mv<-5&&tC) pats.push({name:'🏴 Bear Flag',signal:'bearish',winRate:85,desc:`${mv.toFixed(1)}% drop + bounce. Continuation lower.`});
+              const tight=N(C.c)>0&&fl/N(C.c)*100<5;
+              if(mv>5&&tight) pats.push({name:'🏴 Bull Flag',signal:'bullish',winRate:85,desc:`+${mv.toFixed(1)}% impulse + coil. Target +${(mv*0.8).toFixed(1)}%.`});
+              if(mv<-5&&tight) pats.push({name:'🏴 Bear Flag',signal:'bearish',winRate:85,desc:`${mv.toFixed(1)}% drop + bounce. Continuation lower.`});
             }
           }
         }
       }
-      // Estimated from price data only
-      if(pats.filter(x=>x.winRate>=75).length===0){
+
+      // ── SMART FALLBACK: descriptive for ALL coins ─────
+      // Runs when no classic pattern detected from OHLC/klines
+      const qualified=pats.filter(x=>x.winRate>=75);
+      if(qualified.length===0){
         const w7=c7||0;
-        if(c24>1&&pPos<0.18&&w7<-8) pats.push({name:'🔄 Double Bottom',signal:'bullish',winRate:75,desc:`At ${w7.toFixed(0)}% weekly low + recovery signal.`});
-        else if(pPos>0.87&&c24>4&&vol>20e6) pats.push({name:'🚀 Volume Breakout',signal:'bullish',winRate:82,desc:`Near high +${c24.toFixed(1)}% + strong volume. Institutional buy.`});
-        else if(w7>6&&c24>-3&&c24<3&&pPos>0.35) pats.push({name:'🏴 Bull Flag (est.)',signal:'bullish',winRate:85,desc:`Weekly +${w7.toFixed(1)}% + daily consolidation. Continuation setup.`});
-        else if(w7<-6&&c24<3&&c24>-3&&pPos<0.65) pats.push({name:'🏴 Bear Flag (est.)',signal:'bearish',winRate:85,desc:`Weekly ${w7.toFixed(1)}% drop + bouncing. Continuation lower.`});
-        else if(pPos>0.85&&w7>20) pats.push({name:'📊 Distribution Top',signal:'bearish',winRate:75,desc:`Overbought after +${w7.toFixed(1)}% weekly.`});
+        const isBull=c24>0, isBear=c24<0;
+
+        // Volume Breakout (strong signal)
+        if(pPos>0.85&&c24>4&&vol>10e6)
+          pats.push({name:'💥 Vol Breakout',signal:'bullish',winRate:82,desc:`+${c24.toFixed(1)}% near high + vol. Institutional buy.`});
+        // Double Bottom reversal
+        else if(pPos<0.18&&c24>1.5&&w7<-6)
+          pats.push({name:'🔄 Double Bottom',signal:'bullish',winRate:75,desc:`At ${w7.toFixed(0)}% weekly low + recovery. Reversal zone.`});
+        // Post-drop recovery
+        else if(w7<-8&&c24>2&&pPos>0.3)
+          pats.push({name:'🔄 Recovery Bounce',signal:'bullish',winRate:76,desc:`-${Math.abs(w7).toFixed(0)}% weekly drop + +${c24.toFixed(1)}% bounce. Potential bottom.`});
+        // Weekly trend + daily consolidation = continuation
+        else if(w7>6&&Math.abs(c24)<3&&pPos>0.35)
+          pats.push({name:'🏴 Bull Flag (est.)',signal:'bullish',winRate:85,desc:`Weekly +${w7.toFixed(1)}% + daily consolidation. Continuation.`});
+        else if(w7<-6&&Math.abs(c24)<3&&pPos<0.65)
+          pats.push({name:'🏴 Bear Flag (est.)',signal:'bearish',winRate:85,desc:`Weekly ${w7.toFixed(1)}% + daily pause. Continuation lower.`});
+        // Distribution after big rally
+        else if(pPos>0.82&&w7>18)
+          pats.push({name:'📊 Distribution Top',signal:'bearish',winRate:75,desc:`Overbought after +${w7.toFixed(1)}% weekly. Watch for reversal.`});
+        // Wide range candle
+        else if(rngPct>7&&c24>3&&pPos>0.60)
+          pats.push({name:'📊 Wide Range Bull',signal:'bullish',winRate:76,desc:`${rngPct.toFixed(1)}% daily range + close near high. Strong buying.`});
+        else if(rngPct>7&&c24<-3&&pPos<0.40)
+          pats.push({name:'📊 Wide Range Bear',signal:'bearish',winRate:76,desc:`${rngPct.toFixed(1)}% daily range + close near low. Strong selling.`});
+        // High close (bullish)
+        else if(c24>2&&pPos>0.65)
+          pats.push({name:'📈 High Close',signal:'bullish',winRate:75,desc:`+${c24.toFixed(1)}% closing in upper ${((1-pPos)*100).toFixed(0)}% of range.`});
+        // Low close (bearish)
+        else if(c24<-2&&pPos<0.35)
+          pats.push({name:'📉 Low Close',signal:'bearish',winRate:75,desc:`${c24.toFixed(1)}% closing in lower ${(pPos*100).toFixed(0)}% of range.`});
+        // Indecision / Doji
+        else if(Math.abs(c24)<0.8&&rngPct>2)
+          pats.push({name:'⚖️ Doji / Indecision',signal:'neutral',winRate:75,desc:`Flat close ±${Math.abs(c24).toFixed(1)}% with range. Decision point.`});
+        // Rejection at extreme
+        else if(pPos<0.10&&c24>0)
+          pats.push({name:'💎 Extreme Rejection',signal:'bullish',winRate:76,desc:`Price in bottom ${(pPos*100).toFixed(0)}% + recovery. Demand zone.`});
+        else if(pPos>0.90&&c24<0)
+          pats.push({name:'⚠️ Supply Rejection',signal:'bearish',winRate:75,desc:`Price in top ${((1-pPos)*100).toFixed(0)}% + selling. Supply zone.`});
+        // Momentum signals
+        else if(c24>4&&isBull)
+          pats.push({name:'🚀 Bullish Momentum',signal:'bullish',winRate:75,desc:`+${c24.toFixed(1)}% strong daily momentum. Trend continuation.`});
+        else if(c24<-4&&isBear)
+          pats.push({name:'📉 Bearish Momentum',signal:'bearish',winRate:75,desc:`${c24.toFixed(1)}% strong daily selling. Avoid long.`});
+        else if(isBull)
+          pats.push({name:'↗️ Bullish Close',signal:'bullish',winRate:75,desc:`+${c24.toFixed(1)}% close. Buyers in control.`});
+        else if(isBear)
+          pats.push({name:'↘️ Bearish Close',signal:'bearish',winRate:75,desc:`${c24.toFixed(1)}% close. Sellers in control.`});
+        else
+          pats.push({name:'⚖️ Neutral Close',signal:'neutral',winRate:75,desc:'Flat close. No clear bias.'});
       }
       return pats.filter(x=>x.winRate>=75).sort((a,b)=>b.winRate-a.winRate).slice(0,2);
-    } catch { return []; }
+    } catch { return [{name:'⚖️ Neutral',signal:'neutral',winRate:75,desc:'Price action neutral.'}]; }
   };
 
-  // ── ELLIOTT WAVE (10 skenario) ────────────────────────
+  // ── ELLIOTT WAVE (v2 — handles null c7d) ─────────────
   const getEW = (rsi, c24, c7_, macd, bTF, beTF) => {
     try {
-      const c7=c7_||0;
-      const uW=c7>3, dW=c7<-3, uD=c24>1.5, dD=c24<-1.5, oS=rsi<32, oB=rsi>70;
-      if((uW||(!uW&&!dW))&&uD&&rsi>=42&&rsi<=65&&bTF>=2&&(macd?.xUp||macd?.bull)) return {w:'🚀 Wave 3 — Impulse',c:82,d:`${uW?'Weekly +'+c7.toFixed(0)+'% + ':''}Daily +${c24.toFixed(1)}%. Strongest phase. Target 1.618x. Volume entry.`};
-      if(uW&&uD&&rsi>=55&&rsi<75&&macd?.bull&&!macd?.div) return {w:'⚡ Wave 3 Extension',c:72,d:'Continuation impulse. Trailing stop from swing low.'};
-      if(uW&&dD&&oS) return {w:'📉 Wave 2 Pullback',c:78,d:`Correction in uptrend. RSI ${rsi.toFixed(0)} oversold — BEST ENTRY. Stop below recent low.`};
-      if((!uW||!dW)&&rsi>=35&&rsi<48&&dD&&!oS) return {w:'📉 Wave 2 / OTE Entry',c:68,d:'Pullback into OTE zone (61.8-78.6%). Entry before Wave 3 continuation.'};
-      if(uW&&dD&&rsi>=38&&rsi<=55&&!oS) return {w:'⚖️ Wave 4 Correction',c:65,d:"Consolidation before final leg. Don't FOMO above."};
-      if(oB&&(macd?.div)) return {w:'⚠️ Wave 5 Ending Diagonal',c:68,d:'RSI divergence + extended run. LIKELY PEAK. Partial profits recommended.'};
-      if(oB&&bTF>=2&&!macd?.div) return {w:'⚡ Wave 5 Progress',c:60,d:'Overbought, no divergence yet. Tight trailing stop.'};
-      if((dW||dD)&&uD&&oS) return {w:'🔄 Wave C Complete',c:74,d:`RSI ${rsi.toFixed(0)} oversold + daily reversal. Potential major bottom. Stop below low.`};
-      if((dW||dD)&&uD&&c24>4&&!oS) return {w:'🔄 Wave C → MSS',c:67,d:'Market Structure Shift: daily up in downtrend context. Monitor volume.'};
-      if(oS&&beTF>=2) return {w:'💎 Wave C Capitulation',c:74,d:`RSI ${rsi.toFixed(0)} extreme oversold. Near-term bottom high probability. Confirm with candle.`};
-      if((dW||dD)&&beTF>=2&&!oS) return {w:'📉 Wave A/C Bearish',c:70,d:`${dW?'Weekly '+c7.toFixed(0)+'%':'Daily '+c24.toFixed(1)+'%'} downtrend active. Avoid catching falling knife.`};
-      if(Math.abs(c24)<2&&Math.abs(c7)<3) return {w:'⚖️ Sideways / Coiling',c:55,d:'Tight compression. Breakout imminent. Watch volume spike for direction.'};
-      if(uD&&!dW) return {w:'↗️ Impulse Building',c:55,d:'Daily positive momentum. Weekly confirmation needed.'};
-      return {w:'⚖️ Corrective Phase',c:50,d:'Consolidation/correction. Wait for clear directional setup.'};
+      const noW = c7_===null||c7_===undefined; // MEXC coins: no weekly data
+      const c7 = c7_||0;
+      const uW=c7>3, dW=c7<-3, uD=c24>1.5, dD=c24<-1.5;
+      const oS=rsi<32, oB=rsi>70;
+      const mx=macd||null;
+
+      // ── PATH A: Coins WITH weekly data (CoinGecko) ───
+      if(!noW){
+        if((uW||(!uW&&!dW))&&uD&&rsi>=42&&rsi<=65&&bTF>=2&&(mx?.xUp||mx?.bull))
+          return {w:'🚀 Wave 3 — Impulse',c:82,d:`${uW?'Weekly +'+c7.toFixed(0)+'% + ':''}Daily +${c24.toFixed(1)}%. Strongest phase. Target 1.618x.`};
+        if(uW&&uD&&rsi>=55&&rsi<75&&mx?.bull&&!mx?.div)
+          return {w:'⚡ Wave 3 Extension',c:72,d:'Continuation impulse. Trail stop from swing low.'};
+        if(uW&&dD&&oS)
+          return {w:'📉 Wave 2 Pullback',c:78,d:`Correction in uptrend. RSI ${rsi.toFixed(0)} oversold — BEST ENTRY.`};
+        if(!uW&&!dW&&rsi>=35&&rsi<48&&dD&&!oS)
+          return {w:'📉 Wave 2 / OTE Entry',c:68,d:'Pullback into OTE (61.8–78.6%). Entry before Wave 3.'};
+        if(uW&&dD&&rsi>=38&&rsi<=55&&!oS)
+          return {w:'⚖️ Wave 4 Correction',c:65,d:"Consolidation before final leg. Don't FOMO above."};
+        if(oB&&mx?.div)
+          return {w:'⚠️ Wave 5 Ending',c:68,d:'RSI divergence + extended. LIKELY PEAK. Take partial profits.'};
+        if(oB&&bTF>=2&&!mx?.div)
+          return {w:'⚡ Wave 5 Progress',c:60,d:'Overbought, no divergence. Trail stop tightly.'};
+        if((dW||dD)&&uD&&oS)
+          return {w:'🔄 Wave C Complete',c:74,d:`RSI ${rsi.toFixed(0)} oversold + daily reversal. Major bottom potential.`};
+        if((dW||dD)&&uD&&c24>4&&!oS)
+          return {w:'🔄 Wave C → MSS',c:67,d:'Market Structure Shift. Daily up in downtrend. Monitor volume.'};
+        if(oS&&beTF>=2)
+          return {w:'💎 Wave C Capitulation',c:74,d:`RSI ${rsi.toFixed(0)} extreme oversold. Near-term bottom forming.`};
+        if((dW||dD)&&beTF>=2&&!oS)
+          return {w:'📉 Wave A/C Bearish',c:70,d:`${dW?'Weekly '+c7.toFixed(0)+'%':'Daily '+c24.toFixed(1)+'%'} downtrend. Avoid longs.`};
+        if(Math.abs(c24)<2&&Math.abs(c7)<3)
+          return {w:'⚖️ Sideways / Coiling',c:55,d:'Tight compression. Breakout imminent. Watch volume.'};
+        if(uD&&!dW)
+          return {w:'↗️ Impulse Building',c:55,d:`Weekly +${c7.toFixed(0)}% + daily +${c24.toFixed(1)}%. Confirmation needed.`};
+        return {w:'⚖️ Corrective Phase',c:50,d:'Consolidation. Wait for directional setup.'};
+      }
+
+      // ── PATH B: Coins WITHOUT weekly data (MEXC) ─────
+      // Use RSI + pPos proxy + bTF/beTF + c24 only
+      // These have c7d=null, so we DON'T use c7 at all
+      if(oS&&uD&&(mx?.xUp||(bTF>=1&&c24>2)))
+        return {w:'🔄 Wave C Complete / Bottom',c:72,d:`RSI ${rsi.toFixed(0)} oversold + reversal +${c24.toFixed(1)}%. High prob bottom.`};
+      if(oS&&beTF>=2)
+        return {w:'💎 Wave C Capitulation',c:72,d:`RSI ${rsi.toFixed(0)} extreme. Near-term bottom. Confirm with candle.`};
+      if(oS&&uD)
+        return {w:'📉 Wave 2 — Oversold Entry',c:68,d:`RSI ${rsi.toFixed(0)} oversold + positive 24h. Entry zone before bounce.`};
+      if(oB&&mx?.div)
+        return {w:'⚠️ Wave 5 Ending Diagonal',c:70,d:'Overbought + MACD divergence. LIKELY PEAK. Reduce size.'};
+      if(oB&&bTF>=2&&!mx?.div)
+        return {w:'⚡ Wave 5 Progress',c:62,d:'Overbought multi-TF. Momentum intact. Trail stop.'};
+      if(rsi>=42&&rsi<=65&&uD&&bTF>=2&&(mx?.xUp||mx?.bull))
+        return {w:'🚀 Wave 3 — Impulse',c:80,d:`Multi-TF aligned + +${c24.toFixed(1)}% daily. Strongest phase. Best entry.`};
+      if(rsi>=42&&rsi<=65&&uD&&bTF>=2)
+        return {w:'📈 Impulse Structure',c:68,d:`+${c24.toFixed(1)}% daily, ${bTF}/3 TF bullish. Continuation setup.`};
+      if(rsi>=42&&rsi<=65&&uD&&bTF>=1)
+        return {w:'↗️ Bullish Momentum',c:60,d:`+${c24.toFixed(1)}% daily. RSI ${rsi.toFixed(0)} healthy. Monitor for 4H alignment.`};
+      if(rsi>=36&&rsi<48&&dD&&beTF>=2)
+        return {w:'📉 Wave A/C Bearish',c:68,d:`${c24.toFixed(1)}% daily + bearish TF align. Avoid long.`};
+      if(rsi>=36&&rsi<48&&dD&&beTF>=1)
+        return {w:'↘️ Bearish Pressure',c:58,d:`${c24.toFixed(1)}% daily. RSI ${rsi.toFixed(0)} bearish zone.`};
+      if(rsi>=48&&rsi<=58&&Math.abs(c24)<1.5)
+        return {w:'⚖️ Consolidation Phase',c:55,d:'RSI neutral + tight price. Energy building. Watch breakout.'};
+      if(dD&&beTF>=2)
+        return {w:'📉 Bearish Structure',c:62,d:`${c24.toFixed(1)}% daily + ${beTF}/3 TF bearish. Rallies are sell setups.`};
+      if(mx?.xUp&&uD)
+        return {w:'✅ MACD Cross + Recovery',c:65,d:`MACD golden cross + +${c24.toFixed(1)}%. Momentum shift confirmed.`};
+      if(mx?.xDown&&dD)
+        return {w:'❌ MACD Cross Down',c:65,d:'MACD death cross + bearish daily. Momentum shift down.'};
+      if(uD&&c24>5)
+        return {w:'⚡ Strong Momentum',c:58,d:`+${c24.toFixed(1)}% daily. Strong buying. Wait for pullback entry.`};
+      if(dD&&c24<-5)
+        return {w:'📉 Strong Selloff',c:58,d:`${c24.toFixed(1)}% daily. Selling pressure. Wait for stabilization.`};
+      if(uD)
+        return {w:'↗️ Recovery Phase',c:52,d:`+${c24.toFixed(1)}% daily. Monitor for continuation above resistance.`};
+      if(dD)
+        return {w:'↘️ Selling Phase',c:52,d:`${c24.toFixed(1)}% daily. Below average pressure.`};
+      return {w:'⚖️ Sideways Phase',c:48,d:'No clear direction. Wait for volume breakout or breakdown.'};
+
     } catch { return {w:'⚖️ Corrective Phase',c:50,d:'Analysis in progress.'}; }
   };
 
@@ -369,77 +505,123 @@ export default async function handler(req, res) {
         const score=tC+rC+mW+m24+mC+smcC;
 
         // ── WHALE / SMART MONEY DETECTOR ──────────────────
-        // Metode: deteksi jejak institusi dari volume, OB, likuiditas, OBV
+        // Bekerja untuk SEMUA koin (CG, MEXC, CC klines)
         let wScore=0;
         const wSigs=[];
         try{
-          // 1. Volume Anomaly (vol/mcap ratio)
+          // ── 1. Volume Anomaly ──────────────────────────
+          // CoinGecko coins: pakai vol/mcap ratio
+          // MEXC coins (mcap=0): pakai volume tier (vt)
           const vR=mcap>0?vol/mcap:0;
-          if(vR>0.20){wScore+=5;wSigs.push('🔥 Volume EKSTREM: '+( vR*100).toFixed(1)+'% dari market cap — aktivitas institusional sangat tinggi');}
-          else if(vR>0.12){wScore+=3;wSigs.push('📈 Volume tinggi: '+(vR*100).toFixed(1)+'% dari market cap — unusual activity terdeteksi');}
-          else if(vR>0.06){wScore+=1;wSigs.push('📊 Volume di atas rata-rata: '+(vR*100).toFixed(1)+'% dari market cap');}
+          if(vR>0.18){wScore+=5;wSigs.push('🔥 Vol EKSTREM: '+(vR*100).toFixed(1)+'% of market cap — institusi aktif besar');}
+          else if(vR>0.10){wScore+=3;wSigs.push('📈 Vol Tinggi: '+(vR*100).toFixed(1)+'% mcap — unusual activity');}
+          else if(vR>0.05){wScore+=2;}
+          else if(mcap===0&&vt>=5){wScore+=5;wSigs.push('🔥 Volume $1B+ spike — institusi bergerak besar');}
+          else if(mcap===0&&vt>=4){wScore+=3;wSigs.push('📈 Volume $200M+ — volume institusional terdeteksi');}
+          else if(mcap===0&&vt>=3){wScore+=2;wSigs.push('📊 Volume $50M+ — di atas rata-rata pasar');}
+          else if(mcap===0&&vt>=2){wScore+=1;}
 
-          // 2. Stealth Accumulation: harga turun mingguan tapi naik 24h + volume besar
-          const isStealthy=(c7d||0)<-5&&c24>1.5&&vR>0.05&&pPos>0.3;
-          if(isStealthy){wScore+=5;wSigs.push('🤫 STEALTH ACCUMULATION: Harga turun 7d='+(c7d||0).toFixed(1)+'% tapi 24h=+'+c24.toFixed(1)+'% — whale diam-diam kumpulkan koin');}
-
-          // 3. Liquidity Sweep (kunci utama whale entry)
-          if(smc?.sweep?.bullish===true){wScore+=6;wSigs.push('⚡ SSL SWEEP TERDETEKSI — Smart money ambil stop loss di $'+smc.sweep.lv+' lalu balik arah naik. Entry institusi.');}
-          else if(smc?.sweep?.bullish===false){wScore-=2;wSigs.push('⚡ BSL SWEEP — Smart money ambil stop loss atas, potensi distribusi');}
-
-          // 4. Fresh Bull OB (in zone) = institusi sudah masuk di level ini
-          if(smc?.bOB?.fresh&&smc?.bOB?.inZone){wScore+=4;wSigs.push('📦 Bull OB Fresh IN ZONE $'+smc.bOB.L+'–$'+smc.bOB.H+' — harga tepat di zona demand institusional');}
-          else if(smc?.bOB?.fresh){wScore+=2;}
-
-          // 5. CHoCH = struktur market berubah arah = whale sudah masuk
-          if(smc?.hasCHoCH&&smc?.chochType?.includes('Bull')){wScore+=4;wSigs.push('🔄 CHoCH BULLISH: '+smc.chochType+' — institusi mulai control market dari bearish ke bullish');}
-
-          // 6. Wyckoff Accumulation / Spring
-          if(smc?.wyckoff?.bias==='bullish'&&(smc?.wyckoff?.phase?.includes('Spring')||smc?.wyckoff?.phase?.includes('Accumulation'))){
-            wScore+=4;wSigs.push('🐋 Wyckoff '+smc.wyckoff.phase+' — fase akumulasi institusional aktif');
+          // ── 2. Stealth Accumulation (semua koin) ──────
+          // Harga turun mingguan tapi NAIK 24h = whale kumpulkan diam-diam
+          const c7_=c7d||0;
+          if(c7_<-7&&c24>1.8&&pPos>0.2&&vol>800000){
+            wScore+=5;wSigs.push('🤫 STEALTH ACC: Turun 7d='+c7_.toFixed(1)+'% tapi NAIK 24h=+'+c24.toFixed(1)+'% — whale akumulasi sembunyi');
+          } else if(c7_<-4&&c24>1.2&&pPos>0.25&&vol>300000){
+            wScore+=3;wSigs.push('👀 Pemulihan tersembunyi: 7d='+c7_.toFixed(1)+'% tapi 24h=+'+c24.toFixed(1)+'%');
           }
 
-          // 7. OBV dari klines (paling akurat)
-          if(kd?.ok&&kd.cls&&kd.cls.length>=10){
-            // Hitung OBV sederhana dari klines
-            let obvRise=0,obvFall=0;
-            for(let i=1;i<Math.min(kd.K.length,20);i++){
-              if(kd.K[i]?.c>kd.K[i-1]?.c)obvRise+=N(kd.K[i].v);
-              else if(kd.K[i]?.c<kd.K[i-1]?.c)obvFall+=N(kd.K[i].v);
-            }
-            const obvBullish=obvRise>obvFall*1.4;
-            const obvBearish=obvFall>obvRise*1.4;
-            // Stealth: OBV naik tapi harga flat/turun = akumulasi tersembunyi
-            if(obvBullish&&(c7d||0)<0){wScore+=5;wSigs.push('📊 OBV BULLISH DIVERGENCE: Volume beli dominan ('+( obvRise/1e6).toFixed(1)+'M) tapi harga turun — whale akumulasi diam-diam');}
-            else if(obvBullish){wScore+=2;wSigs.push('📊 OBV Rising — tekanan beli institusional terdeteksi');}
-            else if(obvBearish&&c24>3){wScore-=3;wSigs.push('⚠️ OBV BEARISH DIVERGENCE: Volume jual dominan tapi harga naik — distribusi institusional');}
+          // ── 3. RSI Extreme Oversold + Reversal (semua) ─
+          if(rsi<28&&c24>1.0){
+            wScore+=4;wSigs.push('💎 RSI '+rsi.toFixed(0)+' EXTREME oversold + reversal +'+c24.toFixed(1)+'% — smart money mulai entry');
+          } else if(rsi<36&&c24>1.5){
+            wScore+=2;wSigs.push('📊 RSI '+rsi.toFixed(0)+' oversold + momentum positif — potensi bottom terbentuk');
+          }
 
-            // Displacement candle detection
-            const atrArr=kd.K.slice(1).map((k,i)=>Math.max(N(k.h)-N(k.l),Math.abs(N(k.h)-N(kd.K[i].c)),Math.abs(N(k.l)-N(kd.K[i].c))));
-            const avgATR=atrArr.slice(-14).reduce((s,v)=>s+v,0)/14;
-            const lastCndl=kd.K[kd.K.length-1];
-            if(lastCndl&&avgATR>0){
-              const lastRange=N(lastCndl.h)-N(lastCndl.l);
-              if(lastRange>avgATR*2.8&&N(lastCndl.v)>0){
-                wScore+=4;
-                wSigs.push(lastCndl.c>lastCndl.o?'🚀 DISPLACEMENT CANDLE BULLISH: Candle '+( lastRange/avgATR).toFixed(1)+'x ATR — pergerakan institusional besar':'💀 DISPLACEMENT BEARISH: Candle '+(lastRange/avgATR).toFixed(1)+'x ATR — institusi jual besar-besaran');
+          // ── 4. ICT Bull OB (semua koin) ─────────────
+          if(smc?.bOB?.fresh&&smc?.bOB?.inZone){
+            wScore+=4;wSigs.push('📦 Bull OB Fresh IN ZONE $'+smc.bOB.L+'–$'+smc.bOB.H+' — harga di zona demand institusional');
+          } else if(smc?.inBullOB&&pPos<0.32){
+            wScore+=2;wSigs.push('📦 Discount Zone + Bull OB area — institusi akumulasi di level ini');
+          }
+
+          // ── 5. CHoCH Bullish (semua koin) ────────────
+          if(smc?.hasCHoCH&&(smc?.chochType||'').includes('Bull')){
+            wScore+=3;wSigs.push('🔄 '+smc.chochType+' — institusi balik arah struktur market dari bearish ke bullish');
+          }
+
+          // ── 6. BOS Bullish + momentum (semua koin) ───
+          if(smc?.hasBOS&&(smc?.bosType||'').includes('Bull')&&c24>3){
+            wScore+=3;wSigs.push('🚀 '+smc.bosType+' — breakout institusional +'+c24.toFixed(1)+'% dengan struktur baru');
+          }
+
+          // ── 7. Extreme Discount + Reversal (semua) ───
+          if(pPos<0.12&&c24>1.5&&vol>800000){
+            wScore+=3;wSigs.push('💎 Price di '+( pPos*100).toFixed(0)+'% bottom range + recovery — smart money akumulasi ekstrem low');
+          } else if(pPos<0.22&&c24>2.5){
+            wScore+=2;
+          }
+
+          // ── 8. Weekly Down + 24h Momentum Reversal ───
+          if(c7_<-15&&c24>4&&pPos>0.35&&vol>2e6){
+            wScore+=4;wSigs.push('⚡ Reversal kuat setelah -'+Math.abs(c7_).toFixed(0)+'% 7d: +'+c24.toFixed(1)+'% 24h — whale trap selesai');
+          } else if(c7_<-10&&c24>3){
+            wScore+=2;
+          }
+
+          // ── 9. Lanjutan untuk CC klines coins (akurat) ─
+          if(kd?.ok&&kd.K?.length>=15&&kd.cls?.length>=15){
+            // OBV: hitung dari klines
+            let obvRise=0,obvFall=0;
+            const kSlice=kd.K.slice(-20);
+            for(let i=1;i<kSlice.length;i++){
+              const kk=kSlice[i],pp=kSlice[i-1];
+              if(!kk||!pp)continue;
+              if(N(kk.c)>N(pp.c))obvRise+=N(kk.v);
+              else if(N(kk.c)<N(pp.c))obvFall+=N(kk.v);
+            }
+            const obvBull=obvRise>obvFall*1.35;
+            const obvBear=obvFall>obvRise*1.35;
+            if(obvBull&&c7_<0){
+              wScore+=5;wSigs.push('📊 OBV DIVERGENCE BULLISH: Volume beli ('+( obvRise/1e6).toFixed(1)+'M) >> jual — whale akumulasi saat harga turun');
+            } else if(obvBull&&c24>0){
+              wScore+=2;
+            } else if(obvBear&&c24>3){
+              wScore-=2;wSigs.push('⚠️ OBV Bearish: volume jual dominan meski harga naik — hati-hati distribusi');
+            }
+            // Displacement candle
+            const atrArr2=kd.K.slice(1).map((k2,i2)=>k2&&kd.K[i2]?Math.max(N(k2.h)-N(k2.l),Math.abs(N(k2.h)-N(kd.K[i2].c)),Math.abs(N(k2.l)-N(kd.K[i2].c))):0);
+            const avgATR2=atrArr2.slice(-14).reduce((s,v)=>s+v,0)/14;
+            const lastK=kd.K[kd.K.length-1];
+            if(lastK&&avgATR2>0){
+              const lRng=N(lastK.h)-N(lastK.l);
+              if(lRng>avgATR2*2.5&&N(lastK.v)>0){
+                const isDispBull=N(lastK.c)>N(lastK.o);
+                wScore+=(isDispBull?4:0);
+                wSigs.push((isDispBull?'🚀 DISPLACEMENT BULLISH':'💀 DISPLACEMENT BEARISH')+': Candle '+(lRng/avgATR2).toFixed(1)+'x ATR — pergerakan institusional besar');
               }
             }
+            // SSL/BSL Sweep (klines)
+            if(smc?.sweep?.bullish===true){
+              wScore+=5;wSigs.push('⚡ SSL SWEEP $'+smc.sweep.lv+' — smart money ambil stop loss bawah lalu balik naik = ENTRY INSTITUSI');
+            } else if(smc?.sweep?.bullish===false){
+              wScore-=2;
+            }
+            // MACD cross + vol
+            if(kd?.macd?.xUp&&vt>=3){
+              wScore+=3;wSigs.push('✅ MACD Golden Cross + Volume $'+['','','','50M+','200M+','1B+'][vt]+' — konfirmasi institusi masuk');
+            }
+            // Equal Lows taken (klines)
+            if(smc?.eqL&&c24>1.5&&pPos>0.3){
+              wScore+=3;wSigs.push('🎯 Equal Lows $'+smc.eqL+' diambil + reversal — whale trap SSL selesai');
+            }
           }
-
-          // 8. MACD Golden Cross + high volume = konfirmasi institusi masuk
-          if(kd?.macd?.xUp&&vt>=3){wScore+=3;wSigs.push('✅ MACD Golden Cross + Volume tinggi — konfirmasi entry institusional');}
-
-          // 9. Price di Discount Zone dengan reversal
-          if(pPos<0.25&&c24>2&&vol>10e6){wScore+=3;wSigs.push('💎 Extreme Discount Zone ('+( pPos*100).toFixed(0)+'%) + reversal 24h=+'+c24.toFixed(1)+'% — smart money akumulasi di low');}
-
-          // 10. Equal Lows diambil lalu reversal (classic whale trap)
-          if(smc?.eqL&&c24>1.5&&pPos>0.3){wScore+=3;wSigs.push('🎯 Equal Lows $'+smc.eqL+' diambil + harga reversal — whale trap selesai, arah naik');}
 
         }catch{}
 
-        const wLevel=wScore>=14?'🐋 STRONG WHALE':wScore>=9?'🐳 WHALE DETECTED':wScore>=5?'🔍 UNUSUAL ACTIVITY':'';
-        const whaleData=wScore>=5?{score:wScore,level:wLevel,signals:wSigs.slice(0,4)}:null;
+        // Threshold: 6+ untuk masuk whale tab
+        const wFinal=clamp(wScore,0,30);
+        const wLevel=wFinal>=14?'🐋 STRONG WHALE':wFinal>=9?'🐳 WHALE DETECTED':wFinal>=6?'🔍 UNUSUAL ACTIVITY':'';
+        const whaleData=wFinal>=6?{score:wFinal,level:wLevel,signals:wSigs.filter(s=>!s.startsWith('⚠️')).slice(0,4)}:null;
         // Label
         let taLabel='⚖️ SIDEWAYS',taColor='neutral';
         if(bTF===3){taLabel='🚀 FULL SEND';taColor='full-bull';}
@@ -480,7 +662,7 @@ export default async function handler(req, res) {
           trend1h:t1h,trend4h:t4h,trend1d:t1d,bullTF:bTF,bearTF:beTF,
           smc:{...smc,signal:smcD},
           elliottWave:{wave:ew.w,confidence:ew.c,description:ew.d},
-          chartPatterns:pats.length>0?pats:[{name:c24>=0?'Bullish Candle':'Bearish Candle',signal:c24>=0?'bullish':'bearish',winRate:0}],
+          chartPatterns:pats.length>0?pats:[{name:c24>=0?'↗️ Bullish Close':'↘️ Bearish Close',signal:c24>=0?'bullish':'bearish',winRate:75,desc:(c24>=0?'+':'')+c24.toFixed(1)+'% daily close.'}],
           probability:prob,score,
           whale:whaleData,
           signals:sigs.slice(0,5),
@@ -502,7 +684,7 @@ export default async function handler(req, res) {
     const volumeBreakout =results.filter(r=>r.vt>=3&&r.change24h>1.5&&r.probability>50).sort((a,b)=>b.volume24h-a.volume24h).slice(0,60);
     const strongSell     =results.filter(r=>r.probability<38||r.taColor==='full-bear').sort((a,b)=>a.probability-b.probability).slice(0,40);
     // 🐋 Whale / Smart Money Detector
-    const whaleSetups    =results.filter(r=>r.whale&&r.whale.score>=9).sort((a,b)=>b.whale.score-a.whale.score).slice(0,60);
+    const whaleSetups    =results.filter(r=>r.whale&&r.whale.score>=6).sort((a,b)=>b.whale.score-a.whale.score).slice(0,60);
 
     const bullC=results.filter(r=>r.probability>55).length;
     const bearC=results.filter(r=>r.probability<45).length;
