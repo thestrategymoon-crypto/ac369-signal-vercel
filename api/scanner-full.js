@@ -1,8 +1,10 @@
-// api/scanner-full.js — v25 BULLETPROOF 1000 COINS
-// CoinGecko(250) + MEXC(750) = ~1000 unique coins
-// CryptoCompare 20 koin = real RSI+MACD+ICT klines
-// Semua parallel, max 5s — aman Vercel 10s
-// Setiap operasi dilindungi try/catch + safe getters
+// api/scanner-full.js — v26 FINAL
+// CoinGecko p1(250) + p2(250) + MEXC(800) = ~550-600 koin unik
+// CC30 klines: real RSI+MACD+ICT untuk 30 koin utama
+// Bybit Funding Rate: semua perp contract
+// 13 tabs: Institusional, Full Send, High Prob, SMC, Wave3,
+//          Vol Breakout, Short/Sell, Whale, FR, AI, DeFi, Meme, L1/L2
+// Semua parallel, max 6s — aman Vercel 10s
 // TIDAK ADA CRASH dari data apapun
 
 const CC30 = ['BTC','ETH','BNB','SOL','XRP','ADA','DOGE','AVAX','LINK','DOT',
@@ -203,11 +205,20 @@ export default async function handler(req, res) {
       const zone=pip>70?'Premium Zone':pip<30?'Discount Zone':'Equilibrium';
       const hasBOS=Math.abs(c24)>5;
       const bosType=c24>5?'Bullish BOS':c24<-5?'Bearish BOS':'None';
-      const hasCHoCH=c24>3&&c7<0;
+      // Fix: c7 bisa 0 untuk MEXC (c7d=null). Gunakan kondisi yang juga bekerja tanpa data weekly
+      const hasCHoCH=(c24>3&&c7<0)||(c24>5&&pip>0.35&&pip<0.65);
       const inBullOB=pip<28, inBearOB=pip>72;
       const bS=(hasBOS&&c24>5?3:0)+(inBullOB?2:0)+(hasCHoCH?2:0);
       const beS=(hasBOS&&c24<-5?3:0)+(inBearOB?2:0);
-      return {hasBOS,bosType,bosLevel:hasBOS&&c24>5?+(h*0.98).toFixed(6):hasBOS?+(l*1.02).toFixed(6):null,hasCHoCH,chochType:hasCHoCH?'Bullish CHoCH (MSS)':'None',inBullOB,inBearOB,bOB:inBullOB?{H:+(l+(h-l)*0.28).toFixed(6),L:+l.toFixed(6)}:null,beOB:inBearOB?{H:+h.toFixed(6),L:+(l+(h-l)*0.72).toFixed(6)}:null,inBullFVG:pip<15,zone,pip:+pip.toFixed(1),signal:bS>beS?'Bullish':beS>bS?'Bearish':'Neutral',bS,beS};
+      return {
+        hasBOS,bosType,bosLevel:hasBOS&&c24>5?+(h*0.98).toFixed(6):hasBOS?+(l*1.02).toFixed(6):null,
+        hasCHoCH,chochType:hasCHoCH?'Bullish CHoCH (MSS)':'None',
+        // Fix: tambah inZone+fresh agar whale detector bekerja untuk non-klines coins
+        bOB:inBullOB?{H:+(l+(h-l)*0.28).toFixed(6),L:+l.toFixed(6),inZone:true,fresh:true}:null,
+        beOB:inBearOB?{H:+h.toFixed(6),L:+(l+(h-l)*0.72).toFixed(6),inZone:true,fresh:true}:null,
+        inBullOB,inBearOB,inBullFVG:pip<15,zone,pip:+pip.toFixed(1),
+        signal:bS>beS?'Bullish':beS>bS?'Bearish':'Neutral',bS,beS
+      };
     } catch { return {hasBOS:false,bosType:'None',hasCHoCH:false,chochType:'None',inBullOB:false,inBearOB:false,inBullFVG:false,zone:'Equilibrium',pip:50,signal:'Neutral',bS:0,beS:0}; }
   };
 
@@ -520,7 +531,7 @@ export default async function handler(req, res) {
     for(const c of mxList){if(!seen.has(c.sym)){seen.add(c.sym);pool.push(c);}}
 
     if(pool.length===0){
-      return res.status(200).json({ok:false,error:'Semua data source tidak merespons. Coba refresh dalam 30 detik.',ts:Date.now(),totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
+      return res.status(200).json({ok:false,error:'Semua data source tidak merespons. Coba refresh dalam 30 detik.',ts:Date.now(),totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[],aiCoins:[],defiCoins:[],memeCoins:[],l1Coins:[],l2Coins:[],frExtreme:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
     }
 
     // ── Parse CryptoCompare klines (30 coins) ────────────
@@ -691,10 +702,10 @@ export default async function handler(req, res) {
                 wSigs.push((isDispBull?'🚀 DISPLACEMENT BULLISH':'💀 DISPLACEMENT BEARISH')+': Candle '+(lRng/avgATR2).toFixed(1)+'x ATR — pergerakan institusional besar');
               }
             }
-            // SSL/BSL Sweep (klines)
-            if(smc?.sweep?.bullish===true){
+            // SSL/BSL Sweep (klines) — gunakan .t bukan .bullish
+            if(smc?.sweep?.t?.includes('Bull')){
               wScore+=5;wSigs.push('⚡ SSL SWEEP $'+smc.sweep.lv+' — smart money ambil stop loss bawah lalu balik naik = ENTRY INSTITUSI');
-            } else if(smc?.sweep?.bullish===false){
+            } else if(smc?.sweep?.t?.includes('Bear')){
               wScore-=2;
             }
             // MACD cross + vol
@@ -847,7 +858,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok:true,ts:Date.now(),elapsed:Date.now()-t0,version:'v26',
-      src:'cg1:'+cgList.filter(c=>c.rank<=250).length+'+cg2:'+cgList.filter(c=>c.rank>250).length+'+mx:'+mxList.length,
+      src:'cg:'+(cgList.length)+'+mx:'+mxList.length+' total:'+pool.length,
       fg,totalScanned:pool.length,totalQualified:results.length,
       rsiRealCount:Object.keys(kMap).length,
       results,
