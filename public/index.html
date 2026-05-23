@@ -539,29 +539,99 @@ function renderVolume(coins) {
   var h='<div class="ct">📊 VOLUME BREAKOUT</div><div class="alt-list">';
   coins.slice(0,20).forEach(c=>{
     var up=c.ch24>=0,chC=up?'var(--g2)':'var(--red)';
-    var isBull=c.bType==='BREAKOUT'||c.bType==='VOL BULL',isBear=c.bType?.includes('BEAR');
-    var lbl=isBull?'Bullish Breakout':isBear?'Bearish Breakdown':(c.bType||'Active');
-    var lblC=isBull?'var(--g)':isBear?'var(--red)':'var(--amber)';
+    var bt=c.bType||'Active',bc=c.bColor||'amber';
+    // Color by bColor field (set by API) or by bType text
+    var lblC=bc==='green'?'var(--g)':bc==='red'?'var(--red)':'var(--amber)';
+    // Fallback: detect from bType text if bColor missing
+    if(!c.bColor){
+      if(bt.includes('Bull')||bt.includes('BREAKOUT')||bt.includes('Bounce'))lblC='var(--g)';
+      else if(bt.includes('Bear')||bt.includes('Selling')||bt.includes('Distribut')||bt.includes('Capitulat'))lblC='var(--red)';
+      else lblC='var(--amber)';
+    }
+    var rsiInfo=c.rsi4h!=null?'<span style="font-size:8px;color:var(--dim);margin-left:4px">4H RSI '+(+c.rsi4h).toFixed(0)+'</span>':
+                c.rsi!=null?'<span style="font-size:8px;color:var(--dim);margin-left:4px">~RSI '+(+c.rsi).toFixed(0)+'</span>':'';
     var sec=c.sector?'<span class="ar-sec">'+c.sector+'</span>':'';
-    h+='<div onclick="clickCoin(\''+c.symbol+'\')" class="ar"><div class="ar-l"><span class="ar-sym">'+c.symbol+'</span>'+sec+'<span class="ar-px"> '+fV(c.vol)+'</span></div><div class="ar-r" style="flex-direction:column;align-items:flex-end;gap:1px"><span class="ar-chg" style="color:'+chC+'">'+(up?'+':'')+c.ch24.toFixed(2)+'%</span><span style="font-size:9px;color:'+lblC+'">'+lbl+'</span></div></div>';
+    var macdBadge=c.macd?.xUp?'<span style="font-size:8px;color:var(--g);margin-left:3px">MACD↑</span>':
+                  c.macd?.xDown?'<span style="font-size:8px;color:var(--red);margin-left:3px">MACD↓</span>':'';
+    h+='<div onclick="clickCoin(\''+c.symbol+'\')" class="ar">'
+      +'<div class="ar-l"><span class="ar-sym">'+c.symbol+'</span>'+sec+'<span class="ar-px"> '+fV(c.vol)+'</span>'+macdBadge+'</div>'
+      +'<div class="ar-r" style="flex-direction:column;align-items:flex-end;gap:1px">'
+      +'<span class="ar-chg" style="color:'+chC+'">'+(up?'+':'')+c.ch24.toFixed(2)+'%</span>'
+      +'<span style="font-size:9px;color:'+lblC+'">'+bt+'</span>'
+      +rsiInfo+'</div></div>';
   });
-  h+='</div><div class="alt-ft">'+coins.length+' koin vol ≥$10M · sorted by volume</div>';
+  h+='</div><div class="alt-ft">'+coins.length+' koin vol ≥$5M · sorted by volume</div>';
   el.innerHTML=h;
 }
 
 function renderRSI(rsiList, realCount) {
   var el=$('alt-rsi');if(!el)return;
   if(!rsiList.length){el.innerHTML='<div class="ct">📉 RSI EKSTREM</div><div style="color:var(--muted);font-size:11px;padding:16px;text-align:center">Tidak ada data RSI</div>';return;}
-  var h='<div class="ct">📉 RSI EKSTREM <span style="color:var(--g);font-size:9px">'+realCount+' REAL</span></div><div class="alt-list">';
-  rsiList.forEach(c=>{
-    var rsi=c.rsi,ch=c.ch24||0,up=ch>=0;
-    var rc=rsiCol(rsi),zone=rsiZone(rsi),zC=rsi<=44?'var(--red)':rsi>=65?'var(--amber)':'var(--muted)';
-    var sec=c.sector?'<span class="ar-sec">'+c.sector+'</span>':'';
-    var bp=Math.min(100,Math.max(0,rsi)),bC=rsi<=30?'var(--g)':rsi>=70?'var(--red)':'var(--amber)';
-    var real=c.rsiReal?'<span style="font-size:7px;color:var(--g);margin-left:2px">●</span>':'<span style="font-size:7px;color:var(--dim);margin-left:2px">~</span>';
-    h+='<div onclick="clickCoin(\''+c.symbol+'\')" class="ar"><div class="ar-l"><span class="ar-sym">'+c.symbol+'</span>'+sec+'<span class="ar-px">$'+fmtEx(c.price)+'</span><span style="color:'+(up?'var(--g2)':'var(--red)')+';font-size:10px;margin-left:4px">'+(up?'+':'')+ch.toFixed(2)+'%</span></div><div class="ar-r"><div class="rsi-wrap"><div style="display:flex;align-items:center;gap:3px"><div class="rsi-bar"><div class="rsi-fill" style="width:'+bp+'%;background:'+bC+'"></div></div><span style="font-family:var(--m);font-size:12px;font-weight:800;color:'+rc+'">'+rsi.toFixed(1)+real+'</span></div><span style="color:'+zC+';font-size:9px">'+zone+'</span></div></div></div>';
+
+  // Sort: oversold (<35) first, then overbought (>70), neutral last
+  var sorted=rsiList.slice().sort(function(a,b){
+    var ga=a.rsi<=35?0:a.rsi>=70?1:2;
+    var gb=b.rsi<=35?0:b.rsi>=70?1:2;
+    if(ga!==gb)return ga-gb;
+    if(a.rsi<=35)return a.rsi-b.rsi;
+    if(a.rsi>=70)return b.rsi-a.rsi;
+    return a.rsi-b.rsi;
   });
-  h+='</div><div class="alt-ft">'+rsiList.length+' koin · 4H klines (Binance)</div>';
+
+  var h='<div class="ct">📉 RSI EKSTREM <span style="color:var(--g);font-size:9px">'+realCount+' REAL</span></div><div class="alt-list">';
+
+  sorted.slice(0,25).forEach(function(c){
+    var rsi=+(c.rsi||50);
+    var rsi4h=c.rsi4h!=null?+(c.rsi4h):null;
+    var rsi1d=c.rsi1d!=null?+(c.rsi1d):null;
+    var ch=c.ch24||0,up=ch>=0;
+    var isReal=c.rsiReal;
+
+    // Zone classification
+    var zone,zoneC;
+    if(rsi<=20){zone='EXTREME OVERSOLD 🎯';zoneC='var(--g)';}
+    else if(rsi<=30){zone='Oversold 🟢';zoneC='var(--g)';}
+    else if(rsi<=44){zone='Bearish zone';zoneC='var(--red)';}
+    else if(rsi>=80){zone='EXTREME OVERBOUGHT';zoneC='var(--red)';}
+    else if(rsi>=70){zone='Overbought 🔴';zoneC='var(--red)';}
+    else if(rsi>=60){zone='Bullish zone';zoneC='var(--amber)';}
+    else{zone='Neutral';zoneC='var(--dim)';}
+
+    var rc=rsi<=25?'var(--g)':rsi<=35?'#66ff99':rsi>=75?'var(--red)':rsi>=65?'#ff9966':'var(--muted)';
+    var bp=Math.min(100,Math.max(0,rsi));
+    var bC=rsi<=30?'var(--g)':rsi>=70?'var(--red)':'var(--amber)';
+    var realBadge=isReal?'<span style="font-size:7px;background:rgba(0,255,136,.1);color:var(--g);padding:0 3px;border-radius:2px;margin-left:2px">4H</span>':'<span style="font-size:7px;color:var(--dim);margin-left:2px">est</span>';
+    var sec=c.sector?'<span class="ar-sec">'+c.sector+'</span>':'';
+
+    // Multi-TF RSI context
+    var tfExtra='';
+    if(rsi4h!=null&&rsi1d!=null){
+      var d1C=rsi1d<=35?'var(--g)':rsi1d>=70?'var(--red)':'var(--dim)';
+      tfExtra='<div style="display:flex;gap:4px;margin-top:2px">'
+        +'<span style="font-size:8px;color:var(--dim)">4H:<span style="color:'+rc+'"> '+rsi4h.toFixed(0)+'</span></span>'
+        +'<span style="font-size:8px;color:var(--dim)">1D:<span style="color:'+d1C+'"> '+rsi1d.toFixed(0)+'</span></span>'
+        +(c.macd?.xUp?'<span style="font-size:8px;color:var(--g)">MACD↑</span>':c.macd?.xDown?'<span style="font-size:8px;color:var(--red)">MACD↓</span>':'')
+        +'</div>';
+    } else if(rsi4h!=null){
+      tfExtra='<div style="font-size:8px;color:var(--dim);margin-top:1px">4H RSI: '+rsi4h.toFixed(0)+(c.macd?.xUp?' · MACD↑':c.macd?.xDown?' · MACD↓':'')+'</div>';
+    } else {
+      tfExtra='<div style="font-size:8px;color:var(--dim);margin-top:1px">Estimated RSI</div>';
+    }
+
+    h+='<div onclick="clickCoin(\''+c.symbol+'\')" class="ar" style="flex-direction:column;align-items:stretch;padding:6px 10px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center">'
+      +'<div style="display:flex;align-items:center;gap:4px"><span class="ar-sym">'+c.symbol+'</span>'+sec+'<span class="ar-px">$'+fmtEx(c.price)+'</span><span style="color:'+(up?'var(--g2)':'var(--red)')+';font-size:10px">'+(up?'+':'')+ch.toFixed(2)+'%</span></div>'
+      +'<div style="display:flex;align-items:center;gap:4px">'
+      +'<div class="rsi-bar"><div class="rsi-fill" style="width:'+bp+'%;background:'+bC+'"></div></div>'
+      +'<span style="font-family:var(--m);font-size:13px;font-weight:900;color:'+rc+'">'+rsi.toFixed(0)+realBadge+'</span>'
+      +'</div></div>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">'
+      +tfExtra
+      +'<span style="font-size:9px;color:'+zoneC+'">'+zone+'</span>'
+      +'</div></div>';
+  });
+
+  h+='</div><div class="alt-ft">'+rsiList.length+' koin · 4H klines real + estimasi</div>';
   el.innerHTML=h;
 }
 
