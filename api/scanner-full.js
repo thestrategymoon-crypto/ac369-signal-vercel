@@ -5,14 +5,63 @@
 // Setiap operasi dilindungi try/catch + safe getters
 // TIDAK ADA CRASH dari data apapun
 
-const CC20 = ['BTC','ETH','BNB','SOL','XRP','ADA','DOGE','AVAX','LINK','DOT',
-              'NEAR','SUI','APT','ARB','OP','PEPE','TON','INJ','TIA','RENDER'];
+const CC30 = ['BTC','ETH','BNB','SOL','XRP','ADA','DOGE','AVAX','LINK','DOT',
+              'NEAR','SUI','APT','ARB','OP','PEPE','TON','INJ','TIA','RENDER',
+              'LTC','ATOM','AAVE','CRV','FIL','ALGO','HBAR','GRT','MKR','SAND'];
 
 const STABLES = new Set(['USDT','USDC','BUSD','DAI','TUSD','FDUSD','USDD','FRAX',
                          'GUSD','USDP','LUSD','PYUSD','SUSD','USDE','USDB','EURC']);
 const BAD_SFX = ['UP','DOWN','BULL','BEAR','LONG','SHORT','3L','3S','2L','2S'];
 
-// ── SAFE GETTERS (tidak pernah crash) ─────────────────────
+// ── SECTOR TAGS ───────────────────────────────────────
+const SECTORS = {
+  // Layer 1
+  L1:new Set(['BTC','ETH','SOL','ADA','AVAX','TON','NEAR','SUI','APT','TIA','SEI','MONAD','APTOS','CELO','HBAR','ALGO','XLM','VET','EGLD','ONE','KAVA','ROSE','METIS']),
+  // Layer 2
+  L2:new Set(['ARB','OP','MATIC','POL','IMX','STRK','MANTA','SCROLL','BASE','ZK','LINEA','TAIKO','BLAST','MODE','MANTLE']),
+  // DeFi
+  DEFI:new Set(['UNI','AAVE','CRV','MKR','COMP','SNX','BAL','YFI','SUSHI','1INCH','GMX','DYDX','PENDLE','RDNT','GNS','JOE','CAKE','QUICK','VELO','AERO']),
+  // AI
+  AI:new Set(['RENDER','FET','AGIX','OCEAN','TAO','NEAR','NMR','GRT','ARKM','ORAI','OLAS','IO','PRIME','WLD','DRIA','GRASS','GOAT','GRIFFAIN','VIRTUAL','VADER']),
+  // Meme
+  MEME:new Set(['DOGE','SHIB','PEPE','BONK','WIF','FLOKI','BOME','MEME','COQ','MEW','POPCAT','DOGS','NEIRO','CAT','PNUT','GOAT','ACT','MOODENG','CHILLGUY']),
+  // Gaming/Metaverse
+  GAME:new Set(['SAND','MANA','AXS','ENJ','GALA','ILV','MAGIC','BEAM','RON','YGG','PYR','SLP','PRIME','PIXEL','PORTAL','ALT','SAGA','KMON']),
+  // Infrastructure
+  INFRA:new Set(['LINK','DOT','ATOM','FIL','AR','STORJ','LPT','API3','BAND','PYTH','JTO','JUP','W','STRK','ZRO','EIGEN']),
+  // RWA
+  RWA:new Set(['ONDO','MKR','POLYX','CFG','MPL','CPOOL','TRU','LEND','FLUX','BOSON']),
+};
+const getSector = sym => {
+  for(const [s,set] of Object.entries(SECTORS)) if(set.has(sym)) return s;
+  return 'ALT';
+};
+const SECTOR_EMOJI = {L1:'⛓️',L2:'🔗',DEFI:'💰',AI:'🤖',MEME:'🐸',GAME:'🎮',INFRA:'🏗️',RWA:'🏦',ALT:'🪙'};
+
+// ── ONCHAIN PROXY (dari data CoinGecko) ───────────────
+// Vol/MCap ratio = indikator aktivitas institusional
+// Rank divergence = koin kecil tapi volume besar = unusual
+const onchainScore = (vol, mcap, rank, c24, c7d) => {
+  try {
+    let score=0; const sigs=[];
+    if(mcap>0){
+      const vR=vol/mcap;
+      if(vR>0.30){score+=5;sigs.push('On-chain: Volume '+(vR*100).toFixed(0)+'% of MCap — EXTREME activity');}
+      else if(vR>0.15){score+=3;sigs.push('On-chain: Volume '+(vR*100).toFixed(0)+'% of MCap — HIGH activity');}
+      else if(vR>0.07){score+=2;}
+      else if(vR>0.03){score+=1;}
+    }
+    // MCap rank vs volume: koin rank rendah tapi vol tinggi = unusual
+    if(rank>200&&vol>50e6){score+=3;sigs.push('On-chain: Mid-cap koin rank #'+rank+' vol $'+(vol/1e6).toFixed(0)+'M — unusual volume divergence');}
+    if(rank>500&&vol>20e6){score+=2;}
+    // 7d vs 24h divergence: harga turun tapi volume naik = akumulasi
+    const c7=c7d||0;
+    if(c7<-5&&c24>1.5&&mcap>0&&vol/mcap>0.05){score+=3;sigs.push('On-chain: Harga -'+Math.abs(c7).toFixed(0)+'% 7d tapi +'+c24.toFixed(1)+'% 24h + vol tinggi = akumulasi diam-diam');}
+    return {score,sigs};
+  } catch { return {score:0,sigs:[]}; }
+};
+
+
 const N = (v, d=0)  => { const n=+v; return (isNaN(n)||!isFinite(n)) ? d : n; };
 const S = (v, d='') => v!=null ? String(v) : d;
 const A = (v)       => Array.isArray(v) ? v : [];
@@ -390,25 +439,56 @@ export default async function handler(req, res) {
 
   try {
     // ══════════════════════════════════════════════════════
-    // PARALLEL EXECUTION — max(CG:5s, MEXC:5s, CC:4s) ≈ 5s
-    // CG fail → MEXC provides 750+ coins (never total failure)
+    // PARALLEL EXECUTION — 6 sumber data bersamaan
+    // CG p1(250) + CG p2(250) + MEXC(800) + Bybit FR + CC30 + FG
+    // Target: 500-600 koin, max 6s, aman Vercel 10s
     // ══════════════════════════════════════════════════════
-    const [cgR, mxR, ccR, fgR] = await Promise.allSettled([
-      sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h,7d', 5000),
+    const [cgR, cgR2, mxR, byFrR, ccR, fgR] = await Promise.allSettled([
+      sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h,7d', 5500),
+      sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=250&page=2&sparkline=false&price_change_percentage=24h,7d', 5500),
       sf('https://api.mexc.com/api/v3/ticker/24hr', 5500),
-      Promise.allSettled(CC20.map(s=>sf(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${s}&tsym=USD&limit=42&aggregate=4&e=CCCAGG`,4000))),
+      sf('https://api.bybit.com/v5/market/tickers?category=linear', 4500),
+      Promise.allSettled(CC30.map(s=>sf(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${s}&tsym=USD&limit=42&aggregate=4&e=CCCAGG`,4500))),
       sf('https://api.alternative.me/fng/?limit=1&format=json', 3000),
     ]);
 
     const fg = fgR.status==='fulfilled' ? N(fgR.value?.data?.[0]?.value,50) : 50;
 
-    // ── Parse CoinGecko ───────────────────────────────────
+    // ── Parse Bybit Funding Rates ─────────────────────────
+    const frMap={};
+    try{
+      const byList=A(byFrR.value?.result?.list);
+      for(const t of byList){
+        try{
+          const sym=S(t.symbol).replace('USDT','').replace('PERP','');
+          if(!sym) continue;
+          const fr=N(t.fundingRate);
+          const oi=N(t.openInterestValue);
+          const ls=t.bid1Price&&t.ask1Price?N(t.bid1Price)/N(t.ask1Price):1;
+          frMap[sym]={fr,oi,
+            // FR signal
+            signal: fr>0.0005?'🚨 EXTREME LONG':fr>0.0003?'⚠️ LONG HEAVY':
+                    fr>0.0001?'↗️ Mild Long':fr<-0.0005?'🚀 EXTREME SHORT SQUEEZE':
+                    fr<-0.0003?'💎 SHORT SQUEEZE':fr<-0.0001?'↘️ Mild Short':'⚖️ Neutral',
+            // Bullish if shorts being squeezed, bearish if longs overheated
+            bullish: fr<-0.0002,
+            bearish: fr>0.0004,
+            pctFR: +(fr*100).toFixed(4),
+          };
+        }catch{}
+      }
+    }catch{}
+
+    // ── Parse CoinGecko (page 1 + page 2) ────────────────
     const cgList=[];
-    for(const c of A(cgR.value)){
-      try{
-        const p=N(c.current_price); if(p<=0) continue;
-        cgList.push({sym:S(c.symbol).toUpperCase(),name:S(c.name)||S(c.symbol),price:p,c24:N(c.price_change_percentage_24h),c7d:c.price_change_percentage_7d!=null?N(c.price_change_percentage_7d):null,vol:N(c.total_volume),h:N(c.high_24h)||p*1.02,l:N(c.low_24h)||p*0.98,mcap:N(c.market_cap),rank:N(c.market_cap_rank,9999),src:'cg'});
-      }catch{}
+    const cgPages=[cgR, cgR2];
+    for(const pageR of cgPages){
+      for(const c of A(pageR.value)){
+        try{
+          const p=N(c.current_price); if(p<=0) continue;
+          cgList.push({sym:S(c.symbol).toUpperCase(),name:S(c.name)||S(c.symbol),price:p,c24:N(c.price_change_percentage_24h),c7d:c.price_change_percentage_7d!=null?N(c.price_change_percentage_7d):null,vol:N(c.total_volume),h:N(c.high_24h)||p*1.02,l:N(c.low_24h)||p*0.98,mcap:N(c.market_cap),rank:N(c.market_cap_rank,9999),src:'cg'});
+        }catch{}
+      }
     }
 
     // ── Parse MEXC (filter → sort by vol → top 800) ───────
@@ -443,9 +523,9 @@ export default async function handler(req, res) {
       return res.status(200).json({ok:false,error:'Semua data source tidak merespons. Coba refresh dalam 30 detik.',ts:Date.now(),totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
     }
 
-    // ── Parse CryptoCompare klines ────────────────────────
+    // ── Parse CryptoCompare klines (30 coins) ────────────
     const kMap={};
-    for(let i=0;i<CC20.length;i++){
+    for(let i=0;i<CC30.length;i++){
       try{
         const r=ccR.value?.[i];
         if(r?.status!=='fulfilled'||r.value?.Response!=='Success') continue;
@@ -459,7 +539,7 @@ export default async function handler(req, res) {
         const e9=calcEMA(cls,9), e21=calcEMA(cls,21), e50=calcEMA(cls,Math.min(50,cls.length-1));
         const macd=calcMACD(cls);
         const smc=smcFull(K, cls[cls.length-1]);
-        kMap[CC20[i]]={rsi,e9,e21,e50,macd,K,cls,smc,ok:true};
+        kMap[CC30[i]]={rsi,e9,e21,e50,macd,K,cls,smc,ok:true};
       }catch{}
     }
 
@@ -469,10 +549,15 @@ export default async function handler(req, res) {
       try{
         const {sym,name,price,c24,c7d,vol,h,l,mcap,rank,src}=c;
         if(!sym||!price||price<=0) continue;
+        const sector=getSector(sym);
+        const sectorEmoji=SECTOR_EMOJI[sector]||'🪙';
         const pPos=h>l?clamp((price-l)/(h-l),0,1):0.5;
         const rng=h>l?(h-l)/price*100:0;
         const vt=vol>=1e9?5:vol>=200e6?4:vol>=50e6?3:vol>=10e6?2:vol>=1e6?1:0;
         const kd=kMap[sym]||null;
+        // Funding Rate
+        const fd=frMap[sym]||null;
+        const frVal=fd?.fr||0;
         // RSI
         const rsi=kd?.ok?kd.rsi:clamp(50+c24*2.5+(pPos-0.5)*25+((c7d||0)>0?4:-4),8,92);
         const rsiR=!!(kd?.ok);
@@ -501,7 +586,13 @@ export default async function handler(req, res) {
         const smcC=N(smc?.bS,0)-N(smc?.beS,0);
         const pC=pats.some(x=>x.signal==='bullish'&&x.winRate>=80)?3:pats.some(x=>x.signal==='bullish')?1:pats.some(x=>x.signal==='bearish'&&x.winRate>=80)?-3:pats.some(x=>x.signal==='bearish')?-1:0;
         const ewC=ew.w.includes('Wave 3')?4:ew.w.includes('Wave 2')?2:ew.w.includes('C Complete')||ew.w.includes('Capitulation')?3:ew.w.includes('Bearish')||ew.w.includes('5 End')?-2:0;
-        const prob=clamp(Math.round(50+tC+rC+mW+m24+mC+smcC+pC+ewC),2,98);
+        // Onchain proxy score
+        const oc=onchainScore(vol,mcap,rank,c24,c7d);
+        const ocC=clamp(oc.score*0.8,0,6);
+        // Funding Rate contribution
+        const frC=frVal<-0.0005?6:frVal<-0.0003?4:frVal<-0.0001?2:
+                  frVal>0.0005?-5:frVal>0.0003?-3:frVal>0.0001?-1:0;
+        const prob=clamp(Math.round(50+tC+rC+mW+m24+mC+smcC+pC+ewC+ocC+frC),2,98);
         const score=tC+rC+mW+m24+mC+smcC;
 
         // ── WHALE / SMART MONEY DETECTOR ──────────────────
@@ -651,9 +742,22 @@ export default async function handler(req, res) {
         if(smc?.hasBOS&&c24>4) sigs.push(smc.bosType+' at $'+smc.bosLevel+' — institutional breakout');
         if(vt>=4&&c24>3) sigs.push('$'+['','','','','200M+','1B+'][vt]+' volume + +'+c24.toFixed(1)+'% — smart money move');
         if(bTF===3) sigs.push('All 3 timeframes aligned bullish 🎯 — highest conviction setup');
+        // Funding Rate signals (Bybit perpetual)
+        if(fd){
+          const frPct=(frVal*100).toFixed(4);
+          if(frVal<-0.0005) sigs.push('🚀 FR: '+frPct+'% EXTREME SHORT SQUEEZE — shorts sangat banyak, squeeze besar mungkin terjadi');
+          else if(frVal<-0.0003) sigs.push('💎 FR: '+frPct+'% Short Squeeze — shorts mendominasi, potensi reversal naik kuat');
+          else if(frVal<-0.0001) sigs.push('↘️ FR: '+frPct+'% mild short — sedikit shorts, hati-hati long');
+          else if(frVal>0.0005) sigs.push('🚨 FR: +'+frPct+'% OVERHEATED — terlalu banyak long, risiko koreksi tajam');
+          else if(frVal>0.0003) sigs.push('⚠️ FR: +'+frPct+'% long heavy — long mendominasi, berhati-hati tambah posisi');
+          else if(frVal>0.0001) sigs.push('↗️ FR: +'+frPct+'% mild long — normal bullish bias');
+        }
+        // Onchain proxy signals
+        oc.sigs.forEach(s=>sigs.push(s));
         pats.forEach(p=>sigs.push(p.name+' ('+p.winRate+'%): '+p.desc));
         results.push({
           rank:results.length+1,symbol:sym,name,dataSource:src,
+          sector,sectorEmoji,
           price,change24h:+c24.toFixed(2),change7d:c7d!=null?+c7d.toFixed(2):null,
           volume24h:vol,mcap,mcapRank:rank,
           high24h:h,low24h:l,pricePos:+pPos.toFixed(3),range:+rng.toFixed(2),
@@ -664,8 +768,10 @@ export default async function handler(req, res) {
           elliottWave:{wave:ew.w,confidence:ew.c,description:ew.d},
           chartPatterns:pats.length>0?pats:[{name:c24>=0?'↗️ Bullish Close':'↘️ Bearish Close',signal:c24>=0?'bullish':'bearish',winRate:75,desc:(c24>=0?'+':'')+c24.toFixed(1)+'% daily close.'}],
           probability:prob,score,
+          onchainScore:oc.score,
+          fundingRate:fd?{rate:frVal,pct:fd.pctFR,signal:fd.signal,bullish:fd.bullish,bearish:fd.bearish,oi:fd.oi}:null,
           whale:whaleData,
-          signals:sigs.slice(0,5),
+          signals:sigs.slice(0,6),
           astrology:{moonPhase:astro.moonPhase,moonEmoji:astro.moonEmoji,halvingPhase:astro.halvingPhase,chaotic:astro.chaotic},
           hasRealData:rsiR,
         });
@@ -675,16 +781,64 @@ export default async function handler(req, res) {
     results.sort((a,b)=>b.probability-a.probability||b.score-a.score);
     results.forEach((r,i)=>r.rank=i+1);
 
-    // Tabs
-    const institutional =results.filter(r=>r.score>=16&&r.probability>=60&&r.volume24h>=5e6).slice(0,80);
-    const fullSend       =results.filter(r=>(r.taColor==='full-bull'||r.bullTF===3)&&r.probability>=65).slice(0,60);
-    const highProbBull   =results.filter(r=>r.probability>=68&&r.score>=12).slice(0,60);
-    const smcSetups      =results.filter(r=>(r.smc?.inBullOB||r.smc?.inBullFVG||r.smc?.hasCHoCH)&&r.probability>=52).slice(0,60);
-    const ewSetups       =results.filter(r=>{const w=r.elliottWave?.wave||'';return(w.includes('Wave 3')||w.includes('Wave 2'))?r.probability>=52:(w.includes('C Complete')||w.includes('Capitulation'))?r.probability>=50:(r.rsi<38&&r.change24h>0)?r.probability>=48:false;}).sort((a,b)=>b.probability-a.probability).slice(0,60);
-    const volumeBreakout =results.filter(r=>r.vt>=3&&r.change24h>1.5&&r.probability>50).sort((a,b)=>b.volume24h-a.volume24h).slice(0,60);
-    const strongSell     =results.filter(r=>r.probability<38||r.taColor==='full-bear').sort((a,b)=>a.probability-b.probability).slice(0,40);
-    // 🐋 Whale / Smart Money Detector
+    // ── TAB FILTERS (v2 — lebih inklusif + akurat) ────────
+    // Institusional: skor tinggi + volume significant
+    const institutional =results.filter(r=>r.score>=14&&r.probability>=58&&r.volume24h>=3e6).slice(0,80);
+
+    // FULL SEND: probability >= 68 + minimal 2TF bullish (fix: jangan butuh 3TF)
+    // Sebelumnya butuh bTF===3 → kosong di bearish market
+    const fullSend       =results.filter(r=>
+      r.probability>=68&&r.volume24h>=1e6&&
+      (r.bullTF>=2||r.taColor==='full-bull'||r.taColor==='bull')
+    ).sort((a,b)=>b.probability-a.probability).slice(0,60);
+
+    // High Prob: probability >= 65
+    const highProbBull   =results.filter(r=>r.probability>=65&&r.score>=8).slice(0,60);
+
+    // SMC: ada ICT signal aktif
+    const smcSetups      =results.filter(r=>(r.smc?.inBullOB||r.smc?.inBullFVG||r.smc?.hasCHoCH||r.smc?.hasBOS)&&r.probability>=50).slice(0,60);
+
+    // Wave 3 / bottom setup
+    const ewSetups       =results.filter(r=>{
+      const w=r.elliottWave?.wave||'';
+      return(w.includes('Wave 3')||w.includes('Impulse'))?r.probability>=55:
+             (w.includes('Wave 2')||w.includes('OTE'))?r.probability>=50:
+             (w.includes('C Complete')||w.includes('Capitulation')||w.includes('Bottom'))?r.probability>=48:
+             (r.rsi<38&&r.change24h>0)?r.probability>=48:false;
+    }).sort((a,b)=>b.probability-a.probability).slice(0,60);
+
+    // Volume Breakout: volume besar + momentum
+    const volumeBreakout =results.filter(r=>r.vt>=3&&r.change24h>1&&r.probability>48).sort((a,b)=>b.volume24h-a.volume24h).slice(0,60);
+
+    // Short/Sell setup
+    const strongSell     =results.filter(r=>r.probability<40||r.taColor==='full-bear').sort((a,b)=>a.probability-b.probability).slice(0,40);
+
+    // 🐋 Whale / Smart Money
     const whaleSetups    =results.filter(r=>r.whale&&r.whale.score>=6).sort((a,b)=>b.whale.score-a.whale.score).slice(0,60);
+
+    // ── SECTOR TABS ───────────────────────────────────────
+    const aiCoins  =results.filter(r=>r.sector==='AI'  ).sort((a,b)=>b.probability-a.probability).slice(0,50);
+    const defiCoins=results.filter(r=>r.sector==='DEFI').sort((a,b)=>b.probability-a.probability).slice(0,50);
+    const memeCoins=results.filter(r=>r.sector==='MEME').sort((a,b)=>b.probability-a.probability).slice(0,50);
+    const l1Coins  =results.filter(r=>r.sector==='L1'  ).sort((a,b)=>b.probability-a.probability).slice(0,40);
+    const l2Coins  =results.filter(r=>r.sector==='L2'  ).sort((a,b)=>b.probability-a.probability).slice(0,40);
+
+    // Funding Rate extremes tab
+    const frExtreme=results.filter(r=>r.fundingRate&&(r.fundingRate.bullish||r.fundingRate.bearish)).sort((a,b)=>{
+      const fa=Math.abs(a.fundingRate?.rate||0), fb=Math.abs(b.fundingRate?.rate||0);
+      return fb-fa;
+    }).slice(0,50);
+
+    // Sector breakdown untuk analytics
+    const sectorStats={};
+    for(const r of results){
+      if(!sectorStats[r.sector]) sectorStats[r.sector]={count:0,bullish:0,bearish:0,avgProb:0};
+      sectorStats[r.sector].count++;
+      if(r.probability>55) sectorStats[r.sector].bullish++;
+      if(r.probability<45) sectorStats[r.sector].bearish++;
+      sectorStats[r.sector].avgProb+=r.probability;
+    }
+    for(const s of Object.keys(sectorStats)) sectorStats[s].avgProb=Math.round(sectorStats[s].avgProb/sectorStats[s].count);
 
     const bullC=results.filter(r=>r.probability>55).length;
     const bearC=results.filter(r=>r.probability<45).length;
@@ -692,17 +846,17 @@ export default async function handler(req, res) {
     const mood=avgCh>3?'STRONG BULL':avgCh>1?'BULL':avgCh<-3?'STRONG BEAR':avgCh<-1?'BEAR':'NEUTRAL';
 
     return res.status(200).json({
-      ok:true,ts:Date.now(),elapsed:Date.now()-t0,version:'v25',
-      src:'cg:'+cgList.length+'+mx:'+mxList.length,
+      ok:true,ts:Date.now(),elapsed:Date.now()-t0,version:'v26',
+      src:'cg1:'+cgList.filter(c=>c.rank<=250).length+'+cg2:'+cgList.filter(c=>c.rank>250).length+'+mx:'+mxList.length,
       fg,totalScanned:pool.length,totalQualified:results.length,
       rsiRealCount:Object.keys(kMap).length,
       results,
-      topSetups:{institutional,fullSend,highProbBull,smcSetups,ewSetups,volumeBreakout,strongSell,whaleSetups},
-      marketOverview:{marketMood:mood,bullishCount:bullC,bearishCount:bearC,avgChange24h:avgCh,totalCoins:results.length},
+      topSetups:{institutional,fullSend,highProbBull,smcSetups,ewSetups,volumeBreakout,strongSell,whaleSetups,aiCoins,defiCoins,memeCoins,l1Coins,l2Coins,frExtreme},
+      marketOverview:{marketMood:mood,bullishCount:bullC,bearishCount:bearC,avgChange24h:avgCh,totalCoins:results.length,sectorStats,frCoverage:Object.keys(frMap).length},
       astroContext:astro,
     });
 
   }catch(e){
-    return res.status(200).json({ok:false,error:e.message,ts:Date.now(),elapsed:Date.now()-t0,version:'v25',totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
+    return res.status(200).json({ok:false,error:e.message,ts:Date.now(),elapsed:Date.now()-t0,version:'v26',totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[],aiCoins:[],defiCoins:[],memeCoins:[],l1Coins:[],l2Coins:[],frExtreme:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
   }
 }
