@@ -240,6 +240,7 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
   <button class="tab" onclick="showTab('defiCoins',this)">💰 DeFi</button>
   <button class="tab" onclick="showTab('memeCoins',this)">🐸 Meme</button>
   <button class="tab" onclick="showTab('l1Coins',this)">⛓️ L1/L2</button>
+  <button class="tab" onclick="showTab('rsTop',this)">🏆 RS Top</button>
   <button class="tab" onclick="showTab('bullish',this)">📋 Semua</button>
 </div>
 <div class="mchips" id="sc-chips" style="display:none"></div>
@@ -1117,12 +1118,96 @@ async function doScan(){
   btn.disabled=false;btn.textContent='🚀 Scan Institusional';
 }
 function showTab(tab,el){document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));if(el)el.classList.add('on');renderTable(tab);}
+// ── COIN CELL HELPER (dipakai semua tab) ─────────────────────
+// Layout:
+//  [emoji]  SYMBOL
+//           [SECTOR] [REAL/EST] [FR] [RS]
+function mkCoinCell(c){
+  var sym=c.symbol||'?';
+  var sector=c.sector||'ALT';
+  var sEmoji=c.sectorEmoji||'🪙';
+  var isReal=!!c.hasRealData;
+  // Sector color
+  var SCOL={L1:'#4af0ff',L2:'#a78bfa',DEFI:'#fbbf24',AI:'#22d3ee',MEME:'#f472b6',
+            GAME:'#86efac',INFRA:'#94a3b8',RWA:'#fcd34d',BTC:'#f97316',ETH:'#818cf8',
+            BNB:'#facc15',ALT:'#64748b'};
+  var sC=SCOL[sector]||'#64748b';
+  // Real/Est badge
+  var dBadge=isReal
+    ?'<span style="font-size:7px;background:rgba(0,255,136,.12);color:#00d4aa;padding:1px 4px;border-radius:3px;font-weight:700;letter-spacing:0.3px">REAL</span>'
+    :'<span style="font-size:7px;background:rgba(255,255,255,.05);color:var(--dim);padding:1px 4px;border-radius:3px">EST</span>';
+  // FR badge (compact)
+  var frB='';
+  if(c.fundingRate){
+    var fr=c.fundingRate;
+    var frC=fr.bullish?'var(--g)':fr.bearish?'var(--red)':'var(--dim)';
+    frB='<span style="font-size:7px;padding:1px 4px;border-radius:3px;background:rgba(255,255,255,.04);color:'+frC+'">'+(fr.rate>=0?'+':'')+fr.pct+'%FR</span>';
+  }
+  // RS badge (compact)
+  var rsB='';
+  if(c.rs&&c.rs.score!=null){
+    var rs=c.rs;
+    var rsC=rs.bullish?'var(--g)':rs.bearish?'var(--red)':'var(--dim)';
+    var rsV=(rs.score>=0?'+':'')+rs.score;
+    rsB='<span style="font-size:7px;padding:1px 4px;border-radius:3px;background:rgba(255,255,255,.04);color:'+rsC+'">RS'+rsV+'%</span>';
+  }
+  return '<td style="min-width:90px">'
+    +'<div style="display:flex;align-items:center;gap:5px">'
+    +'<span style="font-size:16px;line-height:1;flex-shrink:0">'+sEmoji+'</span>'
+    +'<div style="min-width:0">'
+    +'<div style="font-family:var(--m);font-size:12px;font-weight:900;color:var(--txt);letter-spacing:0.2px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70px">'+sym+'</div>'
+    +'<div style="display:flex;align-items:center;gap:2px;flex-wrap:nowrap;margin-top:2px">'
+    +'<span style="font-size:7px;font-weight:700;color:'+sC+';letter-spacing:0.5px">'+sector+'</span>'
+    +'<span style="color:var(--dim);font-size:7px">·</span>'
+    +dBadge
+    +(frB?'<span style="color:var(--dim);font-size:7px">·</span>'+frB:'')
+    +(rsB?'<span style="color:var(--dim);font-size:7px">·</span>'+rsB:'')
+    +'</div>'
+    +'</div>'
+    +'</div>'
+    +'</td>';
+}
+
 function renderTable(tab){
   var data=window._scanData;if(!data)return;
   var ts=data.topSetups||{};
-  var coins={'institutional':(ts.institutional||[]).slice(0,60),'fullSend':(ts.fullSend||[]).slice(0,60),'highProbBull':(ts.highProbBull||[]).slice(0,60),'smcSetups':(ts.smcSetups||[]).slice(0,60),'ewSetups':(ts.ewSetups||[]).slice(0,60),'volumeBreakout':(ts.volumeBreakout||[]).slice(0,60),'strongSell':(ts.strongSell||[]).slice(0,60),'whaleSetups':(ts.whaleSetups||[]).slice(0,60),'frExtreme':(ts.frExtreme||[]).slice(0,50),'aiCoins':(ts.aiCoins||[]).slice(0,50),'defiCoins':(ts.defiCoins||[]).slice(0,50),'memeCoins':(ts.memeCoins||[]).slice(0,50),'l1Coins':((ts.l1Coins||[]).concat(ts.l2Coins||[])).sort((a,b)=>b.probability-a.probability).slice(0,50),'bullish':(data.results||[]).filter(r=>r.score>0).slice(0,100)}[tab]||(data.results||[]).slice(0,60);
+  var coins={'institutional':(ts.institutional||[]).slice(0,60),'fullSend':(ts.fullSend||[]).slice(0,60),'highProbBull':(ts.highProbBull||[]).slice(0,60),'smcSetups':(ts.smcSetups||[]).slice(0,60),'ewSetups':(ts.ewSetups||[]).slice(0,60),'volumeBreakout':(ts.volumeBreakout||[]).slice(0,60),'strongSell':(ts.strongSell||[]).slice(0,60),'whaleSetups':(ts.whaleSetups||[]).slice(0,60),'frExtreme':(ts.frExtreme||[]).slice(0,50),'aiCoins':(ts.aiCoins||[]).slice(0,50),'defiCoins':(ts.defiCoins||[]).slice(0,50),'memeCoins':(ts.memeCoins||[]).slice(0,50),'l1Coins':((ts.l1Coins||[]).concat(ts.l2Coins||[])).sort((a,b)=>b.probability-a.probability).slice(0,50),'rsTop':(ts.rsTop||[]).slice(0,60),'bullish':(data.results||[]).filter(r=>r.score>0).slice(0,100)}[tab]||(data.results||[]).slice(0,60);
   var body=$('sc-body');if(!body)return;
   if(!coins.length){body.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--muted);font-size:11px;padding:16px">Tidak ada setup untuk tab ini</td></tr>';return;}
+
+  // Special rendering for RS Top tab
+  if(tab==='rsTop'){
+    if(!coins.length){body.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:20px;font-size:11px">Tidak ada data RS. Pastikan BTC ada di scanner. Scan ulang.</td></tr>';return;}
+    body.innerHTML=coins.map((c,i)=>{
+      var chg=+(c.change24h||0),up=chg>=0;
+      var rs=c.rs||{},rsScore=+(rs.score||0);
+      var rs24=+(rs.rs24||0),rs7d=rs.rs7d!=null?+(rs.rs7d):null;
+      var rsC=rsScore>10?'var(--g)':rsScore>3?'#66ff99':rsScore>0?'var(--muted)':rsScore<-10?'var(--red)':'#ff9966';
+      var rsBar=Math.min(100,Math.max(0,(rsScore+30)/60*100));
+      var rsLabel=rs.label||'—';
+      var vol=c.volume24h||0,volT=vol>=1e9?'$'+(vol/1e9).toFixed(1)+'B':vol>=1e6?'$'+(vol/1e6).toFixed(0)+'M':'$'+(vol/1e3).toFixed(0)+'K';
+      var sEmoji=c.sectorEmoji||'🪙';
+      var realBadge=c.hasRealData?'<span style="font-size:7px;background:rgba(0,255,136,.1);color:var(--g);padding:0 3px;border-radius:2px">REAL</span>':'';
+      var frBadge=c.fundingRate?'<span style="font-size:8px;color:'+(c.fundingRate.bullish?'var(--g)':c.fundingRate.bearish?'var(--red)':'var(--dim)')+'"> FR'+(c.fundingRate.rate>=0?'+':'')+c.fundingRate.pct+'%</span>':'';
+      return '<tr style="cursor:pointer;background:rgba(0,255,136,0.02);border-bottom:1px solid rgba(0,255,136,0.06)" onclick="clickCoin(\''+c.symbol+'\')">'
+        +'<td><span class="rkb '+(i<5?'top':'')+'">'+c.rank+'</span></td>'
+        +mkCoinCell(c)
+        +'<td style="font-family:var(--m);font-size:11px">$'+fP(c.price)+'</td>'
+        +'<td class="'+(up?'chgu':'chgd')+'">'+(up?'+':'')+chg.toFixed(2)+'%</td>'
+        +'<td style="color:var(--blue)">'+volT+'</td>'
+        +'<td colspan="2">'
+          +'<div style="font-size:11px;font-weight:800;color:'+rsC+'">'+rsLabel+'</div>'
+          +'<div style="display:flex;align-items:center;gap:4px;margin-top:2px">'
+          +'<div style="width:50px;height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden"><div style="height:4px;background:'+rsC+';width:'+rsBar+'%"></div></div>'
+          +'<span style="font-family:var(--m);font-size:10px;font-weight:700;color:'+rsC+'">'+(rsScore>=0?'+':'')+rsScore+'%</span>'
+          +'</div></td>'
+        +'<td style="font-size:9px"><div style="color:var(--dim)">24h vs BTC: <span style="color:'+(rs24>=0?'var(--g)':'var(--red)')+';font-weight:700">'+(rs24>=0?'+':'')+rs24+'%</span></div>'+(rs7d!=null?'<div style="color:var(--dim)">7d vs BTC: <span style="color:'+(rs7d>=0?'var(--g)':'var(--red)')+';font-weight:700">'+(rs7d>=0?'+':'')+rs7d+'%</span></div>':'')+'</td>'
+        +'<td colspan="2" style="font-size:9px;color:var(--muted)">'+(c.signals||[]).slice(0,2).map(s=>'<div>• '+s+'</div>').join('')+frBadge+'</td>'
+        +'<td><span class="pp '+(c.probability>=65?'pp-good':'pp-watch')+'">'+c.probability+'%</span></td>'
+        +'</tr>';
+    }).join('');
+    return;
+  }
 
   // Special rendering for funding rate tab
   if(tab==='frExtreme'){
@@ -1139,7 +1224,7 @@ function renderTable(tab){
       var vol=c.volume24h||0,volT=vol>=1e9?'$'+(vol/1e9).toFixed(1)+'B':vol>=1e6?'$'+(vol/1e6).toFixed(0)+'M':'$'+(vol/1e3).toFixed(0)+'K';
       var oi=fr.oi||0,oiT=oi>=1e9?'$'+(oi/1e9).toFixed(1)+'B':oi>=1e6?'$'+(oi/1e6).toFixed(0)+'M':'—';
       var sEmoji=c.sectorEmoji||'🪙';
-      return '<tr style="cursor:pointer;background:'+(isSqueeze?'rgba(0,255,136,.03)':isOverheat?'rgba(255,68,100,.03)':'transparent')+';border-bottom:1px solid rgba(255,255,255,.04)" onclick="clickCoin(\''+c.symbol+'\')"><td><span class="rkb '+(i<5?'top':'')+'">'+c.rank+'</span></td><td><div style="font-weight:900;font-family:var(--m)">'+sEmoji+' '+c.symbol+'</div><div style="font-size:9px;color:var(--dim)">'+c.name+'</div></td><td style="font-family:var(--m);font-size:11px">$'+fP(c.price)+'</td><td class="'+(up?'chgu':'chgd')+'">'+(up?'+':'')+chg.toFixed(2)+'%</td><td style="color:var(--blue)">'+volT+'</td><td colspan="2"><div style="font-size:11px;font-weight:800;color:'+frC+'">'+frSig+'</div><div style="font-family:var(--m);font-size:10px;margin-top:1px"><span style="color:'+frC+'">'+(frVal>=0?'+':'')+frPct+'%</span> <span style="color:var(--dim);font-size:9px">per 8h</span></div></td><td style="font-size:9px;color:var(--muted)">OI: '+oiT+'</td><td colspan="2" style="font-size:9px;color:var(--muted)">'+(isSqueeze?'<span style="color:var(--g)">Short terlalu banyak — squeeze reversal mungkin terjadi</span>':isOverheat?'<span style="color:var(--red)">Long terlalu banyak — risiko koreksi tajam</span>':'Funding rate normal')+'</td><td><span class="pp '+(c.probability>=65?'pp-good':'pp-watch')+'">'+c.probability+'%</span></td></tr>';
+      return '<tr style="cursor:pointer;background:'+(isSqueeze?'rgba(0,255,136,.03)':isOverheat?'rgba(255,68,100,.03)':'transparent')+';border-bottom:1px solid rgba(255,255,255,.04)" onclick="clickCoin(\''+c.symbol+'\')"><td><span class="rkb '+(i<5?'top':'')+'">'+c.rank+'</span></td>'+mkCoinCell(c)+'<td style="font-family:var(--m);font-size:11px">$'+fP(c.price)+'</td><td class="'+(up?'chgu':'chgd')+'">'+(up?'+':'')+chg.toFixed(2)+'%</td><td style="color:var(--blue)">'+volT+'</td><td colspan="2"><div style="font-size:11px;font-weight:800;color:'+frC+'">'+frSig+'</div><div style="font-family:var(--m);font-size:10px;margin-top:1px"><span style="color:'+frC+'">'+(frVal>=0?'+':'')+frPct+'%</span> <span style="color:var(--dim);font-size:9px">per 8h</span></div></td><td style="font-size:9px;color:var(--muted)">OI: '+oiT+'</td><td colspan="2" style="font-size:9px;color:var(--muted)">'+(isSqueeze?'<span style="color:var(--g)">Short terlalu banyak — squeeze reversal mungkin terjadi</span>':isOverheat?'<span style="color:var(--red)">Long terlalu banyak — risiko koreksi tajam</span>':'Funding rate normal')+'</td><td><span class="pp '+(c.probability>=65?'pp-good':'pp-watch')+'">'+c.probability+'%</span></td></tr>';
     }).join('');
     return;
   }
@@ -1155,7 +1240,7 @@ function renderTable(tab){
       var wCol=wScore>=14?'#00d4aa':wScore>=9?'#4af0ff':'#f0c040';
       var vol=c.volume24h||0,volT=vol>=1e9?'$'+(vol/1e9).toFixed(1)+'B':vol>=1e6?'$'+(vol/1e6).toFixed(0)+'M':'$'+(vol/1e3).toFixed(0)+'K';
       var pPos=c.pricePos||0.5,vR=c.mcap>0?(c.volume24h/c.mcap*100).toFixed(1):'—';
-      return '<tr style="cursor:pointer;background:rgba(0,212,170,0.03);border-bottom:1px solid rgba(0,212,170,0.08)" onclick="clickCoin(\''+c.symbol+'\')"><td><span class="rkb '+(i<5?'top':'')+'">'+c.rank+'</span></td><td><div style="font-weight:900;font-family:var(--m)">'+c.symbol+'</div><div style="font-size:9px;color:var(--dim)">'+c.name+'</div></td><td style="font-family:var(--m);font-size:11px">$'+fP(c.price)+'</td><td class="'+(up?'chgu':'chgd')+'">'+(up?'+':'')+chg.toFixed(2)+'%</td><td style="color:var(--blue)">'+volT+'</td><td style="font-size:9px;color:var(--dim)">Vol/MCap:<br><span style="color:'+wCol+';font-weight:700">'+vR+'%</span></td><td colspan="2"><div style="font-size:11px;font-weight:800;color:'+wCol+'">'+wLevel+'</div><div style="font-family:var(--m);font-size:10px;color:var(--txt);margin-top:1px">Score: '+wScore+'</div></td><td colspan="3" style="max-width:240px">'+wSigs.slice(0,3).map(s=>'<div style="font-size:9px;color:var(--muted);padding:1px 0;line-height:1.4">• '+s+'</div>').join('')+'</td><td><span class="pp '+(c.probability>=65?'pp-good':'pp-watch')+'">'+c.probability+'%</span></td></tr>';
+      return '<tr style="cursor:pointer;background:rgba(0,212,170,0.03);border-bottom:1px solid rgba(0,212,170,0.08)" onclick="clickCoin(\''+c.symbol+'\')"><td><span class="rkb '+(i<5?'top':'')+'">'+c.rank+'</span></td>'+mkCoinCell(c)+'<td style="font-family:var(--m);font-size:11px">$'+fP(c.price)+'</td><td class="'+(up?'chgu':'chgd')+'">'+(up?'+':'')+chg.toFixed(2)+'%</td><td style="color:var(--blue)">'+volT+'</td><td style="font-size:9px;color:var(--dim)">Vol/MCap:<br><span style="color:'+wCol+';font-weight:700">'+vR+'%</span></td><td colspan="2"><div style="font-size:11px;font-weight:800;color:'+wCol+'">'+wLevel+'</div><div style="font-family:var(--m);font-size:10px;color:var(--txt);margin-top:1px">Score: '+wScore+'</div></td><td colspan="3" style="max-width:240px">'+wSigs.slice(0,3).map(s=>'<div style="font-size:9px;color:var(--muted);padding:1px 0;line-height:1.4">• '+s+'</div>').join('')+'</td><td><span class="pp '+(c.probability>=65?'pp-good':'pp-watch')+'">'+c.probability+'%</span></td></tr>';
     }).join('');
     return;
   }
@@ -1168,19 +1253,30 @@ function renderTable(tab){
     var rowCls=c.taColor==='full-bull'?'ta-full-bull':c.taColor==='bull'?'ta-bull':c.taColor==='full-bear'?'ta-full-bear':c.taColor==='bear'?'ta-bear':'ta-neutral';
     var smc=c.smc||{},smcSig=typeof smc==='string'?smc:(smc.signal||'—');
     var smcColor=smcSig==='Bullish'?'var(--g)':smcSig==='Bearish'?'var(--red)':'var(--muted)';
-    var smcDet=smc.hasBOS?'BOS':smc.hasCHoCH?'CHoCH':smc.inBullOB?'Bull OB':smc.inBearOB?'Bear OB':smc.inBullFVG?'FVG ✓':smcSig;
+    var smcDet=smc.hasBOS?(smc.bosType?.includes('Bull')?'<span style="color:var(--g)">Bull BOS</span>':'<span style="color:var(--red)">Bear BOS</span>'):smc.hasCHoCH?'<span style="color:var(--amber)">CHoCH</span>':smc.inBullOB?'<span style="color:var(--g)">Bull OB</span>':smc.inBearOB?'<span style="color:var(--red)">Bear OB</span>':smc.inBullFVG?'<span style="color:var(--g)">FVG ✓</span>':'<span style="color:var(--dim)">'+smcSig+'</span>';
     var ew=c.elliottWave||{},ewW=typeof ew==='string'?ew:(ew.wave||'—');
-    var ewC=ewW.includes('Wave 3')||ewW.includes('Impulse')?'var(--g)':ewW.includes('Bear')?'var(--red)':'var(--muted)';
+    var ewC=ewW.includes('Wave 3')||ewW.includes('Impulse')?'var(--g)':ewW.includes('Bear')||ewW.includes('Selling')?'var(--red)':ewW.includes('Capitulation')||ewW.includes('C Complete')?'var(--amber)':'var(--muted)';
     var ewConf=typeof ew==='object'?(ew.confidence||0):0;
     var pats=c.chartPatterns||[];
-    var patH=pats.slice(0,1).map(p=>'<span style="font-size:10px;color:'+(p.signal==='bullish'?'var(--g)':p.signal==='bearish'?'var(--red)':'var(--muted)')+'">'+p.name+'</span>').join('')||'<span style="color:var(--dim)">—</span>';
+    var patH=pats.slice(0,1).map(p=>'<span style="font-size:10px;color:'+(p.signal==='bullish'?'var(--g)':p.signal==='bearish'?'var(--red)':'var(--amber)')+'">'+p.name+'</span>').join('')||'<span style="color:var(--dim)">—</span>';
     var ast=c.astrology||{};
-    var astT=typeof ast==='string'?ast.split('\n')[0]:((ast.moonEmoji||'')+' '+(ast.moonPhase||'—'));
+    var astT=typeof ast==='string'?ast.split('\n')[0]:((ast.moonEmoji||'🌙')+' '+(ast.moonPhase||'—'));
     var vol=c.volume24h||0,volT=vol>=1e9?'$'+(vol/1e9).toFixed(1)+'B':vol>=1e6?'$'+(vol/1e6).toFixed(0)+'M':vol>=1e3?'$'+(vol/1e3).toFixed(0)+'K':'—';
     var sigs=(c.signals||[]).slice(0,2);
-    var sEmoji2=c.sectorEmoji||'';
-    var frRow=c.fundingRate?('<span style="font-size:8px;padding:1px 5px;border-radius:3px;margin-left:3px;background:'+(c.fundingRate.bullish?'rgba(0,255,136,.1)':c.fundingRate.bearish?'rgba(255,68,100,.1)':'rgba(255,255,255,.05)')+';color:'+(c.fundingRate.bullish?'var(--g)':c.fundingRate.bearish?'var(--red)':'var(--dim)')+'">FR '+(c.fundingRate.rate>=0?'+':'')+c.fundingRate.pct+'%</span>'):'';
-    return '<tr class="'+rowCls+'" onclick="clickCoin(\''+c.symbol+'\')" style="cursor:pointer"><td><span class="rkb '+(i<5?'top':'')+'">'+( c.rank||i+1)+'</span></td><td><div style="font-weight:800;font-family:var(--m)">'+sEmoji2+' '+c.symbol+frRow+'</div></td><td style="font-family:var(--m);font-size:11px">'+fP(c.price)+'</td><td class="'+(up?'chgu':'chgd')+'">'+(up?'+':'')+chg.toFixed(2)+'%</td><td style="color:'+(vol>=100e6?'var(--blue)':vol>=50e6?'var(--g2)':'var(--txt)')+'">'+(vol>=100e6?volT+' 💥':volT)+'</td><td><span class="ta '+taCls+'">'+ta+'</span><div style="font-size:9px;color:var(--muted);margin-top:1px">'+(c.trend1h||'-')+'/'+(c.trend4h||'-')+'/'+(c.trend1d||'-')+'</div></td><td style="font-size:11px;color:'+smcColor+'">'+smcDet+'</td><td style="font-size:11px;color:'+ewC+'">'+ewW+(ewConf?' <span style="font-size:9px;color:var(--muted)">('+ewConf+'%)</span>':'')+'</td><td>'+patH+'</td><td style="font-size:10px;color:var(--purple)">'+astT+'</td><td><span class="pp '+pcls+'">'+prob+'%</span></td><td>'+sigs.map(sg=>'<div style="font-size:10px;color:var(--muted)">• '+sg+'</div>').join('')+'</td></tr>';
+    return '<tr class="'+rowCls+'" onclick="clickCoin(\''+c.symbol+'\')" style="cursor:pointer">'
+      +'<td><span class="rkb '+(i<5?'top':'')+'">'+( c.rank||i+1)+'</span></td>'
+      +mkCoinCell(c)
+      +'<td style="font-family:var(--m);font-size:11px">'+fP(c.price)+'</td>'
+      +'<td class="'+(up?'chgu':'chgd')+'">'+(up?'+':'')+chg.toFixed(2)+'%</td>'
+      +'<td style="color:'+(vol>=100e6?'var(--blue)':vol>=50e6?'var(--g2)':'var(--txt)')+'">'+(vol>=100e6?volT+' 💥':volT)+'</td>'
+      +'<td><span class="ta '+taCls+'">'+ta+'</span><div style="font-size:8px;color:var(--muted);margin-top:1px">'+(c.trend1h||'-')+'/'+(c.trend4h||'-')+'/'+(c.trend1d||'-')+'</div></td>'
+      +'<td style="font-size:11px">'+smcDet+'</td>'
+      +'<td style="font-size:10px;color:'+ewC+'">'+ewW+(ewConf?'<br><span style="font-size:9px;color:var(--dim)">('+ewConf+'%)</span>':'')+'</td>'
+      +'<td>'+patH+'</td>'
+      +'<td style="font-size:10px;color:var(--purple)">'+astT+'</td>'
+      +'<td><span class="pp '+pcls+'">'+prob+'%</span></td>'
+      +'<td>'+sigs.map(sg=>'<div style="font-size:9px;color:var(--muted);line-height:1.4">• '+sg+'</div>').join('')+'</td>'
+      +'</tr>';
   }).join('');
 }
 
