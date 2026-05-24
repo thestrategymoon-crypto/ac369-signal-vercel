@@ -1,15 +1,54 @@
-// api/scanner-full.js — v26 FINAL
-// CoinGecko p1(250) + p2(250) + MEXC(800) = ~550-600 koin unik
-// CC30 klines: real RSI+MACD+ICT untuk 30 koin utama
-// Bybit Funding Rate: semua perp contract
-// 13 tabs: Institusional, Full Send, High Prob, SMC, Wave3,
-//          Vol Breakout, Short/Sell, Whale, FR, AI, DeFi, Meme, L1/L2
-// Semua parallel, max 6s — aman Vercel 10s
-// TIDAK ADA CRASH dari data apapun
+// api/scanner-full.js — v27 SUPER ACCURATE
+// ════════════════════════════════════════════════════════
+// DATA SOURCES (semua parallel, max 6s):
+//   CoinGecko p1(250) + p2(250)  = 500 koin dengan mcap data
+//   MEXC (top 800 by volume)     = ~300 koin tambahan
+//   Bybit Funding Rate            = semua perp contract (real-time)
+//   Bybit 4H Klines (55 koin)    = meme/new coins tanpa CC
+//   CryptoCompare 4H (30 koin)   = major coins real RSI+MACD+ICT
+//   Total koin nyata klines: CC30 + BYBIT55 = ~85 koin AKURAT
+//   Total koin scan: ~550-600 koin unik
+//
+// ANALISIS:
+//   Probability: 11 faktor (TF, RSI, MACD, SMC, EW, Pattern, Onchain, FR, OC)
+//   Relative Strength vs BTC (24h + 7d weighted)
+//   Whale/Smart Money: 10 sinyal
+//   ICT/SMC: OB, FVG, BOS, CHoCH, Sweep, OTE, Wyckoff
+//   Elliott Wave: 16 skenario berbeda
+//   Chart Patterns: 20+ jenis
+//   Sector: 9 kategori
+//
+// 14 TABS:
+//   Institusional, Full Send, High Prob, SMC OB/FVG, Wave 3,
+//   Vol Breakout, Short/Sell, 🐋 Whale, 📊 Funding Rate,
+//   🏆 RS Top, 🤖 AI, 💰 DeFi, 🐸 Meme, ⛓️ L1/L2, 📋 Semua
+// ════════════════════════════════════════════════════════
 
 const CC30 = ['BTC','ETH','BNB','SOL','XRP','ADA','DOGE','AVAX','LINK','DOT',
               'NEAR','SUI','APT','ARB','OP','PEPE','TON','INJ','TIA','RENDER',
               'LTC','ATOM','AAVE','CRV','FIL','ALGO','HBAR','GRT','MKR','SAND'];
+
+// BYBIT_KLINES: koin populer TIDAK di CC30 — pakai Bybit 4H klines
+// Bybit gratis, tidak ada rate limit, update real-time
+// Total real klines: CC30(30) + BYBIT_KLINES(55) = 85 koin akurat
+const BYBIT_KLINES = [
+  // Meme / Trending
+  'HYPE','WIF','BONK','FLOKI','SHIB','NEIRO','BOME','DOGS','PNUT','ACT',
+  'POPCAT','MEW','MOODENG','TURBO','GOAT','CHILLGUY',
+  // DeFi
+  'JUP','PENDLE','GMX','DYDX','LDO','CRV','SUSHI','BLUR','1INCH','CAKE',
+  'AERO','VELO','RDNT','GNS','SNX',
+  // L1 / L2
+  'TRX','XLM','VET','ONE','KAVA','SEI','STRK','ZRO','MANTA','ENA',
+  // Infrastructure
+  'PYTH','JTO','ONDO','ORDI','W','RON','EIGEN','ZK',
+  // Gaming / AI
+  'PIXEL','MAGIC','BEAM','YGG','VIRTUAL','IO','OLAS','WLD','TAO',
+  // Payment / Other
+  'NOT','JASMY','LQTY','ETC',
+].filter(s=>!['BTC','ETH','BNB','SOL','XRP','ADA','DOGE','AVAX','LINK','DOT',
+              'NEAR','SUI','APT','ARB','OP','PEPE','TON','INJ','TIA','RENDER',
+              'LTC','ATOM','AAVE','CRV','FIL','ALGO','HBAR','GRT','MKR','SAND'].includes(s));
 
 const STABLES = new Set(['USDT','USDC','BUSD','DAI','TUSD','FDUSD','USDD','FRAX',
                          'GUSD','USDP','LUSD','PYUSD','SUSD','USDE','USDB','EURC']);
@@ -450,15 +489,20 @@ export default async function handler(req, res) {
 
   try {
     // ══════════════════════════════════════════════════════
-    // PARALLEL EXECUTION — 6 sumber data bersamaan
-    // CG p1(250) + CG p2(250) + MEXC(800) + Bybit FR + CC30 + FG
-    // Target: 500-600 koin, max 6s, aman Vercel 10s
+    // PARALLEL EXECUTION — 7 sumber data bersamaan
+    // CG p1+p2 + MEXC + BybitFR + BybitKlines(55) + CC30 + FG
+    // Real klines: CC30(30) + BYBIT_KLINES(55) = 85 koin akurat
+    // Target: 500-600 koin, max ~6s, aman Vercel 10s
     // ══════════════════════════════════════════════════════
-    const [cgR, cgR2, mxR, byFrR, ccR, fgR] = await Promise.allSettled([
+    const [cgR, cgR2, mxR, byFrR, byKlR, ccR, fgR] = await Promise.allSettled([
       sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h,7d', 5500),
       sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=250&page=2&sparkline=false&price_change_percentage=24h,7d', 5500),
       sf('https://api.mexc.com/api/v3/ticker/24hr', 5500),
       sf('https://api.bybit.com/v5/market/tickers?category=linear', 4500),
+      // Bybit 4H klines untuk 55 koin extra (gratis, no rate limit)
+      Promise.allSettled(BYBIT_KLINES.map(s=>sf(
+        `https://api.bybit.com/v5/market/kline?category=linear&symbol=${s}USDT&interval=240&limit=60`,3500)
+      )),
       Promise.allSettled(CC30.map(s=>sf(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${s}&tsym=USD&limit=42&aggregate=4&e=CCCAGG`,4500))),
       sf('https://api.alternative.me/fng/?limit=1&format=json', 3000),
     ]);
@@ -531,7 +575,7 @@ export default async function handler(req, res) {
     for(const c of mxList){if(!seen.has(c.sym)){seen.add(c.sym);pool.push(c);}}
 
     if(pool.length===0){
-      return res.status(200).json({ok:false,error:'Semua data source tidak merespons. Coba refresh dalam 30 detik.',ts:Date.now(),totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[],aiCoins:[],defiCoins:[],memeCoins:[],l1Coins:[],l2Coins:[],frExtreme:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
+      return res.status(200).json({ok:false,error:'Semua data source tidak merespons. Coba refresh dalam 30 detik.',ts:Date.now(),totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[],aiCoins:[],defiCoins:[],memeCoins:[],l1Coins:[],l2Coins:[],frExtreme:[],rsTop:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
     }
 
     // ── Parse CryptoCompare klines (30 coins) ────────────
@@ -550,7 +594,32 @@ export default async function handler(req, res) {
         const e9=calcEMA(cls,9), e21=calcEMA(cls,21), e50=calcEMA(cls,Math.min(50,cls.length-1));
         const macd=calcMACD(cls);
         const smc=smcFull(K, cls[cls.length-1]);
-        kMap[CC30[i]]={rsi,e9,e21,e50,macd,K,cls,smc,ok:true};
+        kMap[CC30[i]]={rsi,e9,e21,e50,macd,K,cls,smc,ok:true,rsiSrc:'cc'};
+      }catch{}
+    }
+
+    // ── Parse Bybit klines (55 extra coins) ──────────────
+    // Format Bybit: list=[ts,open,high,low,close,vol,turnover] strings, NEWEST FIRST
+    let bybitRSICount=0;
+    for(let i=0;i<BYBIT_KLINES.length;i++){
+      try{
+        const r=byKlR.value?.[i];
+        if(r?.status!=='fulfilled'||r.value?.retCode!==0) continue;
+        const raw=A(r.value?.result?.list);
+        if(raw.length<16) continue;
+        // Reverse: Bybit returns newest first, need oldest first for RSI
+        const K=raw.slice().reverse().map(d=>({
+          t:N(d[0]),o:N(d[1]),h:N(d[2]),l:N(d[3]),c:N(d[4]),
+          v:N(d[6]), // turnover in USD (not coin volume)
+        })).filter(d=>d.c>0&&d.c<1e12&&d.h>=d.l);
+        if(K.length<16) continue;
+        const cls=K.map(k=>k.c);
+        const rsi=calcRSI(cls); if(rsi===null) continue;
+        const e9=calcEMA(cls,9),e21=calcEMA(cls,21),e50=calcEMA(cls,Math.min(50,cls.length-1));
+        const macd=calcMACD(cls);
+        const smc=smcFull(K,cls[cls.length-1]);
+        kMap[BYBIT_KLINES[i]]={rsi,e9,e21,e50,macd,K,cls,smc,ok:true,rsiSrc:'bybit'};
+        bybitRSICount++;
       }catch{}
     }
 
@@ -792,6 +861,27 @@ export default async function handler(req, res) {
     results.sort((a,b)=>b.probability-a.probability||b.score-a.score);
     results.forEach((r,i)=>r.rank=i+1);
 
+    // ── RELATIVE STRENGTH vs BTC ───────────────────────────
+    // RS = performa koin vs BTC dalam periode yang sama
+    // RS > 0: outperform BTC → lebih kuat dari market leader
+    // RS < 0: underperform BTC → lebih lemah dari market leader
+    const btcR=results.find(r=>r.symbol==='BTC');
+    const btcCh24=btcR?.change24h||0;
+    const btcCh7d=btcR?.change7d||0;
+    for(const r of results){
+      try{
+        const rs24=+(r.change24h-btcCh24).toFixed(2);
+        const rs7d=r.change7d!=null?+(r.change7d-btcCh7d).toFixed(2):null;
+        // Weighted RS: 7d lebih signifikan dari 24h
+        const rsScore=rs7d!=null?+(rs7d*0.6+rs24*0.4).toFixed(2):rs24;
+        const rsLabel=rsScore>15?'🚀 Strong Outperform':rsScore>5?'📈 Outperform':
+                      rsScore>0?'↗️ Mild Outperform':rsScore>-5?'↘️ Mild Underperform':
+                      rsScore>-15?'📉 Underperform':'💀 Strong Underperform';
+        r.rs={score:+rsScore.toFixed(2),rs24,rs7d,label:rsLabel,
+              bullish:rsScore>2,bearish:rsScore<-2};
+      }catch{r.rs=null;}
+    }
+
     // ── TAB FILTERS (v2 — lebih inklusif + akurat) ────────
     // Institusional: skor tinggi + volume significant
     const institutional =results.filter(r=>r.score>=14&&r.probability>=58&&r.volume24h>=3e6).slice(0,80);
@@ -840,7 +930,9 @@ export default async function handler(req, res) {
       return fb-fa;
     }).slice(0,50);
 
-    // Sector breakdown untuk analytics
+    // 🏆 Relative Strength Top (outperform BTC)
+    const rsTop=results.filter(r=>r.rs?.score>3&&r.probability>=48&&r.volume24h>=1e6)
+      .sort((a,b)=>b.rs.score-a.rs.score).slice(0,60);
     const sectorStats={};
     for(const r of results){
       if(!sectorStats[r.sector]) sectorStats[r.sector]={count:0,bullish:0,bearish:0,avgProb:0};
@@ -857,17 +949,19 @@ export default async function handler(req, res) {
     const mood=avgCh>3?'STRONG BULL':avgCh>1?'BULL':avgCh<-3?'STRONG BEAR':avgCh<-1?'BEAR':'NEUTRAL';
 
     return res.status(200).json({
-      ok:true,ts:Date.now(),elapsed:Date.now()-t0,version:'v26',
+      ok:true,ts:Date.now(),elapsed:Date.now()-t0,version:'v27',
       src:'cg:'+(cgList.length)+'+mx:'+mxList.length+' total:'+pool.length,
       fg,totalScanned:pool.length,totalQualified:results.length,
       rsiRealCount:Object.keys(kMap).length,
+      rsiRealCC:Object.values(kMap).filter(k=>k.rsiSrc==='cc').length,
+      rsiRealBybit:bybitRSICount,
       results,
-      topSetups:{institutional,fullSend,highProbBull,smcSetups,ewSetups,volumeBreakout,strongSell,whaleSetups,aiCoins,defiCoins,memeCoins,l1Coins,l2Coins,frExtreme},
-      marketOverview:{marketMood:mood,bullishCount:bullC,bearishCount:bearC,avgChange24h:avgCh,totalCoins:results.length,sectorStats,frCoverage:Object.keys(frMap).length},
+      topSetups:{institutional,fullSend,highProbBull,smcSetups,ewSetups,volumeBreakout,strongSell,whaleSetups,aiCoins,defiCoins,memeCoins,l1Coins,l2Coins,frExtreme,rsTop},
+      marketOverview:{marketMood:mood,bullishCount:bullC,bearishCount:bearC,avgChange24h:avgCh,totalCoins:results.length,sectorStats,frCoverage:Object.keys(frMap).length,btcChange24h:btcCh24,btcChange7d:btcCh7d},
       astroContext:astro,
     });
 
   }catch(e){
-    return res.status(200).json({ok:false,error:e.message,ts:Date.now(),elapsed:Date.now()-t0,version:'v26',totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[],aiCoins:[],defiCoins:[],memeCoins:[],l1Coins:[],l2Coins:[],frExtreme:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
+    return res.status(200).json({ok:false,error:e.message,ts:Date.now(),elapsed:Date.now()-t0,version:'v27',totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[],aiCoins:[],defiCoins:[],memeCoins:[],l1Coins:[],l2Coins:[],frExtreme:[],rsTop:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
   }
 }
