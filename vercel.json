@@ -1,22 +1,4 @@
 {
   "version": 2,
-  "functions": {
-    "api/*.js": {
-      "maxDuration": 30
-    }
-  },
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
-    },
-    {
-      "src": "/(.*\\.(js|css|ico|png|jpg|svg|json|txt|woff|woff2))",
-      "dest": "/public/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/public/index.html"
-    }
-  ]
+  "outputDirectory": "public"
 }
