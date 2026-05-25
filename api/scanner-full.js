@@ -575,7 +575,7 @@ export default async function handler(req, res) {
     for(const c of mxList){if(!seen.has(c.sym)){seen.add(c.sym);pool.push(c);}}
 
     if(pool.length===0){
-      return res.status(200).json({ok:false,error:'Semua data source tidak merespons. Coba refresh dalam 30 detik.',ts:Date.now(),totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[],aiCoins:[],defiCoins:[],memeCoins:[],l1Coins:[],l2Coins:[],frExtreme:[],rsTop:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
+      return res.status(200).json({ok:false,error:'Semua data source tidak merespons. Coba refresh dalam 30 detik.',ts:Date.now(),totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[],anomalySetups:[],aiCoins:[],defiCoins:[],memeCoins:[],l1Coins:[],l2Coins:[],frExtreme:[],rsTop:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
     }
 
     // ── Parse CryptoCompare klines (30 coins) ────────────
@@ -793,6 +793,86 @@ export default async function handler(req, res) {
         const wFinal=clamp(wScore,0,30);
         const wLevel=wFinal>=14?'🐋 STRONG WHALE':wFinal>=9?'🐳 WHALE DETECTED':wFinal>=6?'🔍 UNUSUAL ACTIVITY':'';
         const whaleData=wFinal>=6?{score:wFinal,level:wLevel,signals:wSigs.filter(s=>!s.startsWith('⚠️')).slice(0,4)}:null;
+
+        // ── ALTCOIN ANOMALY DETECTOR ──────────────────────
+        // Deteksi koin yang bergerak INDEPENDEN dari BTC
+        // = Smart Money masuk / Liquidity grab / Catalyst play
+        // Paling powerful: koin naik saat BTC turun = decoupling
+        let aScore=0;
+        const aSigs=[];
+        try{
+          // 1. Price Decoupling dari BTC (signal terkuat)
+          if(btcCh24<-1&&c24>3){
+            aScore+=10;aSigs.push('🚀 DECOUPLING: BTC '+btcCh24.toFixed(1)+'% tapi koin +'+c24.toFixed(1)+'% — bergerak independen');
+          }else if(btcCh24<0&&c24>5){
+            aScore+=8;aSigs.push('📈 Independent: BTC '+btcCh24.toFixed(1)+'% vs koin +'+c24.toFixed(1)+'%');
+          }else if(Math.abs(btcCh24)<1&&c24>5){
+            aScore+=7;aSigs.push('⚡ BTC sideways tapi koin +'+c24.toFixed(1)+'% — catalyst terdeteksi');
+          }else if(Math.abs(btcCh24)<1.5&&c24>3){
+            aScore+=4;aSigs.push('📊 BTC flat, koin +'+c24.toFixed(1)+'% — mild decoupling');
+          }
+          // 2. Weekly Decoupling
+          const c7_=c7d||0;
+          if(btcCh7d<-3&&c7_>3){
+            aScore+=8;aSigs.push('🔄 7d Decoupling: BTC '+btcCh7d.toFixed(0)+'% vs koin +'+c7_.toFixed(0)+'% — smart money akumulasi di bear week');
+          }else if((c7_-btcCh7d)>12){
+            aScore+=5;aSigs.push('📊 RS 7d: +'+(c7_-btcCh7d).toFixed(0)+'% vs BTC — strong relative momentum');
+          }
+          // 3. Volume Anomaly + Price tidak mengikuti BTC dump
+          if(mcap>0&&vol/mcap>0.15&&btcCh24<-1&&c24>-1){
+            aScore+=9;aSigs.push('👁 STEALTH: Vol '+(vol/mcap*100).toFixed(0)+'% MCap + koin tidak ikut BTC dump — institusi absorb selling');
+          }else if(mcap>0&&vol/mcap>0.12&&Math.abs(c24)<2&&Math.abs(btcCh24)<2){
+            aScore+=7;aSigs.push('👁 Vol Anomaly '+(vol/mcap*100).toFixed(0)+'% MCap + price flat — akumulasi tersembunyi');
+          }else if(mcap>0&&vol/mcap>0.08&&c24>0){
+            aScore+=4;aSigs.push('📊 Volume tinggi '+(vol/mcap*100).toFixed(0)+'% MCap — aktivitas di atas normal');
+          }
+          // 4. FR Squeeze independen dari BTC
+          if(frVal<-0.0003&&btcCh24<1){
+            aScore+=8;aSigs.push('💎 FR Squeeze '+( frVal*100).toFixed(4)+'% + BTC tidak pump — squeeze play independen dari BTC');
+          }else if(frVal<-0.0001&&c24>2&&btcCh24<1){
+            aScore+=5;aSigs.push('⚡ FR negatif + price up saat BTC flat — short squeeze lokal');
+          }
+          // 5. Klines-based signals (85 koin real data)
+          if(kd?.ok&&kd.K?.length>=15){
+            const K2=kd.K,n2=K2.length;
+            let obvR=0,obvF=0;
+            for(let i=Math.max(1,n2-15);i<n2;i++){
+              if(N(K2[i].c)>N(K2[i-1].c))obvR+=N(K2[i].v);
+              else if(N(K2[i].c)<N(K2[i-1].c))obvF+=N(K2[i].v);
+            }
+            if(obvR>obvF*1.5&&c7_<0&&btcCh24<0){
+              aScore+=9;aSigs.push('📊 OBV DIVERGENCE BULLISH: vol beli '+(obvR/1e6).toFixed(1)+'M dominan saat harga+BTC down — whale akumulasi diam-diam');
+            }else if(obvR>obvF*1.3&&btcCh24<0&&c24>0){
+              aScore+=6;aSigs.push('📊 OBV naik + decoupling dari BTC — tekanan beli independen terdeteksi');
+            }
+            // Displacement candle saat BTC flat
+            const lastK2=K2[n2-1];
+            const atrK=kd.atr||(h-l)*0.65;
+            if(lastK2&&atrK>0){
+              const cRange=N(lastK2.h)-N(lastK2.l);
+              if(cRange>atrK*2.5&&N(lastK2.c)>N(lastK2.o)&&Math.abs(btcCh24)<2){
+                aScore+=7;aSigs.push('🚀 DISPLACEMENT CANDLE '+(cRange/atrK).toFixed(1)+'x ATR + BTC flat — institutional entry besar');
+              }
+            }
+            // SSL Sweep + Recovery saat BTC tidak bergerak
+            if(smc?.sweep?.t?.includes('Bull')&&Math.abs(btcCh24)<2){
+              aScore+=9;aSigs.push('⚡ SSL SWEEP INDEPENDEN $'+smc.sweep.lv+' — liquidity grab murni tanpa trigger BTC');
+            }
+          }
+          // 6. Sector hot saat BTC sideways/down
+          const secPeers=results.filter(co=>co.sector===sector&&co.symbol!==sym+'USDT').map(co=>co.change24h);
+          if(secPeers.length>=2){
+            const secAvg=secPeers.reduce((s,v)=>s+v,0)/secPeers.length;
+            if(secAvg>3&&Math.abs(btcCh24)<1.5){
+              aScore+=5;aSigs.push('🔥 Sector '+sector+' avg +'+secAvg.toFixed(1)+'% saat BTC sideways — narrative rotation play');
+            }
+          }
+        }catch{}
+
+        const aFinal=clamp(aScore,0,40);
+        const aLevel=aFinal>=18?'🔮 STRONG ANOMALY':aFinal>=12?'⚡ ANOMALY DETECTED':aFinal>=7?'👁 MILD ANOMALY':'';
+        const anomalyData=aFinal>=7?{score:aFinal,level:aLevel,signals:aSigs.slice(0,3),decouplePct:+(c24-btcCh24).toFixed(2),btcRef:btcCh24}:null;
+
         // Label
         let taLabel='⚖️ SIDEWAYS',taColor='neutral';
         if(bTF===3){taLabel='🚀 FULL SEND';taColor='full-bull';}
@@ -849,6 +929,7 @@ export default async function handler(req, res) {
           chartPatterns:pats.length>0?pats:[{name:c24>=0?'↗️ Bullish Close':'↘️ Bearish Close',signal:c24>=0?'bullish':'bearish',winRate:75,desc:(c24>=0?'+':'')+c24.toFixed(1)+'% daily close.'}],
           probability:prob,score,
           onchainScore:oc.score,
+          anomaly:anomalyData,
           fundingRate:fd?{rate:frVal,pct:fd.pctFR,signal:fd.signal,bullish:fd.bullish,bearish:fd.bearish,oi:fd.oi}:null,
           whale:whaleData,
           signals:sigs.slice(0,6),
@@ -915,7 +996,11 @@ export default async function handler(req, res) {
     const strongSell     =results.filter(r=>r.probability<40||r.taColor==='full-bear').sort((a,b)=>a.probability-b.probability).slice(0,40);
 
     // 🐋 Whale / Smart Money
-    const whaleSetups    =results.filter(r=>r.whale&&r.whale.score>=6).sort((a,b)=>b.whale.score-a.whale.score).slice(0,60);
+    const whaleSetups=results.filter(r=>r.whale&&r.whale.score>=6).sort((a,b)=>b.whale.score-a.whale.score).slice(0,60);
+
+    // 🔮 ALTCOIN ANOMALY — koin decoupling dari BTC
+    const anomalySetups=results.filter(r=>r.anomaly&&r.anomaly.score>=7)
+      .sort((a,b)=>b.anomaly.score-a.anomaly.score).slice(0,60);
 
     // ── SECTOR TABS ───────────────────────────────────────
     const aiCoins  =results.filter(r=>r.sector==='AI'  ).sort((a,b)=>b.probability-a.probability).slice(0,50);
@@ -956,12 +1041,12 @@ export default async function handler(req, res) {
       rsiRealCC:Object.values(kMap).filter(k=>k.rsiSrc==='cc').length,
       rsiRealBybit:bybitRSICount,
       results,
-      topSetups:{institutional,fullSend,highProbBull,smcSetups,ewSetups,volumeBreakout,strongSell,whaleSetups,aiCoins,defiCoins,memeCoins,l1Coins,l2Coins,frExtreme,rsTop},
+      topSetups:{institutional,fullSend,highProbBull,smcSetups,ewSetups,volumeBreakout,strongSell,whaleSetups,anomalySetups,aiCoins,defiCoins,memeCoins,l1Coins,l2Coins,frExtreme,rsTop},
       marketOverview:{marketMood:mood,bullishCount:bullC,bearishCount:bearC,avgChange24h:avgCh,totalCoins:results.length,sectorStats,frCoverage:Object.keys(frMap).length,btcChange24h:btcCh24,btcChange7d:btcCh7d},
       astroContext:astro,
     });
 
   }catch(e){
-    return res.status(200).json({ok:false,error:e.message,ts:Date.now(),elapsed:Date.now()-t0,version:'v27',totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[],aiCoins:[],defiCoins:[],memeCoins:[],l1Coins:[],l2Coins:[],frExtreme:[],rsTop:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
+    return res.status(200).json({ok:false,error:e.message,ts:Date.now(),elapsed:Date.now()-t0,version:'v27',totalScanned:0,totalQualified:0,results:[],topSetups:{institutional:[],fullSend:[],highProbBull:[],smcSetups:[],ewSetups:[],volumeBreakout:[],strongSell:[],whaleSetups:[],anomalySetups:[],aiCoins:[],defiCoins:[],memeCoins:[],l1Coins:[],l2Coins:[],frExtreme:[],rsTop:[]},marketOverview:{marketMood:'UNKNOWN',bullishCount:0,bearishCount:0,avgChange24h:0}});
   }
 }
