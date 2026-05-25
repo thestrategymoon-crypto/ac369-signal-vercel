@@ -623,6 +623,12 @@ export default async function handler(req, res) {
       }catch{}
     }
 
+    // ── BTC baseline untuk Anomaly Detection ─────────────
+    // Harus ada SEBELUM analysis loop (dipakai di anomaly section)
+    const btcPoolCoin=pool.find(c=>c.sym==='BTC')||null;
+    const btcCh24=btcPoolCoin?.c24||0;
+    const btcCh7d=btcPoolCoin?.c7d||0;
+
     // ── Analyze all coins ─────────────────────────────────
     const results=[];
     for(const c of pool){
@@ -943,16 +949,15 @@ export default async function handler(req, res) {
     results.forEach((r,i)=>r.rank=i+1);
 
     // ── RELATIVE STRENGTH vs BTC ───────────────────────────
-    // RS = performa koin vs BTC dalam periode yang sama
-    // RS > 0: outperform BTC → lebih kuat dari market leader
-    // RS < 0: underperform BTC → lebih lemah dari market leader
-    const btcR=results.find(r=>r.symbol==='BTC');
-    const btcCh24=btcR?.change24h||0;
-    const btcCh7d=btcR?.change7d||0;
+    // btcCh24 and btcCh7d already defined above (before loop)
+    // Use btcR for additional BTC result data
+    const btcR=results.find(r=>r.symbol==='BTCUSDT'||r.symbol==='BTC');
+    const btcCh24RS=btcR?.change24h||btcCh24;
+    const btcCh7dRS=btcR?.change7d||btcCh7d;
     for(const r of results){
       try{
-        const rs24=+(r.change24h-btcCh24).toFixed(2);
-        const rs7d=r.change7d!=null?+(r.change7d-btcCh7d).toFixed(2):null;
+        const rs24=+(r.change24h-btcCh24RS).toFixed(2);
+        const rs7d=r.change7d!=null?+(r.change7d-btcCh7dRS).toFixed(2):null;
         // Weighted RS: 7d lebih signifikan dari 24h
         const rsScore=rs7d!=null?+(rs7d*0.6+rs24*0.4).toFixed(2):rs24;
         const rsLabel=rsScore>15?'🚀 Strong Outperform':rsScore>5?'📈 Outperform':
