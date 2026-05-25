@@ -1,27 +1,22 @@
 {
   "version": 2,
   "functions": {
-    "api/bias.js":         { "maxDuration": 10 },
-    "api/analytics.js":    { "maxDuration": 10 },
-    "api/macro.js":        { "maxDuration": 10 },
-    "api/onchain.js":      { "maxDuration": 10 },
-    "api/altcoins.js":     { "maxDuration": 10 },
-    "api/search.js":       { "maxDuration": 10 },
-    "api/scanner-full.js": { "maxDuration": 10 },
-    "api/intelligence.js": { "maxDuration": 10 },
-    "api/daytrade.js":     { "maxDuration": 10 },
-    "api/memes.js":        { "maxDuration": 10 },
-    "api/accumulation.js": { "maxDuration": 10 },
-    "api/data.js":         { "maxDuration": 10 }
+    "api/*.js": {
+      "maxDuration": 30
+    }
   },
-  "headers": [
+  "routes": [
     {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin",  "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type" }
-      ]
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/(.*\\.(js|css|ico|png|jpg|svg|json|txt|woff|woff2))",
+      "dest": "/public/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/public/index.html"
     }
   ]
 }
