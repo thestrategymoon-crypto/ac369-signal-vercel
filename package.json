@@ -1,3 +1,10 @@
-"engines": {
-  "node": "20.x"
+{
+  "name": "ac369-signal-vercel",
+  "version": "13.0.0",
+  "description": "AC369 FUSION - Institutional Crypto Analysis Platform",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": "20.x"
+  }
 }
