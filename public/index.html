@@ -335,7 +335,7 @@ async function apiFetch(url, timeoutMs, retries) {
 async function fetchBias() {
   setStep(1, 'active');
   try {
-    const d = await apiFetch('/api/bias', 10000, 1);
+    const d = await apiFetch('/api/bias', 8000, 0);
     setStep(1, 'done');
     const isBull=(d.bias||'').includes('BULL'),isBear=(d.bias||'').includes('BEAR');
     const bc=isBull?'var(--g)':isBear?'var(--red)':'var(--amber)';
@@ -386,7 +386,7 @@ async function fetchBias() {
 async function fetchAnalytics() {
   setStep(2, 'active');
   try {
-    const d = await apiFetch('/api/analytics', 20000, 1);
+    const d = await apiFetch('/api/analytics', 9000, 0);
     setStep(2, 'done');
     const btc = d.btc||{}, eth = d.eth||{};
     const bpx = btc.currentPrice||0, epx = eth.currentPrice||0;
@@ -422,7 +422,7 @@ async function fetchAnalytics() {
 async function fetchMacro() {
   setStep(3, 'active');
   try {
-    const d = await apiFetch('/api/macro', 18000, 1);
+    const d = await apiFetch('/api/macro', 9000, 0);
     setStep(3, 'done');
     const fg = d.fearGreed||{value:50,classification:'Neutral'};
     const fgv = fg.value||50;
@@ -470,7 +470,7 @@ async function fetchMacro() {
 async function fetchAltcoins() {
   setStep(4, 'active');
   try {
-    const d = await apiFetch('/api/altcoins', 30000, 1);
+    const d = await apiFetch('/api/altcoins', 9000, 0);
     setStep(4, 'done');
     _altData = d;
     const m = d.market||{}, fg = d.fg||50;
@@ -590,7 +590,7 @@ async function fetchOnchain() {
   setStep(5, 'active');
   H('onchain-body','<div class="ld"><span class="spin"></span> Memuat data onchain...</div>');
   try {
-    const d = await apiFetch('/api/onchain', 25000, 1);
+    const d = await apiFetch('/api/onchain', 9000, 0);
     setStep(5, 'done');
     renderOnchain(d);
     if(d.btcPrice) H('s-btc','$'+(d.btcPrice/1000).toFixed(1)+'K');
@@ -1258,14 +1258,27 @@ async function refreshAll() {
   var upd=$('upd');
   if(upd)upd.textContent='Loading...';
   for(var i=1;i<=5;i++) setStep(i,'wait');
+
+  // STAGGERED loading — hindari simultaneous CoinGecko hits
+  // Bias (Bybit = instant) → delay 200ms → Analytics + Macro parallel
+  // → delay 300ms → Altcoins + Onchain parallel
   try {
-    // Bias dulu (paling cepat, Bybit primary ~1.5s)
+    // Step 1: Bias dulu (Bybit primary, ~1s)
     await fetchBias();
-    // Analytics + Macro parallel
-    await Promise.allSettled([fetchAnalytics(), fetchMacro()]);
-    // Altcoins + Onchain parallel
-    await Promise.allSettled([fetchAltcoins(), fetchOnchain()]);
+    // Step 2+3: Analytics (CC/Bybit) + Macro (AltMe/Bybit) parallel
+    // Slight stagger untuk avoid rate limit
+    await Promise.allSettled([
+      fetchAnalytics(),
+      new Promise(r=>setTimeout(r,150)).then(()=>fetchMacro()),
+    ]);
+    // Step 4+5: Altcoins (CG) + Onchain (Bybit) parallel
+    // Stagger 300ms antara keduanya
+    await Promise.allSettled([
+      fetchAltcoins(),
+      new Promise(r=>setTimeout(r,300)).then(()=>fetchOnchain()),
+    ]);
   } catch(e) { console.warn('refreshAll:', e); }
+
   if(btn){btn.disabled=false;btn.textContent='⟳ Refresh';}
   var now=new Date();
   if(upd)upd.textContent=now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
