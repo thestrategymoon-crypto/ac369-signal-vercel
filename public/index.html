@@ -241,12 +241,12 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
   <div style="background:linear-gradient(135deg,rgba(0,212,170,.08),rgba(74,240,255,.05));border:1.5px solid rgba(0,212,170,.3);border-radius:14px;padding:14px 16px;margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <div>
-        <div style="font-size:13px;font-weight:800;color:var(--g)">AC369 TIS v2 — Trade Intelligence System</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:3px">Convergence v2 · ATR SL/TP · L/S Ratio · 5 Factors · 8-Item Checklist</div>
+        <div style="font-size:13px;font-weight:800;color:var(--g)">AC369 TIS v4.1 — Trade Intelligence System</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">150+ Koin · LONG+SHORT+ACCUM · ATR SL/TP · L/S Ratio · Sector Flow Interaktif</div>
       </div>
       <button id="tis-btn" onclick="runTIS()" style="background:linear-gradient(135deg,#00d4aa,#4af0ff);color:#0a0e1a;border:none;padding:10px 22px;border-radius:10px;font-family:var(--m);font-size:13px;font-weight:900;cursor:pointer;letter-spacing:.5px">⚡ Run Analysis</button>
     </div>
-    <div id="tis-status" style="font-size:10px;color:var(--dim);margin-top:8px">Auto-loading setelah data utama siap...</div>
+    <div id="tis-status" style="font-size:10px;color:var(--dim);margin-top:8px">⏳ Auto-loading dalam 8 detik setelah data utama siap...</div>
   </div>
   <div id="tis-content" style="display:none">
     <div class="tis-grid-2">
@@ -335,33 +335,50 @@ async function apiFetch(url, timeoutMs, retries) {
 async function fetchBias() {
   setStep(1, 'active');
   try {
-    const d = await apiFetch('/api/bias', 12000, 1);
+    const d = await apiFetch('/api/bias', 10000, 1);
     setStep(1, 'done');
-    const isBull = (d.bias||'').includes('BULL'), isBear = (d.bias||'').includes('BEAR');
-    const bc = isBull ? 'var(--g)' : isBear ? 'var(--red)' : 'var(--amber)';
-    var bar = $('bias-bar');
-    if (bar) bar.className = 'bias-bar ' + (isBull ? 'bb-bull' : isBear ? 'bb-bear' : 'bb-ne');
-    H('bias-label', '<span style="font-size:18px;font-weight:900;color:'+bc+'">'+d.biasLabel+'</span>');
-    H('bias-rec', '<div style="font-size:11px;color:var(--muted);margin-top:4px">'+d.recommendation+'</div>');
-    var fg = d.fgValue||50;
-    H('bias-fg', '<span style="font-family:var(--m);font-size:11px;color:'+(fg<=30?'var(--g)':fg>=70?'var(--red)':'var(--amber)')+'">F&G: '+fg+'</span>');
-    if (d.btcDom) H('bias-dom', '<span style="font-size:11px;color:var(--muted)">Dom: '+d.btcDom+'%</span>');
-    // NEW: L/S ratio display
-    if (d.btcLS) {
-      var lsC = d.btcLS < 0.8 ? 'var(--g)' : d.btcLS > 1.8 ? 'var(--red)' : 'var(--muted)';
-      H('bias-ls', '<span style="font-size:11px;color:'+lsC+'">L/S: '+d.btcLS+' ('+d.btcLongPct+'%L)</span>');
-      H('s-ls', '<span style="color:'+lsC+'">'+d.btcLS+'</span>');
+    const isBull=(d.bias||'').includes('BULL'),isBear=(d.bias||'').includes('BEAR');
+    const bc=isBull?'var(--g)':isBear?'var(--red)':'var(--amber)';
+    var bar=$('bias-bar');
+    if(bar)bar.className='bias-bar '+(isBull?'bb-bull':isBear?'bb-bear':'bb-ne');
+
+    // Score badge
+    var sc=d.totalScore||0;
+    var scBadge='<span style="font-size:12px;background:rgba(255,255,255,.06);padding:2px 8px;border-radius:5px;margin-left:8px;color:var(--dim)">Score: <strong style="color:'+bc+'">'+(sc>=0?'+':'')+sc+'</strong>/18</span>';
+    H('bias-label','<span style="font-size:18px;font-weight:900;color:'+bc+'">'+d.biasLabel+'</span>'+scBadge);
+    H('bias-rec','<div style="font-size:11px;color:var(--muted);margin-top:4px">'+d.recommendation+'</div>');
+
+    var fg=d.fgValue||d.fgVal||50;
+    var fgC=fg<=25?'var(--g)':fg<=45?'var(--amber)':fg>=75?'var(--red)':'var(--txt)';
+    H('bias-fg','<span style="font-family:var(--m);font-size:11px;color:'+fgC+'">F&G: '+fg+'</span>');
+
+    if(d.btcDom)H('bias-dom','<span style="font-size:11px;color:var(--muted)">Dom: '+d.btcDom+'%</span>');
+
+    if(d.btcLS!=null){
+      var lsC=d.btcLS<0.8?'var(--g)':d.btcLS>1.8?'var(--red)':'var(--muted)';
+      H('bias-ls','<span style="font-size:11px;color:'+lsC+'">L/S: '+d.btcLS+' ('+d.btcLongPct+'%L)</span>');
+      H('s-ls','<span style="color:'+lsC+'">'+d.btcLS+'</span>');
+    } else {
+      H('bias-ls','<span style="font-size:11px;color:var(--dim)">L/S: —</span>');
     }
-    H('bias-btc', '<span style="font-size:11px;color:var(--muted)">BTC: <span style="color:'+((d.btcTrend||'').includes('BULL')?'var(--g)':(d.btcTrend||'').includes('BEAR')?'var(--red)':'var(--amber)')+'">'+d.btcTrend+'</span></span>');
-    if (d.details?.length) H('bias-chips', d.details.slice(0,6).map(x=>'<span class="bchip">'+x+'</span>').join(''));
-    H('s-bias', '<span style="color:'+bc+'">'+(d.bias||'NEUTRAL').replace('_',' ')+'</span>');
-    H('s-fg', '<span style="color:'+(fg<=30?'var(--g)':fg>=70?'var(--red)':'var(--amber)')+'">'+fg+'</span>');
-    if (d.btcDom) H('s-dom', d.btcDom+'%');
-    if (d.astro?.moonEmoji) H('s-moon', d.astro.moonEmoji+'<span style="font-size:9px;color:var(--dim);margin-left:3px">'+(d.astro.moonPhase||'')+'</span>');
-    if (d.btcPrice) H('s-btc', '$'+(d.btcPrice/1000).toFixed(1)+'K');
+
+    var frPct=d.btcFR;
+    var frC=frPct<0?'var(--g)':frPct>0.04?'var(--red)':'var(--muted)';
+    H('bias-btc','<div style="display:flex;flex-direction:column;gap:2px">'
+      +'<span style="font-size:11px;color:var(--muted)">BTC: <span style="color:'+((d.btcTrend||'').includes('BULL')?'var(--g)':(d.btcTrend||'').includes('BEAR')?'var(--red)':'var(--amber)')+'">'+d.btcTrend+'</span></span>'
+      +(frPct!=null?'<span style="font-size:10px;color:'+frC+'">FR: '+(frPct>=0?'+':'')+frPct+'%</span>':'')
+      +'</div>');
+
+    if(A(d.details).length)H('bias-chips',d.details.slice(0,7).map(x=>'<span class="bchip">'+x+'</span>').join(''));
+    H('s-bias','<span style="color:'+bc+'">'+(d.bias||'NEUTRAL').replace('_',' ')+'</span>');
+    H('s-fg','<span style="color:'+fgC+'">'+fg+'</span>');
+    if(d.btcDom)H('s-dom',d.btcDom+'%');
+    if(d.astro?.moonEmoji)H('s-moon',d.astro.moonEmoji+'<span style="font-size:9px;color:var(--dim);margin-left:3px">'+(d.astro.moonPhase||'')+'</span>');
+    if(d.btcPrice)H('s-btc','$'+(d.btcPrice/1000).toFixed(1)+'K');
+    if(d.btcLS!=null)H('s-ls','<span style="color:'+lsC+'">'+d.btcLS+'</span>');
   } catch(e) {
-    setStep(1, 'err');
-    H('bias-label', '<span style="color:var(--red);font-size:12px">❌ Bias Error: '+e.message+'</span>');
+    setStep(1,'err');
+    H('bias-label','<span style="color:var(--red);font-size:12px">❌ Bias Error: '+e.message+'</span>');
   }
 }
 
@@ -1242,14 +1259,16 @@ async function refreshAll() {
   if(upd)upd.textContent='Loading...';
   for(var i=1;i<=5;i++) setStep(i,'wait');
   try {
+    // Bias dulu (paling cepat, Bybit primary ~1.5s)
     await fetchBias();
+    // Analytics + Macro parallel
     await Promise.allSettled([fetchAnalytics(), fetchMacro()]);
-    await fetchAltcoins();
-    await fetchOnchain();
+    // Altcoins + Onchain parallel
+    await Promise.allSettled([fetchAltcoins(), fetchOnchain()]);
   } catch(e) { console.warn('refreshAll:', e); }
   if(btn){btn.disabled=false;btn.textContent='⟳ Refresh';}
-  var now = new Date();
-  if(upd) upd.textContent = now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+  var now=new Date();
+  if(upd)upd.textContent=now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
 }
 
 // ── INIT ───────────────────────────────────────────────────────
