@@ -298,6 +298,7 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
 <script>
 'use strict';
 var _intelData=null,_scanData=null,_altData=null,_tisData=null;
+function A(v){return Array.isArray(v)?v:[];}
 
 function $(id){return document.getElementById(id);}
 function H(id,html){var el=$(id);if(el)el.innerHTML=html;}
@@ -1249,7 +1250,6 @@ function tisMod6Check(d){
   el.innerHTML=h;
 }
 
-}
 
 // ── MAIN REFRESH ───────────────────────────────────────────────
 async function refreshAll() {
