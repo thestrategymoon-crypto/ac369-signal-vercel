@@ -52,13 +52,15 @@ export default async function handler(req,res){
         if(ma200>0){
           mvrv=+(btcP/ma200).toFixed(3);
           // MVRV Label — ACCURATE thresholds
-          if(mvrv<0.75){mvrvLabel='🟢🟢 CAPITULATION';mvrvColor='green';mvrvInterp='BTC sangat jauh di bawah 200MA. Zona bottom historis. Akumulasi agresif!';}
-          else if(mvrv<0.90){mvrvLabel='🟢 UNDERVALUED';mvrvColor='green';mvrvInterp='BTC di bawah 200MA. Historically STRONG buy zone. Akumulasi bertahap.';}
-          else if(mvrv<1.05){mvrvLabel='⚪ NEAR 200MA';mvrvColor='white';mvrvInterp='BTC mendekati 200MA ($'+ma200.toLocaleString()+'). Fair value zone. DCA valid.';}
-          else if(mvrv<1.3){mvrvLabel='🟡 FAIR VALUE+';mvrvColor='amber';mvrvInterp='Sedikit di atas 200MA. Pasar seimbang. Hati-hati FOMO.';}
-          else if(mvrv<1.8){mvrvLabel='🟠 OVERVALUED';mvrvColor='orange';mvrvInterp='Di atas 200MA. Profit taking bertahap. Sizing lebih kecil.';}
-          else if(mvrv<2.5){mvrvLabel='🔴 EXPENSIVE';mvrvColor='red';mvrvInterp='Signifikan di atas 200MA. Reduce exposure. Take profit.';}
-          else{mvrvLabel='🔴🔴 BUBBLE ZONE';mvrvColor='red';mvrvInterp='Jauh di atas normal. Exit plan aktif. Historically top zone.';}
+          // ACCURATE: mvrv < 1.0 = BTC BELOW 200MA = definitively UNDERVALUED
+          if(mvrv<0.7){mvrvLabel='🟢🟢 CAPITULATION';mvrvColor='green';mvrvInterp='BTC jauh di bawah 200MA ('+(((1-mvrv)*100).toFixed(0))+'% discount). Zona bottom historis. Akumulasi agresif!';}
+          else if(mvrv<0.85){mvrvLabel='🟢🟢 UNDERVALUED';mvrvColor='green';mvrvInterp='BTC signifikan di bawah 200MA. STRONG buy zone. Historically sangat profitable.';}
+          else if(mvrv<1.0){mvrvLabel='🟢 BELOW 200MA';mvrvColor='green';mvrvInterp='BTC di bawah 200MA ($'+ma200.toLocaleString()+'). Akumulasi zone. DCA valid.';}
+          else if(mvrv<1.1){mvrvLabel='⚪ AT 200MA';mvrvColor='amber';mvrvInterp='BTC di sekitar 200MA. Fair value. Pasar seimbang.';}
+          else if(mvrv<1.4){mvrvLabel='🟡 ABOVE 200MA';mvrvColor='amber';mvrvInterp='BTC di atas 200MA. Uptrend. Sizing normal, hindari FOMO.';}
+          else if(mvrv<2.0){mvrvLabel='🟠 OVERVALUED';mvrvColor='orange';mvrvInterp='Signifikan di atas 200MA. Profit taking bertahap. Kurangi exposure.';}
+          else if(mvrv<2.8){mvrvLabel='🔴 EXPENSIVE';mvrvColor='red';mvrvInterp='Jauh di atas 200MA. Reduce exposure. Take profit agresif.';}
+          else{mvrvLabel='🔴🔴 BUBBLE ZONE';mvrvColor='red';mvrvInterp='Extreme premium vs 200MA. Historical top zone. Exit plan aktif.';}
 
           // NUPL = (Price - Realized Price proxy) / Price
           // Realized Price proxy ≈ 200-day MA
@@ -111,9 +113,15 @@ export default async function handler(req,res){
       const okxLS=R4.value;
       // OKX: {data:[{longRatio:"0.5102", shortRatio:"0.4898",...}]}
       const row=A(okxLS?.data)[0];
-      if(row&&row.longRatio!=null){
-        longPct=+(N(row.longRatio)*100).toFixed(2);
-        shortPct=+(100-longPct).toFixed(2);
+      if(row){
+        // OKX returns longRatio as decimal (e.g. 0.51) or percentage (51)
+        const lr=N(row.longRatio)||N(row.longAccountRatio)||N(row.buyRatio)||0;
+        const sr=N(row.shortRatio)||N(row.shortAccountRatio)||N(row.sellRatio)||0;
+        // Detect if it's decimal (0-1) or percentage (0-100)
+        const rawL=lr>1?lr:lr*100; // if >1, already percentage
+        if(rawL>0&&rawL<100){
+          longPct=+rawL.toFixed(2);
+          shortPct=+(100-longPct).toFixed(2);
         lsRatio=shortPct>0?+(longPct/shortPct).toFixed(3):null;
         if(lsRatio){lsSig=lsRatio<0.8?'🚀 Shorts dominan — squeeze potential besar':lsRatio<1.1?'⚖️ Balanced — tidak ada extreme':lsRatio<1.8?'↗️ Slight Long — aman':lsRatio<2.5?'⚠️ Long Heavy — hati-hati koreksi':'🚨 Extreme Long — risk koreksi tinggi';}
       }
