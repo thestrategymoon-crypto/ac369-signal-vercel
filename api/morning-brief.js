@@ -114,32 +114,103 @@ export default async function handler(req,res){
         const rs=+(c24-btcC).toFixed(2);
         const sec=getSec(sym);
 
-        // Signal detection
+        // Signal detection — UPGRADED v10 SMART
         let sig='⚖️ SIDEWAYS',sc='#7a8fa8',dir='WAIT',prob=50,desc='RSI '+rsi.toFixed(0)+'·'+c24.toFixed(1)+'%';
         try{
-          if(rsi<28&&c24>0&&fr<-0.0003&&(macd?.xUp||macd?.bull)&&vol>1e6){sig='🚀 ABOUT TO FLY';sc='#00ffd0';dir='LONG';prob=86;desc='RSI '+rsi.toFixed(0)+' oversold · FR '+fp.toFixed(4)+'% squeeze · MACD · discount zone';}
-          else if(rsi<22&&c24>0.5&&pip<35){sig='💎 CAPITULATION';sc='#00ff88';dir='LONG';prob=84;desc='RSI '+rsi.toFixed(0)+' EXTREME oversold · reversal +'+c24.toFixed(1)+'% · bottom zone';}
-          else if(rsi<40&&c24>0&&ic&&vol>500000){sig='🤫 ACCUMULATION';sc='#4af0ff';dir='LONG';prob=80;desc='RSI '+rsi.toFixed(0)+' oversold · coiling · SM masuk diam-diam';}
-          else if(ic&&rsi>=38&&rsi<=62&&Math.abs(c24)<2.5&&vol>500000){sig='⚡ COILING';sc='#f0c040';dir='WATCH';prob=71;desc='ATR menyempit'+(ap?(' '+ap+'%'):'')+' · breakout imminent';}
-          else if(btcC<-1&&c24>2&&vol>2e6&&rs>5){sig='🔮 DECOUPLING';sc='#c084fc';dir='LONG';prob=76;desc='BTC '+btcC.toFixed(1)+'% tapi +'+c24.toFixed(1)+'% · catalyst detected!';}
-          else if(rsi<36&&c24>1.2&&pip>20){sig='🔄 OVERSOLD BOUNCE';sc='#88ff99';dir='LONG';prob=77;desc='RSI '+rsi.toFixed(0)+' oversold · reversal +'+c24.toFixed(1)+'%';}
-          else if(c24>5&&rsi>=45&&rsi<=70&&vol>5e6&&pip>55){sig='📈 BREAKOUT';sc='#00ffd0';dir='LONG';prob=78;desc='+'+c24.toFixed(1)+'% breakout · vol $'+(vol/1e6).toFixed(0)+'M · institutional';}
-          else if(c24>2&&rsi>=48&&rsi<=65&&rs>3&&vol>3e6){sig='📈 MOMENTUM';sc='#66ff99';dir='LONG';prob=70;desc='+'+c24.toFixed(1)+'% · RS BTC +'+rs+'%';}
-          else if(rsi>72&&fp>0.04&&pip>72){sig='🔴 SHORT ZONE';sc='#ff4466';dir='SHORT';prob=74;desc='RSI '+rsi.toFixed(0)+' overbought · FR +'+fp.toFixed(4)+'% overheated';}
-          else if(rsi>68&&pip>70&&oi>2e9){sig='⚠️ DISTRIBUTION';sc='#ff8800';dir='SHORT';prob=67;desc='RSI '+rsi.toFixed(0)+' · premium · OI $'+(oi/1e9).toFixed(1)+'B · SM jual';}
-          else if(c24<-5&&rsi<45){sig='📉 BEARISH';sc='#ff6688';dir='SHORT';prob=42;desc=c24.toFixed(1)+'% breakdown · avoid long';}
-          else if(rsi>=42&&rsi<=62&&c24>0.5){sig='↗️ MILD BULL';sc='#a0e040';dir='LONG';prob=64;desc='+'+c24.toFixed(1)+'% · RSI '+rsi.toFixed(0)+' healthy';}
+          // === HIGH-CONFIDENCE SIGNALS (≥80%) ===
+          // 🚀 ABOUT TO FLY: 5 faktor konfluens = setup terbaik
+          if(rsi<28&&c24>0&&fr<-0.0003&&(macd?.xUp||macd?.bull)&&vol>1e6&&pip<40){
+            sig='🚀 ABOUT TO FLY';sc='#00ffd0';dir='LONG';prob=87;
+            desc='5 konfluens: RSI '+rsi.toFixed(0)+' oversold · FR squeeze '+fp.toFixed(4)+'% · MACD golden · discount zone · vol+';}
+          // 💎 CAPITULATION: RSI extreme + reversal = bottom fishing
+          else if(rsi<22&&c24>0&&pip<28&&vol>300000){
+            sig='💎 CAPITULATION';sc='#00ff88';dir='LONG';prob=85;
+            desc='Extreme oversold RSI '+rsi.toFixed(0)+'·bottom '+pip.toFixed(0)+'% range·+'+c24.toFixed(1)+'% reversal·zona akumulasi terbaik';}
+          // 🐋 WHALE ACCUMULATION: OI naik + FR negatif + harga diam = whale diam-diam beli
+          else if(oi>3e9&&fr<-0.0004&&Math.abs(c24)<1.5&&rsi>=35&&rsi<=55&&vol>5e6){
+            sig='🐋 WHALE ACCUM';sc='#00d4ff';dir='LONG';prob=83;
+            desc='OI $'+(oi/1e9).toFixed(1)+'B naik · FR '+fp.toFixed(4)+'% negatif · harga konsolidasi · whale masuk!';}
+          // 🤫 ACCUMULATION: SM masuk diam-diam
+          else if(rsi<40&&c24>0&&ic&&vol>500000&&pip<48){
+            sig='🤫 ACCUMULATION';sc='#4af0ff';dir='LONG';prob=80;
+            desc='RSI '+rsi.toFixed(0)+' oversold · ATR coiling · price stagnant · SM building position';}
+          // === MEDIUM-CONFIDENCE SIGNALS (70-80%) ===
+          // 🔮 DECOUPLING: naik saat BTC turun = strength + catalyst
+          else if(btcC<-1&&c24>2&&vol>2e6&&rs>5){
+            sig='🔮 DECOUPLING';sc='#c084fc';dir='LONG';prob=78;
+            desc='BTC '+btcC.toFixed(1)+'% tapi coin +'+c24.toFixed(1)+'% · RS BTC +'+rs+'% · catalyst/narrative aktif';}
+          // 📈 BREAKOUT: harga + volume = institusional confirm
+          else if(c24>5&&rsi>=45&&rsi<=70&&vol>5e6&&pip>58){
+            sig='📈 BREAKOUT';sc='#00ffd0';dir='LONG';prob=79;
+            desc='+'+c24.toFixed(1)+'% vol $'+(vol/1e6).toFixed(0)+'M · struktur breakout · institutional entry';}
+          // ⚡ COILING: ATR menyempit = energy terkumpul
+          else if(ic&&rsi>=40&&rsi<=60&&Math.abs(c24)<2&&vol>300000){
+            sig='⚡ COILING';sc='#f0c040';dir='WATCH';prob=72;
+            desc='ATR menyempit'+(ap?(' '+ap+'%'):'')+' · range ketat · breakout imminent · wait konfirmasi';}
+          // 🔄 OVERSOLD BOUNCE: classic oversold reversal
+          else if(rsi<36&&c24>1&&pip>22&&rR){
+            sig='🔄 OVERSOLD BOUNCE';sc='#88ff99';dir='LONG';prob=77;
+            desc='RSI '+rsi.toFixed(0)+' (real) · reversal +'+c24.toFixed(1)+'% · demand zone · ATR: '+(ap||'est')+'%';}
+          // 📈 MOMENTUM: trend dengan RS positif
+          else if(c24>2.5&&rsi>=50&&rsi<=68&&rs>4&&vol>3e6){
+            sig='📈 MOMENTUM';sc='#66ff99';dir='LONG';prob=71;
+            desc='+'+c24.toFixed(1)+'% · RS BTC +'+rs+'% · momentum trend · RSI '+rsi.toFixed(0)+' healthy';}
+          // === SHORT SIGNALS ===
+          // 🔴 SHORT ZONE: overbought + funding overheated
+          else if(rsi>72&&fp>0.04&&pip>73&&rR){
+            sig='🔴 SHORT ZONE';sc='#ff4466';dir='SHORT';prob=75;
+            desc='RSI '+rsi.toFixed(0)+' (real) overbought · FR +'+fp.toFixed(4)+'% overheated · premium '+pip.toFixed(0)+'%';}
+          // ⚠️ DISTRIBUTION: OI tinggi + premium = SM jual
+          else if(rsi>68&&pip>70&&oi>3e9&&c24>0){
+            sig='⚠️ DISTRIBUTION';sc='#ff8800';dir='SHORT';prob=68;
+            desc='RSI '+rsi.toFixed(0)+' premium · OI $'+(oi/1e9).toFixed(1)+'B · Smart Money distribusi · potensi reversal';}
+          // 🪤 SM TRAP: spike tinggi langsung berbalik = bull trap
+          else if(pip>80&&c24<-1.5&&rsi>60&&vol>3e6){
+            sig='🪤 BULL TRAP';sc='#ff6644';dir='SHORT';prob=66;
+            desc='Spike ke '+pip.toFixed(0)+'% range lalu balik '+c24.toFixed(1)+'% · volume spike · kemungkinan SM trap';}
+          // === WEAK SIGNALS ===
+          else if(c24<-5&&rsi<45&&pip<35){sig='📉 BEARISH';sc='#ff6688';dir='SHORT';prob=43;desc=c24.toFixed(1)+'% daily · RSI '+rsi.toFixed(0)+' · avoid long · tunggu bottom konfirmasi';}
+          else if(rsi>=42&&rsi<=62&&c24>0.5){sig='↗️ MILD BULL';sc='#a0e040';dir='LONG';prob=65;desc='+'+c24.toFixed(1)+'% · RSI '+rsi.toFixed(0)+' healthy · ok tapi bukan setup terbaik';}
+          else if(rsi>=42&&rsi<=62&&c24<-0.5&&rs<-2){sig='↘️ LAGGING';sc='#ff8888';dir='WAIT';prob=40;desc=c24.toFixed(1)+'% · RS BTC '+rs+'% · lemah dibanding market · skip';}
         }catch{}
 
-        // Convergence 5-factor (safe)
+        // Convergence 5-factor WEIGHTED v10
         let f1=0,f2=0,f3=0,f4=0,f5=0;
-        try{f1=rsi<20?30:rsi<28?24:rsi<35?18:rsi<42?11:rsi<50?4:rsi>78?-18:rsi>72?-12:rsi>65?-5:2;if(macd?.xUp)f1+=14;else if(macd?.bull)f1+=7;else if(macd?.xDown)f1-=11;else if(macd?.bear)f1-=5;if(vb&&c24>0)f1+=7;if(ic&&rsi<55)f1+=5;f1=cl(f1,-28,42)}catch{}
-        try{f2=fr<-0.0008?20:fr<-0.0005?14:fr<-0.0003?9:fr<-0.0001?4:fr>0.0008?-14:fr>0.0005?-9:fr>0.0003?-4:0;f2=cl(f2,-20,25)}catch{}
-        try{f3=vol>500e6?8:vol>100e6?5:vol>20e6?3:vol>5e6?1:vol<100000?-4:0;f3+=c24>8?6:c24>3?3:c24>0?1:c24<-8?-6:c24<-3?-3:c24<0?-1:0;f3=cl(f3,-14,22)}catch{}
-        try{f4=rs>8?14:rs>3?9:rs>0?4:rs<-8?-9:rs<-3?-5:0;f4=cl(f4,-14,20)}catch{}
-        try{f5=oi>10e9&&fr<-0.0002?10:oi>5e9&&fr<0?6:oi>2e9?3:oi>1e9?1:0;f5=cl(f5,0,10)}catch{}
+        // F1: Technical (RSI+MACD+OBV) — weight 35%
+        try{
+          f1=rsi<15?35:rsi<22?30:rsi<28?24:rsi<35?18:rsi<42?10:rsi<50?3:rsi>82?-20:rsi>75?-14:rsi>68?-6:rsi>60?-2:0;
+          if(macd?.xUp)f1+=16;else if(macd?.bull)f1+=8;else if(macd?.xDown)f1-=13;else if(macd?.bear)f1-=6;
+          if(vb&&c24>0)f1+=8;if(ic&&rsi<55)f1+=6;
+          if(rR)f1=Math.round(f1*1.2); // boost jika real RSI
+          f1=cl(f1,-28,42);
+        }catch{}
+        // F2: Derivatives (FR+OI pressure) — weight 25%
+        try{
+          f2=fr<-0.001?22:fr<-0.0007?17:fr<-0.0004?11:fr<-0.0001?5:fr>0.001?-17:fr>0.0007?-11:fr>0.0004?-5:0;
+          // OI bonus: large OI + negative FR = whale squeeze setup
+          if(oi>5e9&&fr<-0.0003)f2+=8;else if(oi>2e9&&fr<-0.0001)f2+=4;
+          f2=cl(f2,-20,25);
+        }catch{}
+        // F3: Volume & Momentum — weight 20%
+        try{
+          f3=vol>1e9?9:vol>300e6?6:vol>50e6?3:vol>10e6?1:vol<100000?-5:0;
+          f3+=c24>10?7:c24>5?4:c24>2?2:c24>0?1:c24<-10?-7:c24<-5?-4:c24<-2?-2:c24<0?-1:0;
+          f3=cl(f3,-14,22);
+        }catch{}
+        // F4: Relative Strength vs BTC — weight 15%
+        try{
+          f4=rs>12?16:rs>6?11:rs>2?6:rs>0?3:rs<-12?-11:rs<-6?-7:rs<-2?-4:0;
+          f4=cl(f4,-14,20);
+        }catch{}
+        // F5: Institutional Flow (OI size + smart signals) — weight 5%
+        try{
+          f5=oi>20e9&&fr<-0.0002?12:oi>10e9&&fr<0?8:oi>5e9?4:oi>2e9?2:0;
+          // Bonus: decoupling from BTC = institutional narrative
+          if(btcC<-1&&c24>3)f5+=5;
+          f5=cl(f5,0,12);
+        }catch{}
         const cv=cl(Math.round(45+f1+f2+f3+f4+f5),0,100);
-        const lb=cv>=80?'🔥ELITE':cv>=70?'💎PRIME':cv>=60?'✅VALID':cv>=50?'🟡MOD':'⚪WEAK';
+        const lb=cv>=82?'🔥ELITE':cv>=72?'💎PRIME':cv>=62?'✅VALID':cv>=52?'🟡MOD':'⚪WEAK';
 
         // ATR SL/TP (safe)
         let sl,tp1,tp2,slP=2.5,tp1P=4.5,tp2P=8;
@@ -172,9 +243,99 @@ export default async function handler(req,res){
     else if(avg<-1.5&&bp<45){mct='🌧 MILD BEAR';mcc='amber';mcd='Mild bearish. Sizing 40-50%.';mcs='Small Sizing';mcr='REDUCED';}
     else if(os2>=20){mct='💎 MASS OVERSOLD';mcc='green';mcd=os2+' koin RSI<30 dari '+coins.length+'. DCA zone terbaik.';mcs='Counter-trend DCA';mcr='MODERATE-HIGH';}
 
-    // Sectors
+    // SMART MONEY FLOW MAP — SUPER ACCURATE v10
+    // Uses 6-factor composite scoring (bukan hanya avgCh24)
     const sdm={};
-    try{for(const[sn,sc3]of Object.entries(SECS)){try{const sc4=coins.filter(x=>sc3.includes(x.sym));if(!sc4.length)continue;const ac=+(sc4.reduce((s,x)=>s+x.c24,0)/sc4.length).toFixed(2);sdm[sn]={name:sn,avgCh24:ac,avgRSI:+(sc4.reduce((s,x)=>s+x.rsi,0)/sc4.length).toFixed(1),avgConv:+(sc4.reduce((s,x)=>s+x.conv.score,0)/sc4.length).toFixed(0),flowSig:ac>3?'↑↑ INFLOW':ac>1?'↑ INFLOW':ac<-3?'↓↓ OUTFLOW':ac<-1?'↓ OUTFLOW':'→ NEUTRAL',flowCol:ac>3?'green':ac>1?'lightgreen':ac<-3?'red':ac<-1?'orange':'gray',coinsCount:sc4.length,bullCoins:sc4.filter(x=>x.direction==='LONG').length,shortCoins:sc4.filter(x=>x.direction==='SHORT').length,coins:sc4.map(c=>({sym:c.sym,price:c.price,c24:c.c24,vol:c.vol,rsi:c.rsi,rsiReal:c.rsiReal,signal:c.signal,signalColor:c.signalColor,signalDesc:c.signalDesc,direction:c.direction,probability:c.probability,conv:c.conv.score,fr:c.fr,atrPct:c.atrPct,levels:c.levels,isCoiling:c.isCoiling,pip:c.pip,rs:c.rs}))};}catch{}}}catch{}
+    try{
+      for(const[sn,sc3]of Object.entries(SECS)){
+        try{
+          const sc4=coins.filter(x=>sc3.includes(x.sym));if(!sc4.length)continue;
+
+          // 1. VOLUME-WEIGHTED 24h change (bukan simple average)
+          // Koin dengan volume besar memiliki bobot lebih tinggi
+          const totalVol=sc4.reduce((s,x)=>s+x.vol,0)||1;
+          const volWtCh=sc4.reduce((s,x)=>s+x.c24*(x.vol/totalVol),0);
+          const ac=+volWtCh.toFixed(3); // lebih akurat dari simple avg
+
+          // 2. FR AGGREGATE — negatif = SM accumulating, positif = SM distributing
+          const byCoins=sc4.filter(x=>x.src==='by'); // hanya Bybit (ada FR data)
+          const frAvg=byCoins.length?+(byCoins.reduce((s,x)=>s+(x.fr||0),0)/byCoins.length).toFixed(5):0;
+          const frSignal=frAvg<-0.0005?'🟢 FR negatif kuat — SM accumulate':frAvg<-0.0002?'🟡 FR sedikit negatif':frAvg>0.0005?'🔴 FR overheated — hati-hati':frAvg>0.0002?'🟠 FR tinggi':'⚪ FR netral';
+
+          // 3. OI FLOW — total OI sektor (proxy institutional interest)
+          const totalOI=sc4.reduce((s,x)=>s+(byCoins.find(b=>b.sym===x.sym)?x.vol:0),0);
+          const oiHigh=byCoins.filter(x=>x.vol>5e9).length;
+
+          // 4. RELATIVE STRENGTH vs BTC
+          const rsAvg=+(sc4.reduce((s,x)=>s+x.rs,0)/sc4.length).toFixed(2);
+          const rsSignal=rsAvg>5?'↑↑ Outperform BTC kuat':rsAvg>2?'↑ Outperform BTC':rsAvg<-5?'↓↓ Underperform BTC kuat':rsAvg<-2?'↓ Underperform BTC':'→ Tracking BTC';
+
+          // 5. SIGNAL QUALITY — berapa banyak high-confidence setups
+          const eliteCoins=sc4.filter(x=>x.conv.score>=82).length;
+          const primeCoins=sc4.filter(x=>x.conv.score>=72&&x.conv.score<82).length;
+          const flyCoins=sc4.filter(x=>x.signal.includes('ABOUT TO FLY')||x.signal.includes('CAPITULATION')||x.signal.includes('WHALE')).length;
+          const shortCoins2=sc4.filter(x=>x.direction==='SHORT').length;
+          const coilingCoins=sc4.filter(x=>x.signal.includes('COILING')||x.signal.includes('ACCUMULATION')).length;
+
+          // 6. RSI PROFILE — berapa koin oversold vs overbought
+          const oversoldCoins=sc4.filter(x=>x.rsi<35).length;
+          const overboughtCoins=sc4.filter(x=>x.rsi>70).length;
+          const avgRSI=+(sc4.reduce((s,x)=>s+x.rsi,0)/sc4.length).toFixed(1);
+
+          // ── COMPOSITE SMART MONEY SCORE (0-100) ──────────────
+          // Combines all 6 factors into one actionable score
+          let smScore=50;
+          // Factor 1: Vol-weighted price change
+          smScore+=ac>5?15:ac>2?10:ac>0.5?5:ac<-5?-15:ac<-2?-10:ac<-0.5?-5:0;
+          // Factor 2: FR (contrarian — negative FR = bullish)
+          smScore+=frAvg<-0.0005?12:frAvg<-0.0002?7:frAvg<-0.0001?3:frAvg>0.0005?-12:frAvg>0.0002?-7:0;
+          // Factor 3: RS vs BTC
+          smScore+=rsAvg>5?8:rsAvg>2?5:rsAvg>0?2:rsAvg<-5?-8:rsAvg<-2?-5:0;
+          // Factor 4: Signal quality
+          smScore+=flyCoins*6+eliteCoins*4+primeCoins*2-shortCoins2*5;
+          // Factor 5: RSI profile (many oversold = accumulation zone)
+          smScore+=oversoldCoins>=3?8:oversoldCoins>=2?5:oversoldCoins>=1?2:0;
+          smScore-=overboughtCoins>=3?8:overboughtCoins>=2?4:0;
+          // Factor 6: Coiling (energy accumulating)
+          smScore+=coilingCoins*3;
+          smScore=Math.max(0,Math.min(100,Math.round(smScore)));
+
+          // ── SM FLOW SIGNAL (based on composite score, not just ch24) ──
+          let flowSig,flowCol,smType;
+          if(smScore>=80){flowSig='🔥 STRONG INFLOW';flowCol='green';smType='SM_BULL';}
+          else if(smScore>=65){flowSig='↑ INFLOW';flowCol='lightgreen';smType='BULL';}
+          else if(smScore>=55){flowSig='↗ MILD INFLOW';flowCol='#88cc88';smType='MILD_BULL';}
+          else if(smScore<=20){flowSig='💀 STRONG OUTFLOW';flowCol='red';smType='SM_BEAR';}
+          else if(smScore<=35){flowSig='↓ OUTFLOW';flowCol='orange';smType='BEAR';}
+          else if(smScore<=45){flowSig='↘ MILD OUTFLOW';flowCol='#cc8888';smType='MILD_BEAR';}
+          else{flowSig='→ NEUTRAL';flowCol='gray';smType='NEUTRAL';}
+
+          // Momentum label
+          const momentum=ac>3?'🚀 PUMPING':ac>1?'📈 RISING':ac<-3?'📉 DUMPING':ac<-1?'🌧 FALLING':frAvg<-0.0003?'🤫 STEALTH ACCUM':coilingCoins>=2?'⚡ COILING':'⚖️ FLAT';
+
+          // Best setup in this sector
+          const bestSetup=sc4.filter(x=>x.direction==='LONG').sort((a,b)=>b.conv.score-a.conv.score)[0]||null;
+          const bestShort=sc4.filter(x=>x.direction==='SHORT').sort((a,b)=>b.conv.score-a.conv.score)[0]||null;
+
+          sdm[sn]={
+            name:sn,
+            avgCh24:ac,        // vol-weighted (lebih akurat)
+            simpleAvgCh:+(sc4.reduce((s,x)=>s+x.c24,0)/sc4.length).toFixed(2), // simple avg untuk referensi
+            avgRSI,avgConv:+(sc4.reduce((s,x)=>s+x.conv.score,0)/sc4.length).toFixed(0),
+            flowSig,flowCol,smScore,smType,momentum,
+            frAvg:+frAvg.toFixed(5),frSignal,
+            rsAvg,rsSignal,
+            oversoldCoins,overboughtCoins,coilingCoins,
+            eliteCoins,primeCoins,flyCoins,shortCoins:shortCoins2,
+            bestSetup:bestSetup?{sym:bestSetup.sym,signal:bestSetup.signal,conv:bestSetup.conv.score,rsi:bestSetup.rsi,fr:bestSetup.fr,levels:bestSetup.levels}:null,
+            bestShort:bestShort?{sym:bestShort.sym,signal:bestShort.signal,conv:bestShort.conv.score,rsi:bestShort.rsi}:null,
+            coinsCount:sc4.length,
+            bullCoins:sc4.filter(x=>x.direction==='LONG').length,
+            coins:sc4.sort((a,b)=>b.conv.score-a.conv.score).map(c=>({sym:c.sym,price:c.price,c24:c.c24,vol:c.vol,rsi:c.rsi,rsiReal:c.rsiReal,signal:c.signal,signalColor:c.signalColor,signalDesc:c.signalDesc,direction:c.direction,probability:c.probability,conv:c.conv.score,fr:c.fr,atrPct:c.atrPct,levels:c.levels,isCoiling:c.isCoiling,pip:c.pip,rs:c.rs})),
+          };
+        }catch{}
+      }
+    }catch{}
 
     // Setups
     const mk=c=>{try{return{sym:c.sym,sector:c.sector,entry:c.price,sl:c.levels.sl,tp1:c.levels.tp1,tp2:c.levels.tp2,slPct:c.levels.slPct,tp1Pct:c.levels.tp1Pct,tp2Pct:c.levels.tp2Pct,rr:+(c.levels.tp1Pct/Math.max(c.levels.slPct,.1)).toFixed(1),conv:c.conv.score,rsi:c.rsi,rsiReal:c.rsiReal,fr:c.fr,atrPct:c.atrPct,signal:c.signal,reasons:[c.signalDesc]}}catch{return{sym:c.sym||'?',sector:'Other',entry:c.price||0,sl:0,tp1:0,tp2:0,slPct:2.5,tp1Pct:4.5,tp2Pct:8,rr:1.8,conv:c.conv?.score||50,rsi:c.rsi||50,rsiReal:false,fr:null,atrPct:null,signal:c.signal||'—',reasons:[]}}};
