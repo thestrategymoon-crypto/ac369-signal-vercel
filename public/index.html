@@ -1128,7 +1128,7 @@ function tisMod4Flow(d){
     var fsTxt=fs.includes('STRONG INFLOW')?'🔥IN':fs.includes('INFLOW')?'↑IN':fs.includes('STRONG OUTFLOW')?'💀OUT':fs.includes('OUTFLOW')?'↓OUT':fs.includes('↗')?'↗':fs.includes('↘')?'↘':'→';
     var fsColor=fs.includes('INFLOW')?'rgba(0,255,136,.12)':fs.includes('OUTFLOW')?'rgba(255,68,102,.12)':'rgba(255,255,255,.06)';
     h+='<div id="'+sKey+'_wrap" style="border-radius:8px;overflow:hidden;background:rgba(255,255,255,.015);border:1px solid '+borderCol+'">';
-    h+='<div onclick="tglSector(''+s.name+'')" id="'+sKey+'_hdr" style="display:flex;align-items:center;gap:4px;padding:6px 8px;cursor:pointer">';
+    h+='<div onclick="tglSector(\'+s.name+\'\')" id="'+sKey+'_hdr" style="display:flex;align-items:center;gap:4px;padding:6px 8px;cursor:pointer">';
     h+='<div style="width:82px;font-size:9px;font-weight:700;color:var(--txt);flex-shrink:0">'+s.name.substring(0,14)+'</div>';
     h+='<div style="flex:1;height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden"><div style="height:6px;background:'+col+';border-radius:3px;width:'+smSc+'%"></div></div>';
     h+='<div style="font-size:10px;font-weight:800;color:'+col+';width:28px;text-align:right;flex-shrink:0">'+smSc+'</div>';
@@ -1146,7 +1146,7 @@ function tisMod4Flow(d){
     if(hasInsight){
       h+='<div style="padding:0 8px 5px 90px;display:flex;gap:6px;flex-wrap:wrap">';
       if(s.momentum&&s.momentum!=='⚖️ FLAT')h+='<span style="font-size:7.5px;color:var(--muted)">'+s.momentum+'</span>';
-      if(s.frAvg&&Math.abs(s.frAvg)>0.0001)h+='<span style="font-size:7.5px;color:'+(s.frAvg<0?'var(--g)':'var(--amber)')+'">FR '+(s.frAvg>=0?'+':'')++(s.frAvg*100).toFixed(3)+'%</span>';
+      if(s.frAvg&&Math.abs(s.frAvg)>0.0001)h+='<span style="font-size:7.5px;color:'+(s.frAvg<0?'var(--g)':'var(--amber)')+'">FR '+(s.frAvg>=0?'+':'')+(s.frAvg*100).toFixed(3)+'%</span>';
       if(s.rsAvg&&Math.abs(s.rsAvg)>1.5)h+='<span style="font-size:7.5px;color:'+(s.rsAvg>0?'var(--g2)':'var(--red)')+'">RS '+(s.rsAvg>=0?'+':'')+s.rsAvg+'%</span>';
       if(s.bestSetup)h+='<span style="font-size:7.5px;color:var(--g)">Best: <strong>'+s.bestSetup.sym+'</strong> C'+s.bestSetup.conv+(s.bestSetup.fr!=null?' FR '+s.bestSetup.fr+'%':'')+'</span>';
       h+='</div>';
