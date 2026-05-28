@@ -21,15 +21,16 @@ export default async function handler(req,res){
     const N=(v,d=0)=>{const n=+v;return isNaN(n)||!isFinite(n)?d:n};
     const A=(v)=>Array.isArray(v)?v:[];
 
-    const[R0,R1,R2,R3,R4,R5,R6,R7]=await Promise.allSettled([
-      g('https://api.mexc.com/api/v3/ticker/24hr?symbol=BTCUSDT'),            // BTC price+change+HL
-      g('https://api.mexc.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=210'), // 200d klines
-      g('https://www.okx.com/api/v5/public/funding-rate?instId=BTC-USDT-SWAP'), // FR (OKX)
-      g('https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=BTC-USDT-SWAP'), // OI (OKX)
-      g('https://www.okx.com/api/v5/rubik/stat/contracts/long-short-account-ratio?ccy=BTC&period=1H'), // L/S (OKX)
+    const[R0,R1,R2,R3,R4,R5,R6,R7,R8]=await Promise.allSettled([
+      g('https://api.mexc.com/api/v3/ticker/24hr?symbol=BTCUSDT'),
+      g('https://api.mexc.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=210'),
+      g('https://www.okx.com/api/v5/public/funding-rate?instId=BTC-USDT-SWAP'),
+      g('https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=BTC-USDT-SWAP'),
+      g('https://www.okx.com/api/v5/rubik/stat/contracts/long-short-account-ratio?ccy=BTC&period=1H'),
       g('https://api.alternative.me/fng/?limit=1&format=json'),
       g('https://blockchain.info/stats?format=json',3000),
       g('https://mempool.space/api/v1/fees/recommended'),
+      g('https://api.coingecko.com/api/v3/global',3000), // BTC dominance real
     ]);
 
     // BTC PRICE
@@ -158,6 +159,17 @@ export default async function handler(req,res){
     bullBias=Math.max(5,Math.min(95,Math.round(bullBias/5)*5));
 
     const halvingBlock=1050000,blocksLeft=Math.max(0,halvingBlock-(blockH||895000)),daysLeft=Math.round(blocksLeft/144);
+    // CONFLUENCE SCORE — quantify how many signals align
+    let bullSignals=0,bearSignals=0;
+    if(fgVal<35)bullSignals++;else if(fgVal>65)bearSignals++;
+    if(btcFR<-0.0002)bullSignals++;else if(btcFR>0.0002)bearSignals++;
+    if(mvrv<1.0)bullSignals++;else if(mvrv>1.8)bearSignals++;
+    if(nuplProxy<0)bullSignals++;else if(nuplProxy>0.5)bearSignals++;
+    if(soprProxy<0.99)bullSignals++;else if(soprProxy>1.2)bearSignals++;
+    if(lsRatio!=null&&lsRatio<1)bullSignals++;else if(lsRatio!=null&&lsRatio>2)bearSignals++;
+    if(hashRate>900)bullSignals++; // ATH hashrate = miner confidence
+    const confluenceScore=Math.round((bullSignals/(bullSignals+bearSignals||1))*100);
+    const confluenceLabel=confluenceScore>=80?'🔥 STRONG BULL CONFLUENCE':confluenceScore>=60?'🟢 BULL CONFLUENCE':confluenceScore<=20?'🔴 BEAR CONFLUENCE':confluenceScore<=40?'🟠 MILD BEAR':'⚖️ NEUTRAL';
     const signalLabel=bullBias>=80?'🟢 STRONG BULLISH':bullBias>=65?'🟩 MILD BULLISH':bullBias>=50?'🔵 NEUTRAL-BULL':bullBias<=20?'🔴 STRONG BEARISH':bullBias<=35?'🟧 MILD BEARISH':'⚖️ NEUTRAL';
 
     const out={ok:true,version:'v29',ts:Date.now(),elapsed:Date.now()-t0,src:'mexc+okx+altme+bcinfo',
@@ -183,6 +195,7 @@ export default async function handler(req,res){
       },
       // KEY INSIGHT untuk trader
       keyInsight:mvrv<1&&nuplProxy<0?`🚨 RARE SIGNAL: BTC di bawah 200MA (MVRV=${mvrv}) + Holder merugi rata-rata (NUPL=${nuplProxy}). Historically ini zona BEST ACCUMULATION. Peluang langka.`:mvrv<1.1?`💎 BTC dekat/bawah 200MA ($${ma200.toLocaleString()}). Zona akumulasi institusional. Risk/reward sangat baik.`:`MVRV ${mvrv} - ${mvrvInterp}`,
+      confluenceScore,confluenceLabel,bullSignals,bearSignals,
       aiPrompt:`BTC: $${btcP>0?btcP.toLocaleString():'N/A'} | ${btcCh>=0?'+':''}${btcCh}% | 24H: $${btcL24.toLocaleString()}-$${btcH24.toLocaleString()} | F&G: ${fgVal}/100 (${fgLabel}) | FR: ${frPct}% | OI: $${(btcOI/1e9).toFixed(2)}B | L/S: ${longPct||'—'}%/${shortPct||'—'}% | MVRV: ${mvrv} (${mvrvLabel}) | NUPL: ${nuplProxy} (${nuplLabel}) | SOPR: ${soprProxy} | 200MA: $${ma200.toLocaleString()} | Hash: ${hashRate}EH/s`,
     };
     CACHE.d=out;CACHE.t=Date.now();
