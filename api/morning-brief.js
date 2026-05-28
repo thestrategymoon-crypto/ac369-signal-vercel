@@ -38,9 +38,9 @@ export default async function handler(req,res){
   const [R0,R1,R2,R3,R4,R5,R6]=await Promise.allSettled([
     get('https://api.bybit.com/v5/market/tickers?category=linear',2500),
     get('https://api.mexc.com/api/v3/ticker/24hr',2500),
-    get('https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=240&limit=50',2500),
-    get('https://api.bybit.com/v5/market/kline?category=linear&symbol=ETHUSDT&interval=240&limit=50',2500),
-    get('https://api.bybit.com/v5/market/kline?category=linear&symbol=SOLUSDT&interval=240&limit=50',2500),
+    get('https://api.mexc.com/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=50',2500),
+    get('https://api.mexc.com/api/v3/klines?symbol=ETHUSDT&interval=4h&limit=50',2500),
+    get('https://api.mexc.com/api/v3/klines?symbol=SOLUSDT&interval=4h&limit=50',2500),
     get('https://api.bybit.com/v5/market/account-ratio?category=linear&symbol=BTCUSDT&period=1h&limit=1',2500),
     get('https://api.alternative.me/fng/?limit=1&format=json',2500),
   ]);
@@ -58,9 +58,14 @@ export default async function handler(req,res){
     const km={};let realRSI=0;
     for(const[sym,kR]of[['BTC',R2],['ETH',R3],['SOL',R4]]){
       try{
-        if(N(kR.value?.retCode)!==0)continue;
-        const raw=A(kR.value?.result?.list);if(raw.length<16)continue;
-        const K=raw.slice().reverse().map(d=>({c:N(d[4]),h:N(d[2]),l:N(d[3]),v:N(d[6])})).filter(d=>d.c>0&&d.h>0&&d.l>0);
+        // Handle both MEXC (direct array) and Bybit (result.list) formats
+        let raw=[];
+        let needReverse=false;
+        if(Array.isArray(kR.value)){raw=A(kR.value);needReverse=false;} // MEXC: oldest first
+        else if(kR.value?.result?.list){raw=A(kR.value.result.list);needReverse=true;} // Bybit: newest first
+        if(raw.length<16)continue;
+        const sorted=needReverse?raw.slice().reverse():raw.slice();
+        const K=sorted.map(d=>({c:N(d[4]),h:N(d[2]),l:N(d[3]),v:N(d[6])})).filter(d=>d.c>0&&d.h>0&&d.l>0);
         if(K.length<16)continue;
         const cls=K.map(k=>k.c);
         const rsi=r14(cls);if(rsi===null)continue;
