@@ -618,7 +618,7 @@ function renderOnchain(d) {
     +(d.vol24hPct?'<div style="font-size:9px;color:var(--dim)">Range: '+d.vol24hPct+'%</div>':'')+'</div></div>';
   h+='<div style="background:rgba(0,0,0,.2);border-left:4px solid '+sigC+';border-radius:0 9px 9px 0;padding:10px 14px;margin-bottom:10px">'
     +'<div style="font-size:9px;color:var(--dim);letter-spacing:1.5px;margin-bottom:3px">OVERALL ONCHAIN SIGNAL</div>'
-    +'<div style="font-family:var(--m);font-size:16px;font-weight:900;color:'+sigC+'">'+(d.overallSignal||'⚖️ NEUTRAL')+' — '+bull+'% Bull</div>'
+    +'<div style="font-family:var(--m);font-size:16px;font-weight:900;color:'+sigC+'">'+(d.overallSignal||'⚖️ NEUTRAL')+'</div>'
     +'<div style="height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;margin-top:7px;display:flex">'
     +'<div style="height:6px;background:var(--g);border-radius:3px 0 0 3px;width:'+bull+'%;transition:width .8s"></div>'
     +'<div style="height:6px;background:var(--red);border-radius:0 3px 3px 0;width:'+bear+'%"></div></div></div>';
