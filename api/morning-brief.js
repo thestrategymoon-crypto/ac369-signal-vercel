@@ -106,7 +106,14 @@ export default async function handler(req,res){
         let rsi,rR=false;
         try{
           if(kd?.rsi){rsi=kd.rsi;rR=true}
-          else{let b=pip+c24*1.5;if(fr<-0.0005)b-=8;else if(fr>0.0005)b+=8;rsi=Math.round(cl(b,8,92))}
+          else{
+            // Better RSI estimate: price position + momentum + FR
+            let b=50+(pip-50)*0.45+c24*2.2;
+            if(fr<-0.0005)b-=6;else if(fr<-0.0002)b-=3;
+            else if(fr>0.0005)b+=6;else if(fr>0.0002)b+=3;
+            if(vol>50e6&&c24>0)b+=3;else if(vol>50e6&&c24<0)b-=3;
+            rsi=Math.round(cl(b,12,88));
+          }
         }catch{rsi=50}
         const macd=kd?.macd||null,ic=kd?.isCoiling||false,vb=kd?.vB||false;
         const atr=N(kd?.atr||0);
