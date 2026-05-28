@@ -124,6 +124,7 @@ export default async function handler(req,res){
           shortPct=+(100-longPct).toFixed(2);
         lsRatio=shortPct>0?+(longPct/shortPct).toFixed(3):null;
         if(lsRatio){lsSig=lsRatio<0.8?'🚀 Shorts dominan — squeeze potential besar':lsRatio<1.1?'⚖️ Balanced — tidak ada extreme':lsRatio<1.8?'↗️ Slight Long — aman':lsRatio<2.5?'⚠️ Long Heavy — hati-hati koreksi':'🚨 Extreme Long — risk koreksi tinggi';}
+        }
       }
     }catch{}
 
