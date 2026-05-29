@@ -957,9 +957,11 @@ function tisMod2BTC(d){
     +'<div><div style="font-family:var(--m);font-size:20px;font-weight:900;color:var(--g)">$'+fP(btc.price)+'</div>'+(btc.atrPct?'<div style="font-size:8px;color:var(--dim)">ATR: '+btc.atrPct+'% ('+btc.atr+')</div>':'')+'</div>'
     +'<div style="text-align:right"><div style="color:'+chC+';font-weight:700">'+(up?'+':'')+btc.ch24+'%</div><div style="font-size:9px;color:var(--dim)">24h</div></div></div>'
     +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;font-size:9px;margin-bottom:7px">'
-    +'<div style="background:rgba(255,255,255,.03);padding:4px;border-radius:4px;text-align:center"><div style="color:var(--dim)">4H RSI</div><div style="font-weight:700;color:'+rsiC+'">'+(btc.rsi!=null?btc.rsi:'—')+'</div></div>'
+    +'<div style="background:rgba(255,255,255,.03);padding:4px;border-radius:4px;text-align:center"><div style="color:var(--dim)">4H RSI</div><div style="font-weight:700;color:'+rsiC+'">'+(btc.rsi!=null?btc.rsi:'—')+'</div><div style="font-size:7px;color:'+rsiC+'">'+(!btc.rsiSlope||btc.rsiSlope==='—'?'':btc.rsiSlope.includes('fast')?'⚡'+btc.rsiSlope.split(' ')[0]:btc.rsiSlope.split(' ')[0])+'</div></div>'
     +'<div style="background:rgba(255,255,255,.03);padding:4px;border-radius:4px;text-align:center"><div style="color:var(--dim)">F&G</div><div style="font-weight:700;color:'+(btc.fg<30?'var(--g)':btc.fg>70?'var(--red)':'var(--amber)')+'">'+(btc.fg||'—')+'</div></div>'
     +'<div style="background:rgba(255,255,255,.03);padding:4px;border-radius:4px;text-align:center"><div style="color:var(--dim)">EMA200</div><div style="font-weight:700;color:'+(btc.aboveEma200?'var(--g)':'var(--red)')+'">'+(btc.aboveEma200?'✅ Above':'❌ Below')+'</div></div></div>'
+    // 1D RSI row (if available)
+    +(btc.d1rsi&&btc.d1rsi>0?'<div style="display:flex;gap:6px;margin-top:4px;font-size:8px;padding:0 2px"><span style="color:var(--dim)">1D RSI:</span><span style="font-weight:700;color:'+(btc.d1rsi<35?'var(--g)':btc.d1rsi>70?'var(--red)':'var(--amber)')+'">'+btc.d1rsi+'</span><span style="color:'+(btc.d1trend==='UP'?'var(--g)':'var(--red)')+'">'+btc.d1trend+'</span>'+(btc.d1rsi<35&&btc.rsi<38?'<span style="background:rgba(255,215,0,.2);color:#ffd700;padding:1px 5px;border-radius:3px;margin-left:4px">🔥 MTF CONFIRMED</span>':'')+'</div>':'')
     +lsHtml
     +'<div style="font-size:9px;margin-top:5px">'
     +(gp.resistance?'<div style="display:flex;justify-content:space-between;padding:2px 4px;background:rgba(255,68,102,.06);border-radius:3px;margin-bottom:2px"><span style="color:var(--red)">Resistance</span><span style="font-family:var(--m);color:var(--red)">$'+fP(gp.resistance)+'</span></div>':'')
@@ -967,6 +969,10 @@ function tisMod2BTC(d){
     +(gp.support?'<div style="display:flex;justify-content:space-between;padding:2px 4px;background:rgba(0,255,136,.06);border-radius:3px"><span style="color:var(--g)">Support</span><span style="font-family:var(--m);color:var(--g)">$'+fP(gp.support)+'</span></div>':'')
     +'</div>'
     +'<div style="margin-top:5px;font-size:9px"><span style="color:var(--dim)">MACD: </span><span style="color:'+(macd.xUp?'var(--g)':macd.xDown?'var(--red)':macd.bull?'var(--g2)':'var(--red)')+'">'+(macd.xUp?'⬆️ Golden Cross':macd.xDown?'⬇️ Death Cross':macd.bull?'🟢 Bullish':'🔴 Bearish')+'</span></div>';
+  h+='<div style="display:flex;gap:8px;margin-top:3px;font-size:8px;padding:0 6px">'
+    +(btc.rsiDir==='up'?'<span style="color:var(--g)">▲ RSI naik</span>':btc.rsiDir==='down'?'<span style="color:var(--red)">▼ RSI turun</span>':'<span style="color:var(--dim)">● RSI flat</span>')
+    +(btc.volTrend&&btc.volTrend!=='—'?'<span style="color:'+(btc.volTrend.includes('naik')?'var(--g)':btc.volTrend.includes('turun')?'var(--amber)':'var(--dim)')+'"> · '+btc.volTrend+'</span>':'')
+    +'</div>';
 }
 
 // ── CONV v4: LONG + SHORT + FLY + ACCUM ───────────────────────
@@ -1026,11 +1032,15 @@ function mkConvCard(c,forceCol,forceBg){
   if(forceCol)sCol=forceCol;
   var sBg=forceBg||(sc>=80?'rgba(0,255,136,.08)':sc>=70?'rgba(0,255,136,.05)':sc>=60?'rgba(255,179,0,.04)':'rgba(255,255,255,.02)');
   var dirBadge=dir==='LONG'?'<span style="font-size:7px;background:rgba(0,255,136,.15);color:var(--g);padding:1px 4px;border-radius:2px;margin-left:3px">LONG</span>':dir==='SHORT'?'<span style="font-size:7px;background:rgba(255,68,102,.15);color:var(--red);padding:1px 4px;border-radius:2px;margin-left:3px">SHORT</span>':'';
+
+  var mtfBadge=c.mtfBadge||'';
+  var mtfHtml=mtfBadge?('<span style="font-size:7px;background:'+(mtfBadge.includes('MTF')?'rgba(255,215,0,.2)':mtfBadge.includes('UP')?'rgba(0,255,136,.1)':'rgba(255,100,0,.1)')+';color:'+(mtfBadge.includes('MTF')?'#ffd700':mtfBadge.includes('UP')?'var(--g)':'var(--amber)')+';padding:1px 4px;border-radius:2px;margin-left:2px">'+mtfBadge+'</span>'):'';
+  var baHtml=c.bidAskRatio!=null?('<span style="font-size:7px;background:rgba(100,149,237,.1);color:#6495ed;padding:1px 4px;border-radius:2px;margin-left:2px">B/A '+(c.bidAskRatio>55?'Buy↑':c.bidAskRatio<45?'Sell↓':'=')+'</span>'):'';
   var realBadge=c.rsiReal?'<span style="font-size:7px;background:rgba(0,255,136,.1);color:var(--g);padding:0 3px;border-radius:2px;margin-left:2px">4H</span>':'';
   var coilBadge=c.isCoiling?'<span style="font-size:7px;background:rgba(240,192,64,.12);color:var(--amber);padding:0 3px;border-radius:2px;margin-left:2px">COIL</span>':'';
   return'<div onclick="clickCoin(\''+c.sym+'\')" style="background:'+sBg+';border:1px solid '+sCol+'30;border-radius:8px;padding:8px;cursor:pointer">'
     +'<div style="display:flex;justify-content:space-between;align-items:center">'
-    +'<span style="font-weight:900;font-family:var(--m);font-size:12px">'+c.sym+'</span>'+dirBadge
+    +'<span style="font-weight:900;font-family:var(--m);font-size:12px">'+c.sym+'</span>'+dirBadge+mtfHtml+baHtml
     +'<span style="font-family:var(--m);font-size:15px;font-weight:900;color:'+sCol+'">'+sc+'</span></div>'
     +'<div style="font-size:8px;color:'+sCol+';margin:2px 0;line-height:1.3">'+sig+'</div>'
     +'<div style="display:flex;gap:3px;font-size:8px;flex-wrap:wrap;margin-top:2px">'
@@ -1039,7 +1049,33 @@ function mkConvCard(c,forceCol,forceBg){
     +(c.rs!=null?'<span style="color:'+(c.rs>0?'var(--g)':'var(--red)')+'">RS'+(c.rs>=0?'+':'')+c.rs+'%</span>':'')
     +coilBadge+'</div>'
     +'<div style="height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;margin-top:3px"><div style="height:3px;background:'+sCol+';width:'+Math.min(100,sc)+'%"></div></div>'
-    +'<div style="font-size:8px;color:var(--dim);margin-top:2px;line-height:1.4">'+((c.signalDesc||'').substring(0,60)||'—')+'</div>'
+    +'<div style="font-size:8px;color:var(--dim);margin-top:2px;line-height:1.4">'+((c.signalDesc||'').substring(0,55)||'—')+'</div>'
+    // SL/TP levels (most important for profit!)
+    +(c.levels&&c.levels.sl>0?('<div style="margin-top:4px;padding:3px 5px;background:rgba(255,255,255,.03);border-radius:4px;font-size:7.5px">'
+      +'<div style="display:flex;justify-content:space-between">'
+      +'<span style="color:var(--red)">SL: $'+(c.price>1?c.levels.sl.toFixed(2):c.levels.sl.toFixed(6))+'</span>'
+      +'<span style="color:var(--dim)">'+(c.levels.slPct?c.levels.slPct+'%':'-')+'</span>'
+      +'</div>'
+      +(c.levels.tp1>0?'<div style="display:flex;justify-content:space-between"><span style="color:var(--g)">TP1: $'+(c.price>1?c.levels.tp1.toFixed(2):c.levels.tp1.toFixed(6))+'</span><span style="color:var(--dim)">'+(c.levels.tp1Pct?'+'+c.levels.tp1Pct+'%':'')+'</span></div>':'')
+      +(c.levels.tp2>0?'<div style="display:flex;justify-content:space-between"><span style="color:var(--g2)">TP2: $'+(c.price>1?c.levels.tp2.toFixed(2):c.levels.tp2.toFixed(6))+'</span><span style="color:var(--dim)">'+(c.levels.tp2Pct?'+'+c.levels.tp2Pct+'%':'')+'</span></div>':'')
+      +'<div style="display:flex;justify-content:space-between;margin-top:2px;border-top:1px solid rgba(255,255,255,.06);padding-top:2px">'
+      +'<span style="color:var(--purple)">Prob: '+(c.probability||50)+'%</span>'
+      +(c.rrDisplay?'<span style="color:var(--amber)"> RR: '+c.rrDisplay+'</span>':'')
+      +(c.atrPct?'<span style="color:var(--dim)"> ATR: '+c.atrPct+'%</span>':'')
+      // Conviction stars
+      +(c.convStars!=null?'</div><div style="font-size:8px;margin-top:2px"><span style="color:var(--amber)">Conviction: '+'★'.repeat(Math.floor(c.convStars||0))+'☆'.repeat(Math.max(0,5-Math.floor(c.convStars||0)))+' '+(c.convStars>=4?'KUAT':c.convStars>=3?'BAIK':c.convStars>=2?'CUKUP':'LEMAH')+'</span>':'')
+    // Retail Position Display
+    +(c.retailLong!=null?'<div style="margin-top:4px;padding:3px 5px;border-radius:4px;background:'+(c.retailLong>=65?'rgba(255,68,102,.1)':c.retailLong<=38?'rgba(0,255,136,.08)':'rgba(255,255,255,.03)')+';border:1px solid '+(c.retailLong>=65?'rgba(255,68,102,.2)':c.retailLong<=38?'rgba(0,255,136,.15)':'rgba(255,255,255,.06)')+'"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:9px;font-weight:700;color:'+(c.retailLong>=65?'var(--red)':c.retailLong<=38?'var(--g)':'var(--dim)')+'">👥 RETAIL: '+c.retailLong+'% Long / '+c.retailShort+'% Short</span></div><div style="display:flex;height:5px;border-radius:3px;overflow:hidden;margin:2px 0"><div style="width:'+c.retailLong+'%;background:'+(c.retailLong>=65?'var(--red)':c.retailLong<=38?'var(--g)':'rgba(100,149,237,.5)')+'"></div><div style="flex:1;background:rgba(255,68,102,.3)"></div></div><div style="font-size:7.5px;color:'+(c.retailLong>=65?'var(--red)':c.retailLong<=38?'var(--g)':'var(--dim)')+'">'+c.retailBias+'</div></div>':'')
+    // OI Direction (4 market states)
+    +(c.oiDirection?'<div style="margin-top:3px;padding:2px 5px;border-radius:3px;background:rgba(255,255,255,.025);font-size:7.5px"><span style="color:'+(c.oiDirection.stateColor==='green'?'var(--g)':c.oiDirection.stateColor==='red'?'var(--red)':c.oiDirection.stateColor==='cyan'?'#00d4ff':'var(--amber)')+'">'+c.oiDirection.state+'</span><span style="color:var(--dim)"> OI '+(c.oiDirection.oiChangePct>=0?'+':'')+c.oiDirection.oiChangePct+'%</span></div>':'')
+    // Divergence: pre-computed display
+    +(c.divergence?('<div style="margin-top:2px;font-size:7.5px;color:'+(String(c.divergence).toUpperCase().indexOf('BULL')>=0?'var(--g)':'var(--amber)')+'">'+String(c.divergence)+'</div>'):'')
+    // Liquidation zones
+    +(c.liquidationZones?'<div style="margin-top:3px;padding:2px 5px;background:rgba(255,255,255,.02);border-radius:3px;font-size:7.5px;display:flex;gap:8px"><span style="color:var(--red)">Liq↓ -'+c.liquidationZones.distToLongLiq+'%</span><span style="color:var(--g)">Liq↑ +'+c.liquidationZones.distToShortLiq+'%</span></div>':'')
+    // Kelly + Futures Risk Score  
+    +(c.kellySizing&&c.futuresRisk?'<div style="margin-top:3px;padding:2px 5px;background:rgba(255,255,255,.02);border-radius:3px;font-size:7.5px;display:flex;justify-content:space-between"><span style="color:var(--purple)">Kelly: '+c.kellySizing.suggestedSizePct+'% size</span><span style="color:'+(c.futuresRisk.score<30?'var(--g)':c.futuresRisk.score<50?'var(--amber)':c.futuresRisk.score<70?'var(--orange)':'var(--red)')+'">'+c.futuresRisk.label+'</span></div>':'')
+      +'</div>'
+      +'</div>'):'')
     +'</div>';
 }
 
@@ -1160,6 +1196,42 @@ function tisMod4Flow(d){
     h+='<div id="'+sKey+'_coins" style="display:none"></div>';
     h+='</div>';
   }
+  // 🚨 RETAIL TRAP LIST
+  var rtList=A(d.retailTrapList);
+  if(rtList.length){
+    h+='<div style="margin-bottom:10px">';
+    h+='<div style="font-size:9px;font-weight:700;color:var(--red);margin-bottom:3px">🚨 RETAIL TRAP — '+rtList.length+' koin (HINDARI LONG)</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:4px">Retail sangat banyak LONG → SM akan jual ke mereka. Jangan ikut retail. Tunggu reversal atau ambil short.</div>';
+    h+='<div style="display:grid;grid-template-columns:repeat('+(window.innerWidth>900?4:2)+',1fr);gap:5px">';
+    for(var i=0;i<rtList.length;i++){
+      var r2=rtList[i];
+      h+='<div style="background:rgba(255,68,102,.06);border:1px solid rgba(255,68,102,.2);border-radius:6px;padding:6px 8px">';
+      h+='<div style="display:flex;justify-content:space-between"><span style="font-weight:800;font-size:10px">'+r2.sym+'</span><span style="font-size:9px;color:var(--red)">'+r2.retailLong+'% LONG</span></div>';
+      h+='<div style="height:5px;background:rgba(255,255,255,.06);border-radius:3px;margin:3px 0;overflow:hidden"><div style="width:'+r2.retailLong+'%;height:5px;background:var(--red);border-radius:3px"></div></div>';
+      h+='<div style="font-size:7.5px;color:var(--dim)">RSI '+r2.rsi+' · '+r2.c24+'%</div>';
+      h+='</div>';
+    }
+    h+='</div></div>';
+  }
+
+  // 🚀 RETAIL SQUEEZE CANDIDATES
+  var rsList=A(d.retailSqueezeList);
+  if(rsList.length){
+    h+='<div style="margin-bottom:6px">';
+    h+='<div style="font-size:9px;font-weight:700;color:var(--g);margin-bottom:3px">🚀 RETAIL SQUEEZE CANDIDATES — '+rsList.length+' koin</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:4px">Retail sangat banyak SHORT → saat ada trigger bullish, shorts terpaksa beli = SHORT SQUEEZE = pump cepat.</div>';
+    h+='<div style="display:grid;grid-template-columns:repeat('+(window.innerWidth>900?4:2)+',1fr);gap:5px">';
+    for(var i=0;i<rsList.length;i++){
+      var rs2=rsList[i];
+      h+='<div style="background:rgba(0,255,136,.05);border:1px solid rgba(0,255,136,.15);border-radius:6px;padding:6px 8px">';
+      h+='<div style="display:flex;justify-content:space-between"><span style="font-weight:800;font-size:10px">'+rs2.sym+'</span><span style="font-size:9px;color:var(--g)">'+rs2.retailShort+'% SHORT</span></div>';
+      h+='<div style="height:5px;background:rgba(255,255,255,.06);border-radius:3px;margin:3px 0;overflow:hidden"><div style="width:'+rs2.retailLong+'%;height:5px;background:var(--g);border-radius:3px"><div style="float:right;width:'+(100-rs2.retailLong)+'%;height:5px;background:rgba(255,68,102,.5)"></div></div></div>';
+      h+='<div style="font-size:7.5px;color:var(--dim)">RSI '+rs2.rsi+' · '+rs2.c24+'%</div>';
+      h+='</div>';
+    }
+    h+='</div></div>';
+  }
+
   h+='</div>';
   el.innerHTML=h;
 }
@@ -1327,10 +1399,18 @@ function tisMod8Golden(d){
   var el=$('tis-golden');if(!el)return;
   var wf=A(d.whaleFingerprint),sq=A(d.squeezeRadar),sv=A(d.stealthVolume),hg=A(d.hiddenGems),ms=A(d.momentumShift);
   var hasData=wf.length+sq.length+sv.length+hg.length+ms.length;
-  if(!hasData){el.innerHTML='';return;}
+  // Always show OI guide + retail sections even when no opportunity signals
   var h='<div style="border:1px solid rgba(255,215,0,.2);border-radius:10px;background:rgba(255,215,0,.03);padding:10px;margin-bottom:8px">';
-  h+='<div style="font-size:10px;font-weight:900;color:#ffd700;letter-spacing:2px;margin-bottom:8px">🏆 GOLDEN OPPORTUNITY DETECTORS</div>';
-  h+='<div style="font-size:8px;color:var(--dim);margin-bottom:10px">Peluang emas yang tidak terlihat di chart biasa — data institusional</div>';
+  h+='<div style="font-size:10px;font-weight:900;color:#ffd700;letter-spacing:2px;margin-bottom:6px">🏆 GOLDEN OPPORTUNITY DETECTORS</div>';
+  h+='<div style="font-size:8px;color:var(--dim);margin-bottom:8px">Peluang emas yang tidak terlihat di chart biasa — data institusional real-time</div>';
+  
+  // OI Direction Reference Guide (always visible)
+  h+='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:10px">';
+  h+='<div style="background:rgba(0,255,136,.07);border:1px solid rgba(0,255,136,.2);border-radius:6px;padding:5px 8px"><div style="font-size:8px;font-weight:700;color:var(--g)">🟢 NEW LONGS</div><div style="font-size:7px;color:var(--dim)">OI↑ + Harga↑</div><div style="font-size:7px;color:var(--g)">→ Entry LONG — trend nyata</div></div>';
+  h+='<div style="background:rgba(255,68,102,.07);border:1px solid rgba(255,68,102,.2);border-radius:6px;padding:5px 8px"><div style="font-size:8px;font-weight:700;color:var(--red)">🔴 NEW SHORTS</div><div style="font-size:7px;color:var(--dim)">OI↑ + Harga↓</div><div style="font-size:7px;color:var(--red)">→ Jangan counter-trend</div></div>';
+  h+='<div style="background:rgba(0,212,255,.07);border:1px solid rgba(0,212,255,.2);border-radius:6px;padding:5px 8px"><div style="font-size:8px;font-weight:700;color:#00d4ff">⚡ SHORT SQUEEZE</div><div style="font-size:7px;color:var(--dim)">OI↓ + Harga↑</div><div style="font-size:7px;color:#00d4ff">→ Hati-hati, mungkin habis</div></div>';
+  h+='<div style="background:rgba(255,140,0,.07);border:1px solid rgba(255,140,0,.2);border-radius:6px;padding:5px 8px"><div style="font-size:8px;font-weight:700;color:var(--amber)">💀 LONG LIQ</div><div style="font-size:7px;color:var(--dim)">OI↓ + Harga↓</div><div style="font-size:7px;color:var(--amber)">→ Capitulation = DCA zone!</div></div>';
+  h+='</div>';
 
   // Helper: render coin cards
   function cardRow(arr,cols){
@@ -1398,6 +1478,42 @@ function tisMod8Golden(d){
     h+='<div style="font-size:8px;color:var(--dim);margin-bottom:4px">Ada catalyst/narrative aktif yang belum viral. Decoupling dari BTC = signal kuat.</div>';
     h+=cardRow(ms, window.innerWidth>900?4:2);
     h+='</div>';
+  }
+
+  // 🚨 RETAIL TRAP LIST
+  var rtList=A(d.retailTrapList);
+  if(rtList.length){
+    h+='<div style="margin-bottom:10px">';
+    h+='<div style="font-size:9px;font-weight:700;color:var(--red);margin-bottom:3px">🚨 RETAIL TRAP — '+rtList.length+' koin (HINDARI LONG)</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:4px">Retail sangat banyak LONG → SM akan jual ke mereka. Jangan ikut retail. Tunggu reversal atau ambil short.</div>';
+    h+='<div style="display:grid;grid-template-columns:repeat('+(window.innerWidth>900?4:2)+',1fr);gap:5px">';
+    for(var i=0;i<rtList.length;i++){
+      var r2=rtList[i];
+      h+='<div style="background:rgba(255,68,102,.06);border:1px solid rgba(255,68,102,.2);border-radius:6px;padding:6px 8px">';
+      h+='<div style="display:flex;justify-content:space-between"><span style="font-weight:800;font-size:10px">'+r2.sym+'</span><span style="font-size:9px;color:var(--red)">'+r2.retailLong+'% LONG</span></div>';
+      h+='<div style="height:5px;background:rgba(255,255,255,.06);border-radius:3px;margin:3px 0;overflow:hidden"><div style="width:'+r2.retailLong+'%;height:5px;background:var(--red);border-radius:3px"></div></div>';
+      h+='<div style="font-size:7.5px;color:var(--dim)">RSI '+r2.rsi+' · '+r2.c24+'%</div>';
+      h+='</div>';
+    }
+    h+='</div></div>';
+  }
+
+  // 🚀 RETAIL SQUEEZE CANDIDATES
+  var rsList=A(d.retailSqueezeList);
+  if(rsList.length){
+    h+='<div style="margin-bottom:6px">';
+    h+='<div style="font-size:9px;font-weight:700;color:var(--g);margin-bottom:3px">🚀 RETAIL SQUEEZE CANDIDATES — '+rsList.length+' koin</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:4px">Retail sangat banyak SHORT → saat ada trigger bullish, shorts terpaksa beli = SHORT SQUEEZE = pump cepat.</div>';
+    h+='<div style="display:grid;grid-template-columns:repeat('+(window.innerWidth>900?4:2)+',1fr);gap:5px">';
+    for(var i=0;i<rsList.length;i++){
+      var rs2=rsList[i];
+      h+='<div style="background:rgba(0,255,136,.05);border:1px solid rgba(0,255,136,.15);border-radius:6px;padding:6px 8px">';
+      h+='<div style="display:flex;justify-content:space-between"><span style="font-weight:800;font-size:10px">'+rs2.sym+'</span><span style="font-size:9px;color:var(--g)">'+rs2.retailShort+'% SHORT</span></div>';
+      h+='<div style="height:5px;background:rgba(255,255,255,.06);border-radius:3px;margin:3px 0;overflow:hidden"><div style="width:'+rs2.retailLong+'%;height:5px;background:var(--g);border-radius:3px"><div style="float:right;width:'+(100-rs2.retailLong)+'%;height:5px;background:rgba(255,68,102,.5)"></div></div></div>';
+      h+='<div style="font-size:7.5px;color:var(--dim)">RSI '+rs2.rsi+' · '+rs2.c24+'%</div>';
+      h+='</div>';
+    }
+    h+='</div></div>';
   }
 
   h+='</div>';
