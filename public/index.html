@@ -917,7 +917,14 @@ function renderTIS(d){
     ['tis-char','tis-btc','tis-conv','tis-plan','tis-flow','tis-sched','tis-check'].forEach(function(id){var el=$(id);if(el)el.innerHTML=errH;});
     return;
   }
-  tisMod2Char(d);tisMod2BTC(d);tisMod2Conv(d);tisMod3Plan(d);tisMod4Flow(d);tisMod5Sched(d);tisMod6Check(d);tisMod8Golden(d);
+  try{tisMod2Char(d);}catch(e){console.warn('Char:',e.message);}
+  try{tisMod2BTC(d);}catch(e){console.warn('BTC:',e.message);}
+  try{tisMod2Conv(d);}catch(e){console.warn('Conv:',e.message);}
+  try{tisMod3Plan(d);}catch(e){console.warn('Plan:',e.message);}
+  try{tisMod4Flow(d);}catch(e){console.warn('Flow:',e.message);}
+  try{tisMod5Sched(d);}catch(e){console.warn('Sched:',e.message);}
+  try{tisMod6Check(d);}catch(e){console.warn('Check:',e.message);}
+  try{tisMod8Golden(d);}catch(e){console.warn('Golden:',e.message);}
 }
 
 function tisMod2Char(d){
