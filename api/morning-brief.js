@@ -381,7 +381,7 @@ export default async function handler(req,res){
       {label:'FR market tidak overheated',pass:frOH<15,detail:frOH+' koin FR>0.05%',fix:'Pasar overheated'},
       {label:'Market tidak overbought massal',pass:coins.filter(x=>x.rsi>70).length<coins.length*.3,detail:coins.filter(x=>x.rsi>70).length+'/'+coins.length+' koin RSI>70',fix:'Tunggu koreksi'},
       {label:'BTC L/S ratio aman',pass:btcLS?btcLS<2.5:true,detail:btcLS?'L/S: '+btcLS+' ('+btcL+'%L/'+btcS+'%S)':'Data tidak tersedia',fix:'L/S >2.5 = risk tinggi'},
-      {label:'Cukup koin aktif & liquid',pass:(()=>{const q=tradingSchedule?.currentSession;const prime=q==='london'||q==='ny_open';return coinList.filter(x=>x.vol>5e6&&x.c24>-3).length>=(prime?15:8)})(),detail:coinList.filter(x=>x.vol>5e6&&x.c24>-3).length+' koin aktif (vol>$5M)',fix:'Market sepi — tunggu London 15:00 atau NY 21:00 WIB'},
+      {label:'Cukup koin aktif & liquid',pass:(()=>{const prime=(wibH>=15&&wibH<18)||(wibH>=21&&wibH<23);return coinList.filter(x=>x.vol>5e6&&x.c24>-3).length>=(prime?15:8);})(),detail:coinList.filter(x=>x.vol>5e6&&x.c24>-3).length+' koin aktif (vol>$5M)',fix:'Market sepi — tunggu London 15:00 WIB atau NY 21:00 WIB'},
       {label:'BTC mendukung altcoin',pass:btcC>-2,detail:'BTC '+btcC.toFixed(2)+'%'+(btcC<-2?' bearish':''),fix:'Tunggu BTC stabilisasi'},
     ];
     const pass=mktC.filter(x=>x.pass).length;
