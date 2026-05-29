@@ -133,17 +133,20 @@ export default async function handler(req,res){
           // 🚀 ABOUT TO FLY: 5 faktor konfluens = setup terbaik
           if(rsi<28&&c24>0&&fr<-0.0003&&(macd?.xUp||macd?.bull)&&vol>1e6&&pip<40){
             sig='🚀 ABOUT TO FLY';sc='#00ffd0';dir='LONG';prob=87;
-            desc='5 konfluens: RSI '+rsi.toFixed(0)+' oversold · FR squeeze '+fp.toFixed(4)+'% · MACD golden · discount zone · vol+';}
-          // 💎 CAPITULATION: RSI extreme + reversal = bottom fishing
-          else if(rsi<22&&c24>0&&pip<28&&vol>300000){
+            desc='5 konfluens: RSI '+rsi.toFixed(0)+' oversold · FR '+fp.toFixed(4)+'% squeeze · MACD golden · discount · vol+';}
+          else if(rsi<22&&pip<28&&vol>300000){
             sig='💎 CAPITULATION';sc='#00ff88';dir='LONG';prob=85;
-            desc='Extreme oversold RSI '+rsi.toFixed(0)+'·bottom '+pip.toFixed(0)+'% range·+'+c24.toFixed(1)+'% reversal·zona akumulasi terbaik';}
+            desc='RSI '+rsi.toFixed(0)+' EXTREME oversold · bottom zone · zona DCA terbaik · '+( c24>0?'+'+c24.toFixed(1)+'% reversal':'konsolidasi');}
+          // 🔴 DEEP OVERSOLD — tidak perlu RSI real, cukup RSI<30 + volume
+          else if(rsi<30&&vol>200000&&pip<45){
+            sig='🔴 DEEP OVERSOLD';sc='#ff6b9d';dir='LONG';prob=74;
+            desc='RSI '+rsi.toFixed(0)+(rsiReal?' (real)':'~')+' deep oversold · '+pip.toFixed(0)+'% range · DCA zone terbaik · tunggu konfirmasi';}
           // 🐋 WHALE ACCUMULATION: OI naik + FR negatif + harga diam = whale diam-diam beli
           else if(oi>3e9&&fr<-0.0004&&Math.abs(c24)<1.5&&rsi>=35&&rsi<=55&&vol>5e6){
             sig='🐋 WHALE ACCUM';sc='#00d4ff';dir='LONG';prob=83;
             desc='OI $'+(oi/1e9).toFixed(1)+'B naik · FR '+fp.toFixed(4)+'% negatif · harga konsolidasi · whale masuk!';}
           // 🤫 ACCUMULATION: SM masuk diam-diam
-          else if(rsi<40&&c24>0&&ic&&vol>500000&&pip<48){
+          else if(rsi<40&&vol>300000&&pip<48&&(ic||fr<-0.0001||c24>0.3)){
             sig='🤫 ACCUMULATION';sc='#4af0ff';dir='LONG';prob=80;
             desc='RSI '+rsi.toFixed(0)+' oversold · ATR coiling · price stagnant · SM building position';}
           // === MEDIUM-CONFIDENCE SIGNALS (70-80%) ===
@@ -160,7 +163,7 @@ export default async function handler(req,res){
             sig='⚡ COILING';sc='#f0c040';dir='WATCH';prob=72;
             desc='ATR menyempit'+(ap?(' '+ap+'%'):'')+' · range ketat · breakout imminent · wait konfirmasi';}
           // 🔄 OVERSOLD BOUNCE: classic oversold reversal
-          else if(rsi<36&&c24>1&&pip>22&&rR){
+          else if(rsi<36&&c24>0.5&&pip>18){  // no rR required
             sig='🔄 OVERSOLD BOUNCE';sc='#88ff99';dir='LONG';prob=77;
             desc='RSI '+rsi.toFixed(0)+' (real) · reversal +'+c24.toFixed(1)+'% · demand zone · ATR: '+(ap||'est')+'%';}
           // 📈 MOMENTUM: trend dengan RS positif
@@ -297,19 +300,23 @@ export default async function handler(req,res){
           // ── COMPOSITE SMART MONEY SCORE (0-100) ──────────────
           // Combines all 6 factors into one actionable score
           let smScore=50;
-          // Factor 1: Vol-weighted price change
-          smScore+=ac>5?15:ac>2?10:ac>0.5?5:ac<-5?-15:ac<-2?-10:ac<-0.5?-5:0;
-          // Factor 2: FR (contrarian — negative FR = bullish)
-          smScore+=frAvg<-0.0005?12:frAvg<-0.0002?7:frAvg<-0.0001?3:frAvg>0.0005?-12:frAvg>0.0002?-7:0;
-          // Factor 3: RS vs BTC
-          smScore+=rsAvg>5?8:rsAvg>2?5:rsAvg>0?2:rsAvg<-5?-8:rsAvg<-2?-5:0;
-          // Factor 4: Signal quality
-          smScore+=flyCoins*6+eliteCoins*4+primeCoins*2-shortCoins2*5;
-          // Factor 5: RSI profile (many oversold = accumulation zone)
-          smScore+=oversoldCoins>=3?8:oversoldCoins>=2?5:oversoldCoins>=1?2:0;
-          smScore-=overboughtCoins>=3?8:overboughtCoins>=2?4:0;
-          // Factor 6: Coiling (energy accumulating)
-          smScore+=coilingCoins*3;
+          // Factor 1: Vol-weighted price change (with dead-zone sensitivity)
+          smScore+=ac>5?15:ac>2?10:ac>0.5?5:ac>0?2:ac<-5?-15:ac<-2?-10:ac<-0.5?-5:-2;
+          // Factor 2: FR aggregate (contrarian — negative = SM accumulating)
+          smScore+=frAvg<-0.0008?18:frAvg<-0.0005?13:frAvg<-0.0002?8:frAvg<-0.0001?4:frAvg>0.0008?-16:frAvg>0.0005?-11:frAvg>0.0002?-6:0;
+          // Factor 3: RS vs BTC (sector outperformance)
+          smScore+=rsAvg>5?10:rsAvg>2?6:rsAvg>0?3:rsAvg<-5?-10:rsAvg<-2?-6:0;
+          // Factor 4: Signal quality (high-conviction setups)
+          smScore+=flyCoins*8+eliteCoins*5+primeCoins*3-shortCoins2*6;
+          // Factor 5: OVERSOLD PREMIUM — CRITICAL for current market
+          // When market is flat, oversold sectors = BEST accumulation opportunity
+          smScore+=oversoldCoins>=8?20:oversoldCoins>=5?15:oversoldCoins>=3?10:oversoldCoins>=2?6:oversoldCoins>=1?3:0;
+          smScore-=overboughtCoins>=5?12:overboughtCoins>=3?7:overboughtCoins>=1?3:0;
+          // Factor 6: Coiling (energy terkumpul, siap breakout)
+          smScore+=coilingCoins>=3?9:coilingCoins>=2?6:coilingCoins>=1?3:0;
+          // Factor 7: Deep oversold bonus (RSI < 25 territory)
+          const deepOversold=sc4.filter(x=>x.rsi<25).length;
+          smScore+=deepOversold>=3?10:deepOversold>=2?7:deepOversold>=1?4:0;
           smScore=Math.max(0,Math.min(100,Math.round(smScore)));
 
           // ── SM FLOW SIGNAL (based on composite score, not just ch24) ──
@@ -374,7 +381,7 @@ export default async function handler(req,res){
       {label:'FR market tidak overheated',pass:frOH<15,detail:frOH+' koin FR>0.05%',fix:'Pasar overheated'},
       {label:'Market tidak overbought massal',pass:coins.filter(x=>x.rsi>70).length<coins.length*.3,detail:coins.filter(x=>x.rsi>70).length+'/'+coins.length+' koin RSI>70',fix:'Tunggu koreksi'},
       {label:'BTC L/S ratio aman',pass:btcLS?btcLS<2.5:true,detail:btcLS?'L/S: '+btcLS+' ('+btcL+'%L/'+btcS+'%S)':'Data tidak tersedia',fix:'L/S >2.5 = risk tinggi'},
-      {label:'Cukup koin aktif & liquid',pass:coins.filter(x=>x.vol>10e6&&x.c24>0).length>=20,detail:coins.filter(x=>x.vol>10e6&&x.c24>0).length+' koin aktif (vol>$10M)',fix:'Market sepi'},
+      {label:'Cukup koin aktif & liquid',pass:(()=>{const q=tradingSchedule?.currentSession;const prime=q==='london'||q==='ny_open';return coinList.filter(x=>x.vol>5e6&&x.c24>-3).length>=(prime?15:8)})(),detail:coinList.filter(x=>x.vol>5e6&&x.c24>-3).length+' koin aktif (vol>$5M)',fix:'Market sepi — tunggu London 15:00 atau NY 21:00 WIB'},
       {label:'BTC mendukung altcoin',pass:btcC>-2,detail:'BTC '+btcC.toFixed(2)+'%'+(btcC<-2?' bearish':''),fix:'Tunggu BTC stabilisasi'},
     ];
     const pass=mktC.filter(x=>x.pass).length;
