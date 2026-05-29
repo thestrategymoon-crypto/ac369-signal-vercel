@@ -430,16 +430,16 @@ export default async function handler(req,res){
       }catch{}// per-coin error never kills the loop
     }
 
-    coins.sort((a,b)=>b.conv.score-a.conv.score);
+    coins.sort((a,b)=>(b.conv?.score||0)-(a.conv?.score||0));
 
-    const longs=coins.filter(x=>x.direction==='LONG'&&x.conv.score>=60).slice(0,25);
-    const shorts=coins.filter(x=>x.direction==='SHORT'&&x.conv.score>=55).slice(0,10);
+    const longs=coins.filter(x=>x.direction==='LONG'&&(x.conv?.score||0)>=60).slice(0,25);
+    const shorts=coins.filter(x=>x.direction==='SHORT'&&x.(conv?.score||0)>=55).slice(0,10);
     const flys=coins.filter(x=>x.signal&&(x.signal.includes('ABOUT TO FLY')||x.signal.includes('CAPITULATION'))).slice(0,8);
     const accums=coins.filter(x=>x.signal&&(x.signal.includes('ACCUMULATION')||x.signal.includes('COILING')||x.signal.includes('DECOUPLING'))).slice(0,8);
     const top25=coins.slice(0,25);
-    const ec=top25.filter(x=>x.conv.score>=80).length;
-    const pc=top25.filter(x=>x.conv.score>=70&&x.conv.score<80).length;
-    const vc=top25.filter(x=>x.conv.score>=60&&x.conv.score<70).length;
+    const ec=top25.filter(x=>x.(conv?.score||0)>=80).length;
+    const pc=top25.filter(x=>x.(conv?.score||0)>=70&&x.(conv?.score||0)<80).length;
+    const vc=top25.filter(x=>x.(conv?.score||0)>=60&&x.(conv?.score||0)<70).length;
     const os2=coins.filter(x=>x.rsi<30).length;
     const avg=coins.length?+(coins.reduce((s,x)=>s+x.c24,0)/coins.length).toFixed(2):0;
     const bp=Math.round(coins.filter(x=>x.c24>0).length/Math.max(coins.length,1)*100);
@@ -481,8 +481,8 @@ export default async function handler(req,res){
           const rsSignal=rsAvg>5?'↑↑ Outperform BTC kuat':rsAvg>2?'↑ Outperform BTC':rsAvg<-5?'↓↓ Underperform BTC kuat':rsAvg<-2?'↓ Underperform BTC':'→ Tracking BTC';
 
           // 5. SIGNAL QUALITY — berapa banyak high-confidence setups
-          const eliteCoins=sc4.filter(x=>x.conv.score>=82).length;
-          const primeCoins=sc4.filter(x=>x.conv.score>=72&&x.conv.score<82).length;
+          const eliteCoins=sc4.filter(x=>x.(conv?.score||0)>=82).length;
+          const primeCoins=sc4.filter(x=>x.(conv?.score||0)>=72&&x.(conv?.score||0)<82).length;
           const flyCoins=sc4.filter(x=>x.signal&&(x.signal.includes('ABOUT TO FLY')||x.signal.includes('CAPITULATION')||x.signal.includes('WHALE'))).length;
           const shortCoins2=sc4.filter(x=>x.direction==='SHORT').length;
           const coilingCoins=sc4.filter(x=>x.signal&&(x.signal.includes('COILING')||x.signal.includes('ACCUMULATION'))).length;
@@ -528,35 +528,35 @@ export default async function handler(req,res){
           const momentum=ac>3?'🚀 PUMPING':ac>1?'📈 RISING':ac<-3?'📉 DUMPING':ac<-1?'🌧 FALLING':frAvg<-0.0003?'🤫 STEALTH ACCUM':coilingCoins>=2?'⚡ COILING':'⚖️ FLAT';
 
           // Best setup in this sector
-          const bestSetup=sc4.filter(x=>x.direction==='LONG').sort((a,b)=>b.conv.score-a.conv.score)[0]||null;
-          const bestShort=sc4.filter(x=>x.direction==='SHORT').sort((a,b)=>b.conv.score-a.conv.score)[0]||null;
+          const bestSetup=sc4.filter(x=>x.direction==='LONG').sort((a,b)=>b.(conv?.score||0)-a.(conv?.score||0))[0]||null;
+          const bestShort=sc4.filter(x=>x.direction==='SHORT').sort((a,b)=>b.(conv?.score||0)-a.(conv?.score||0))[0]||null;
 
           sdm[sn]={
             name:sn,
             avgCh24:ac,        // vol-weighted (lebih akurat)
             simpleAvgCh:+(sc4.reduce((s,x)=>s+x.c24,0)/sc4.length).toFixed(2), // simple avg untuk referensi
-            avgRSI,avgConv:+(sc4.reduce((s,x)=>s+x.conv.score,0)/sc4.length).toFixed(0),
+            avgRSI,avgConv:+(sc4.reduce((s,x)=>s+x.(conv?.score||0),0)/sc4.length).toFixed(0),
             flowSig,flowCol,smScore,smType,momentum,
             frAvg:+frAvg.toFixed(5),frSignal,
             rsAvg,rsSignal,
             oversoldCoins,overboughtCoins,coilingCoins,
             eliteCoins,primeCoins,flyCoins,shortCoins:shortCoins2,
-            bestSetup:bestSetup?{sym:bestSetup.sym,signal:bestSetup.signal,conv:bestSetup.conv.score,rsi:bestSetup.rsi,fr:bestSetup.fr,levels:bestSetup.levels}:null,
-            bestShort:bestShort?{sym:bestShort.sym,signal:bestShort.signal,conv:bestShort.conv.score,rsi:bestShort.rsi}:null,
+            bestSetup:bestSetup?{sym:bestSetup.sym,signal:bestSetup.signal,conv:bestSetup.(conv?.score||0),rsi:bestSetup.rsi,fr:bestSetup.fr,levels:bestSetup.levels}:null,
+            bestShort:bestShort?{sym:bestShort.sym,signal:bestShort.signal,conv:bestShort.(conv?.score||0),rsi:bestShort.rsi}:null,
             coinsCount:sc4.length,
             bullCoins:sc4.filter(x=>x.direction==='LONG').length,
-            coins:sc4.sort((a,b)=>b.conv.score-a.conv.score).map(c=>({sym:c.sym,price:c.price,c24:c.c24,vol:c.vol,rsi:c.rsi,rsiReal:c.rsiReal,signal:c.signal,signalColor:c.signalColor,signalDesc:c.signalDesc,direction:c.direction,probability:c.probability,conv:c.conv.score,fr:c.fr,atrPct:c.atrPct,levels:c.levels,isCoiling:c.isCoiling,pip:c.pip,rs:c.rs})),
+            coins:sc4.sort((a,b)=>b.(conv?.score||0)-a.(conv?.score||0)).map(c=>({sym:c.sym,price:c.price,c24:c.c24,vol:c.vol,rsi:c.rsi,rsiReal:c.rsiReal,signal:c.signal,signalColor:c.signalColor,signalDesc:c.signalDesc,direction:c.direction,probability:c.probability,conv:c.(conv?.score||0),fr:c.fr,atrPct:c.atrPct,levels:c.levels,isCoiling:c.isCoiling,pip:c.pip,rs:c.rs})),
           };
         }catch{}
       }
     }catch{}
 
     // Setups
-    const mk=c=>{try{return{sym:c.sym,sector:c.sector,entry:c.price,sl:c.levels.sl,tp1:c.levels.tp1,tp2:c.levels.tp2,slPct:c.levels.slPct,tp1Pct:c.levels.tp1Pct,tp2Pct:c.levels.tp2Pct,rr:+(c.levels.tp1Pct/Math.max(c.levels.slPct,.1)).toFixed(1),conv:c.conv.score,rsi:c.rsi,rsiReal:c.rsiReal,fr:c.fr,atrPct:c.atrPct,signal:c.signal,reasons:[c.signalDesc]}}catch{return{sym:c.sym||'?',sector:'Other',entry:c.price||0,sl:0,tp1:0,tp2:0,slPct:2.5,tp1Pct:4.5,tp2Pct:8,rr:1.8,conv:c.conv?.score||50,rsi:c.rsi||50,rsiReal:false,fr:null,atrPct:null,signal:c.signal||'—',reasons:[]}}};
+    const mk=c=>{try{return{sym:c.sym,sector:c.sector,entry:c.price,sl:c.levels.sl,tp1:c.levels.tp1,tp2:c.levels.tp2,slPct:c.levels.slPct,tp1Pct:c.levels.tp1Pct,tp2Pct:c.levels.tp2Pct,rr:+(c.levels.tp1Pct/Math.max(c.levels.slPct,.1)).toFixed(1),conv:c.(conv?.score||0),rsi:c.rsi,rsiReal:c.rsiReal,fr:c.fr,atrPct:c.atrPct,signal:c.signal,reasons:[c.signalDesc]}}catch{return{sym:c.sym||'?',sector:'Other',entry:c.price||0,sl:0,tp1:0,tp2:0,slPct:2.5,tp1Pct:4.5,tp2Pct:8,rr:1.8,conv:c.conv?.score||50,rsi:c.rsi||50,rsiReal:false,fr:null,atrPct:null,signal:c.signal||'—',reasons:[]}}};
     const scalpS=longs.filter(x=>x.atrPct&&x.vol>2e6&&x.rsi<72).slice(0,6).map(mk);
     const swingS=longs.filter(x=>x.atrPct&&x.vol>5e6&&x.rsi<65).slice(0,4).map(c=>{try{return{...mk(c),sl:+(c.price*(1-c.atrPct/100*2)).toFixed(c.price>1?4:8),tp1:+(c.price*(1+c.atrPct/100*3)).toFixed(c.price>1?4:8),tp2:+(c.price*(1+c.atrPct/100*5)).toFixed(c.price>1?4:8),slPct:+(c.atrPct*2).toFixed(2),tp1Pct:+(c.atrPct*3).toFixed(2),tp2Pct:+(c.atrPct*5).toFixed(2)}}catch{return mk(c)}});
     const shortS=shorts.filter(x=>x.atrPct&&x.vol>3e6).slice(0,4).map(c=>{try{return{...mk(c),sl:+(c.price*(1+c.atrPct/100*1.5)).toFixed(c.price>1?4:8),tp1:+(c.price*(1-c.atrPct/100*2)).toFixed(c.price>1?4:8),tp2:+(c.price*(1-c.atrPct/100*3.5)).toFixed(c.price>1?4:8),slPct:+(c.atrPct*1.5).toFixed(2),tp1Pct:+(c.atrPct*2).toFixed(2),tp2Pct:+(c.atrPct*3.5).toFixed(2)}}catch{return mk(c)}});
-    const spotA=coins.filter(x=>x.rsi<35&&x.vol>500000&&x.c24>-6&&x.conv.score>=50).slice(0,8).map(c=>({sym:c.sym,price:c.price,rsi:c.rsi,rsiReal:c.rsiReal,dcaZone:'$'+c.levels.sl,atrPct:c.atrPct,conv:c.conv.score,signal:c.signal}));
+    const spotA=coins.filter(x=>x.rsi<35&&x.vol>500000&&x.c24>-6&&x.(conv?.score||0)>=50).slice(0,8).map(c=>({sym:c.sym,price:c.price,rsi:c.rsi,rsiReal:c.rsiReal,dcaZone:'$'+c.levels.sl,atrPct:c.atrPct,conv:c.(conv?.score||0),signal:c.signal}));
     const avoid=coins.filter(x=>x.rsi>74&&x.direction!=='LONG').slice(0,5).map(c=>({sym:c.sym,rsi:c.rsi,fr:c.fr,reason:c.signalDesc}));
 
     // Schedule
@@ -651,7 +651,7 @@ export default async function handler(req,res){
       // ══ TODAY'S BEST TRADE ════════════════════════════════
       // Setup #1 tertinggi confidence hari ini — satu trade, full conviction
       todaysBestTrade:(()=>{try{
-        const top=coins.filter(x=>x.direction==='LONG'&&x.conv.score>=60)
+        const top=coins.filter(x=>x.direction==='LONG'&&(x.conv?.score||0)>=60)
           .sort((a,b)=>{
             // Sort by: MTF > Conviction > Divergence > RSI oversold
             const scoreA=(a.mtfConfirmed?20:0)+(a.conv?.score||0)+(a.divergence&&String(a.divergence).indexOf('BULL')>=0?10:0)+(a.rsi<25?15:a.rsi<30?10:0)+(a.fr?Math.abs(a.fr)>0.0003?8:0:0);
