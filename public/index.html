@@ -260,6 +260,7 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
       <div class="card" id="tis-sched" style="border-color:rgba(74,240,255,.2)"></div>
     </div>
     <div class="card" id="tis-check" style="margin-bottom:8px;border-color:rgba(0,212,170,.2)"></div>
+  <div id="tis-golden"></div>
   </div>
 </div>
 
@@ -916,7 +917,7 @@ function renderTIS(d){
     ['tis-char','tis-btc','tis-conv','tis-plan','tis-flow','tis-sched','tis-check'].forEach(function(id){var el=$(id);if(el)el.innerHTML=errH;});
     return;
   }
-  tisMod2Char(d);tisMod2BTC(d);tisMod2Conv(d);tisMod3Plan(d);tisMod4Flow(d);tisMod5Sched(d);tisMod6Check(d);
+  tisMod2Char(d);tisMod2BTC(d);tisMod2Conv(d);tisMod3Plan(d);tisMod4Flow(d);tisMod5Sched(d);tisMod6Check(d);tisMod8Golden(d);
 }
 
 function tisMod2Char(d){
@@ -1322,6 +1323,87 @@ window.addEventListener('DOMContentLoaded', async function() {
 
 // Auto-refresh setiap 5 menit
 setInterval(refreshAll, 5 * 60 * 1000);
+function tisMod8Golden(d){
+  var el=$('tis-golden');if(!el)return;
+  var wf=A(d.whaleFingerprint),sq=A(d.squeezeRadar),sv=A(d.stealthVolume),hg=A(d.hiddenGems),ms=A(d.momentumShift);
+  var hasData=wf.length+sq.length+sv.length+hg.length+ms.length;
+  if(!hasData){el.innerHTML='';return;}
+  var h='<div style="border:1px solid rgba(255,215,0,.2);border-radius:10px;background:rgba(255,215,0,.03);padding:10px;margin-bottom:8px">';
+  h+='<div style="font-size:10px;font-weight:900;color:#ffd700;letter-spacing:2px;margin-bottom:8px">🏆 GOLDEN OPPORTUNITY DETECTORS</div>';
+  h+='<div style="font-size:8px;color:var(--dim);margin-bottom:10px">Peluang emas yang tidak terlihat di chart biasa — data institusional</div>';
+
+  // Helper: render coin cards
+  function cardRow(arr,cols){
+    var r='<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:5px;margin-top:5px">';
+    for(var i=0;i<arr.length;i++){
+      var c2=arr[i];
+      var col=c2.c24>=0?'var(--g2)':'var(--red)';
+      r+='<div style="background:rgba(255,255,255,.04);border-radius:6px;padding:6px 8px;border:1px solid rgba(255,255,255,.06)">';
+      r+='<div style="display:flex;justify-content:space-between;align-items:center">';
+      r+='<span style="font-weight:800;font-size:10px">'+c2.sym+'</span>';
+      r+='<span style="font-size:9px;color:'+col+'">'+(c2.c24>=0?'+':'')+c2.c24+'%</span>';
+      r+='</div>';
+      // Show key metric
+      if(c2.fr!=null)r+='<div style="font-size:8px;color:'+(c2.fr<0?'var(--g)':'var(--amber)')+'">FR '+(c2.fr>=0?'+':'')+c2.fr+'%</div>';
+      if(c2.oi!=null&&c2.oi>0)r+='<div style="font-size:8px;color:var(--dim)">OI $'+c2.oi+'B</div>';
+      if(c2.vol)r+='<div style="font-size:8px;color:var(--dim)">Vol $'+(c2.vol>1e9?(c2.vol/1e9).toFixed(1)+'B':c2.vol>1e6?(c2.vol/1e6).toFixed(0)+'M':(c2.vol/1e3).toFixed(0)+'K')+'</div>';
+      if(c2.rsi)r+='<div style="font-size:8px;color:'+(c2.rsi<30?'var(--g)':c2.rsi>70?'var(--red)':'var(--dim)')+'">RSI '+c2.rsi+'</div>';
+      if(c2.rating||c2.strength||c2.urgency){var badge=c2.rating||c2.strength||c2.urgency;r+='<div style="font-size:7px;margin-top:2px;color:var(--amber)">'+badge+'</div>';}
+      if(c2.convLabel)r+='<div style="font-size:7px;color:var(--purple)">'+c2.convLabel+' C'+c2.conv+'</div>';
+      r+='</div>';
+    }
+    r+='</div>';return r;
+  }
+
+  // 🐋 WHALE FINGERPRINT
+  if(wf.length){
+    h+='<div style="margin-bottom:10px">';
+    h+='<div style="font-size:9px;font-weight:700;color:#00d4ff;margin-bottom:3px">🐋 WHALE FINGERPRINT — '+wf.length+' koin</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:4px">OI besar + harga diam + FR negatif = SM akumulasi sebelum harga bergerak</div>';
+    h+=cardRow(wf, window.innerWidth>900?4:2);
+    h+='</div>';
+  }
+
+  // 🔥 FR SQUEEZE RADAR
+  if(sq.length){
+    h+='<div style="margin-bottom:10px">';
+    h+='<div style="font-size:9px;font-weight:700;color:#ff6b9d;margin-bottom:3px">🔥 FR SQUEEZE RADAR — '+sq.length+' koin paling di-short</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:4px">Shorts bayar fee besar setiap 8 jam. Buy trigger kecil → forced cover → spike besar</div>';
+    h+=cardRow(sq.slice(0,6), window.innerWidth>900?3:2);
+    h+='</div>';
+  }
+
+  // 💡 STEALTH VOLUME
+  if(sv.length){
+    h+='<div style="margin-bottom:10px">';
+    h+='<div style="font-size:9px;font-weight:700;color:#f0c040;margin-bottom:3px">💡 STEALTH VOLUME — '+sv.length+' koin</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:4px">Volume besar tapi harga flat = SM menyerap supply diam-diam. Sebelum pump biasanya seperti ini.</div>';
+    h+=cardRow(sv, window.innerWidth>900?4:2);
+    h+='</div>';
+  }
+
+  // 🌟 HIDDEN GEMS
+  if(hg.length){
+    h+='<div style="margin-bottom:10px">';
+    h+='<div style="font-size:9px;font-weight:700;color:#a0e040;margin-bottom:3px">🌟 HIDDEN GEMS — '+hg.length+' koin belum viral</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:4px">RSI oversold + FR negatif + belum mainstream = early entry sebelum publik sadar</div>';
+    h+=cardRow(hg.slice(0,8), window.innerWidth>900?4:2);
+    h+='</div>';
+  }
+
+  // ⚡ MOMENTUM SHIFT
+  if(ms.length){
+    h+='<div style="margin-bottom:6px">';
+    h+='<div style="font-size:9px;font-weight:700;color:#c084fc;margin-bottom:3px">⚡ MOMENTUM SHIFT — naik saat BTC flat/turun</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:4px">Ada catalyst/narrative aktif yang belum viral. Decoupling dari BTC = signal kuat.</div>';
+    h+=cardRow(ms, window.innerWidth>900?4:2);
+    h+='</div>';
+  }
+
+  h+='</div>';
+  el.innerHTML=h;
+}
+
 </script>
 </body>
 </html>
