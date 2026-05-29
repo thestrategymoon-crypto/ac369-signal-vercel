@@ -1,5 +1,3 @@
-// api/morning-brief.js — v10 BULLETPROOF · 500+ Koin · Zero Error
-// ═══════════════════════════════════════════════════════════════
 // GUARANTEED: Never returns HTTP 500. ALWAYS returns 200.
 // - Outer try-catch wraps 100% of processing
 // - Promise.allSettled never throws
@@ -381,7 +379,7 @@ export default async function handler(req,res){
       {label:'FR market tidak overheated',pass:frOH<15,detail:frOH+' koin FR>0.05%',fix:'Pasar overheated'},
       {label:'Market tidak overbought massal',pass:coins.filter(x=>x.rsi>70).length<coins.length*.3,detail:coins.filter(x=>x.rsi>70).length+'/'+coins.length+' koin RSI>70',fix:'Tunggu koreksi'},
       {label:'BTC L/S ratio aman',pass:btcLS?btcLS<2.5:true,detail:btcLS?'L/S: '+btcLS+' ('+btcL+'%L/'+btcS+'%S)':'Data tidak tersedia',fix:'L/S >2.5 = risk tinggi'},
-      {label:'Cukup koin aktif & liquid',pass:(()=>{const prime=(wibH>=15&&wibH<18)||(wibH>=21&&wibH<23);return coinList.filter(x=>x.vol>5e6&&x.c24>-3).length>=(prime?15:8);})(),detail:coinList.filter(x=>x.vol>5e6&&x.c24>-3).length+' koin aktif (vol>$5M)',fix:'Market sepi — tunggu London 15:00 WIB atau NY 21:00 WIB'},
+      {label:'Cukup koin aktif & liquid',pass:(()=>{const h=(new Date().getUTCHours()+7)%24;const prime=(h>=15&&h<18)||(h>=21&&h<23);return coins.filter(x=>x.vol>5e6&&Math.abs(x.c24)<10).length>=(prime?15:8);})(),detail:coins.filter(x=>x.vol>5e6&&Math.abs(x.c24)<10).length+' koin aktif (vol>$5M)',fix:'Market sepi — tunggu London 15:00 WIB atau NY 21:00 WIB'},
       {label:'BTC mendukung altcoin',pass:btcC>-2,detail:'BTC '+btcC.toFixed(2)+'%'+(btcC<-2?' bearish':''),fix:'Tunggu BTC stabilisasi'},
     ];
     const pass=mktC.filter(x=>x.pass).length;
@@ -396,6 +394,28 @@ export default async function handler(req,res){
       convergence:{leaders:top25,longSetups:longs,shortSetups:shorts,flySetups:flys,accumSetups:accums,summary:(ec?'🔥'+ec+' ELITE · ':'')+pc+'💎PRIME · '+vc+'✅VALID'+(shorts.length?' · '+shorts.length+'🔴SHORT':''),eliteCount:ec,primeCount:pc,validCount:vc,shortCount:shorts.length},
       gamePlan:{btcLevels:{resistance:btcR,support:btcSp,current:btcP||null},scenarios:{bull:{condition:'BTC tembus $'+(btcR||'resistance')+' close di atas',action:'Long conv≥'+(ec?72:65)+' RR1:3 RS+FR filter',setups:longs.slice(0,3)},sideways:{condition:'BTC konsolidasi ±1.5%',action:'Scalp COILING+ACCUM saja.',setups:accums.slice(0,2)},bear:{condition:'BTC breakdown ke $'+(btcSp||'support'),action:'Cash '+(shorts.length>2?60:80)+'%. SHORT RSI>72.',setups:shortS.slice(0,2)}},scalpSetups:scalpS,swingSetups:swingS,activeShorts:shortS,spotAccum:spotA,avoidList:avoid,flySetups:flys,accumSetups:accums},
       sectorFlow:{sectors:Object.values(sdm).sort((a,b)=>b.avgCh24-a.avgCh24),sectorData:sdm},
+
+      // ════════════════════════════════════════════════════════
+      // 🏆 GOLDEN OPPORTUNITY DETECTORS — Peluang Emas
+      // Data yang tidak terlihat di chart biasa
+      // Digunakan trader institusional, sekarang untuk Anda
+      // ════════════════════════════════════════════════════════
+
+      // 🐋 WHALE FINGERPRINT: OI besar + harga diam + FR negatif
+      whaleFingerprint:(()=>{try{return coins.filter(c=>c.oi>2e9&&c.fr<-0.0001&&Math.abs(c.c24)<1.5&&c.rsi>=35&&c.rsi<=58&&c.vol>1e6).sort((a,b)=>a.fr-b.fr).slice(0,8).map(c=>({sym:c.sym,price:c.price,c24:+c.c24.toFixed(2),rsi:c.rsi,fr:+(c.fr*100).toFixed(4),oi:+(c.oi/1e9).toFixed(2),vol:c.vol,rating:Math.abs(c.fr)>0.0005?'🔥STRONG':Math.abs(c.fr)>0.0002?'💎GOOD':'⚡WATCH',conviction:'SM akumulasi diam-diam — harga belum bergerak'}));}catch{return[];}})(),
+
+      // 🔥 FR SQUEEZE RADAR: shorts extreme → siap squeeze
+      squeezeRadar:(()=>{try{return coins.filter(c=>c.fr<-0.0003&&c.vol>500000&&c.rsi<55).sort((a,b)=>a.fr-b.fr).slice(0,10).map(c=>({sym:c.sym,price:c.price,c24:+c.c24.toFixed(2),rsi:c.rsi,fr:+(c.fr*100).toFixed(4),frAnn:+(c.fr*100*3*365).toFixed(1),oi:+(c.oi/1e9).toFixed(2),vol:c.vol,strength:c.fr<-0.001?'🚨EXTREME':c.fr<-0.0007?'🔥STRONG':c.fr<-0.0005?'💎HIGH':'⚡MOD',conviction:'Shorts bayar '+(+(Math.abs(c.fr)*100).toFixed(4))+'%/8jam — squeeze ketika ada buy trigger'}));}catch{return[];}})(),
+
+      // 💡 STEALTH VOLUME: volume spike tapi harga flat
+      stealthVolume:(()=>{try{return coins.filter(c=>c.vol>10e6&&Math.abs(c.c24)<0.8&&c.rsi<65&&c.oi>500e6).sort((a,b)=>b.vol-a.vol).slice(0,8).map(c=>({sym:c.sym,price:c.price,c24:+c.c24.toFixed(2),vol:c.vol,rsi:c.rsi,oi:+(c.oi/1e9).toFixed(2),signal:'SM menyerap supply — akumulasi tersembunyi',urgency:c.vol>100e6?'🔥CRITICAL':c.vol>50e6?'💎HIGH':'⚡MOD'}));}catch{return[];}})(),
+
+      // 🌟 HIDDEN GEMS: lowcap + oversold + FR negatif = belum viral
+      hiddenGems:(()=>{try{return coins.filter(c=>c.rsi<32&&c.fr<=-0.0001&&c.vol>300000&&c.vol<50e6&&!['BTC','ETH','BNB','SOL','XRP','ADA','DOGE'].includes(c.sym)&&c.conv>=60).sort((a,b)=>a.rsi-b.rsi).slice(0,12).map(c=>({sym:c.sym,price:c.price,c24:+c.c24.toFixed(2),rsi:c.rsi,fr:+(c.fr*100).toFixed(4),vol:c.vol,conv:c.conv,convLabel:c.conv>=72?'💎PRIME':c.conv>=62?'✅VALID':'🟡MOD',signal:'Belum viral — early entry sebelum publik sadar'}));}catch{return[];}})(),
+
+      // ⚡ MOMENTUM SHIFT: naik saat BTC flat/turun = narrative aktif
+      momentumShift:(()=>{try{const bc=btcC||0;return coins.filter(c=>c.c24>2&&(c.c24-bc)>3&&c.sym!=='BTC'&&c.vol>1e6&&c.rsi<75).sort((a,b)=>(b.c24-bc)-(a.c24-bc)).slice(0,8).map(c=>({sym:c.sym,price:c.price,c24:+c.c24.toFixed(2),rsi:c.rsi,vol:c.vol,outperformBTC:+(c.c24-bc).toFixed(2),signal:'RS BTC +'+(+(c.c24-bc).toFixed(1))+'% — catalyst aktif — riset segera',urgency:(c.c24-bc)>8?'🚀STRONG':(c.c24-bc)>5?'📈DECOUPLE':'↗️MILD'}));}catch{return[];}})(),
+
       tradingSchedule:{wibHour:wibH,dayName:days[now.getUTCDay()],sessions:sess,currentSession:cs,positionSizeRec:cso.q==='PRIME'?'Full (100%)':cso.q==='GOOD'?'Large (75%)':cso.q==='MODERATE'?'Half (50%)':'Minimal (25%)',focusToday:mct+'. '+(cso.q==='PRIME'?'🔥 PRIME — aktif!':cso.q==='POOR'?'Istirahat.':'Session '+cso.q+'.'),nextPrimeSession:np},
       checklist:{marketChecks:mktC,marketPassCount:pass,marketTotal:8,coinChecks:['RSI koin < 72','Vol ≥ $5M','Conv Score ≥ '+(ec?70:60),'Size ≤ 2% equity','FR < +0.04%','SL ATR-based','RR min 1:2','Volume konfirmasi','No entry 30min sebelum news','Sesuai skenario Game Plan'],overallGreenLight:pass>=6,verdict:pass>=6?'✅ KONDISI LAYAK TRADING':'⚠️ HATI-HATI — '+(8-pass)+' kondisi belum terpenuhi'},
     };
