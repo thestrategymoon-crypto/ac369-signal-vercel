@@ -33,7 +33,7 @@ export default async function handler(req,res){
   const get=async(url,ms=2500)=>{try{const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);const r=await fetch(url,{signal:c.signal,headers:{Accept:'application/json','User-Agent':'AC369/10'}});clearTimeout(t);if(!r||!r.ok)return null;return await r.json()}catch{return null}};
 
   // Fetch all — Promise.allSettled NEVER throws
-  const [R0,R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,R13,R14,R15]=await Promise.allSettled([
+  const [R0,R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12]=await Promise.allSettled([
     get('https://api.bybit.com/v5/market/tickers?category=linear',2500),    // R0: Bybit all tickers
     get('https://api.mexc.com/api/v3/ticker/24hr',2500),                    // R1: MEXC all tickers
     get('https://api.mexc.com/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=52',2500),  // R2: BTC 4H
@@ -47,9 +47,7 @@ export default async function handler(req,res){
     get('https://api.mexc.com/api/v3/klines?symbol=AVAXUSDT&interval=4h&limit=52',2200), // R10: AVAX 4H
     get('https://api.mexc.com/api/v3/klines?symbol=DOTUSDT&interval=4h&limit=52',2200),  // R11: DOT 4H
     get('https://api.mexc.com/api/v3/klines?symbol=ADAUSDT&interval=4h&limit=52',2200),  // R12: ADA 4H
-    get('https://api.mexc.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=16',1800), // R13: BTC 1D RSI
-    get('https://api.mexc.com/api/v3/klines?symbol=ETHUSDT&interval=1d&limit=16',1800), // R14: ETH 1D RSI
-    get('https://api.mexc.com/api/v3/klines?symbol=SOLUSDT&interval=1d&limit=16',1800), // R15: SOL 1D RSI
+
   ]);
 
   // ── ALL PROCESSING IN ONE BIG TRY-CATCH ──────────────────
@@ -70,23 +68,7 @@ export default async function handler(req,res){
 
     // Klines (safe OBV calc)
     const km={};let realRSI=0;
-    // 1D RSI calculation for MTF analysis
-    const d1Map={};
-    for(const[sym,kR]of[['BTC',R13],['ETH',R14],['SOL',R15]]){
-      try{
-        let raw=[];
-        if(Array.isArray(kR.value)){raw=A(kR.value);}
-        else if(kR.value?.result?.list){raw=A(kR.value.result.list).reverse();}
-        if(raw.length>=15){
-          const cls=raw.map(d=>N(d[4])).filter(v=>v>0);
-          const d1rsi=r14(cls);
-          const d1trend=cls.length>=5?(cls[cls.length-1]>cls[cls.length-3]?'UP':'DOWN'):'FLAT';
-          d1Map[sym]={rsi:+d1rsi.toFixed(1),trend:d1trend,aboveE20:cls[cls.length-1]>cls.slice(-20).reduce((s,v)=>s+v,0)/Math.min(20,cls.length)};
-        }
-      }catch{}
-    }
-
-    for(const[sym,kR]of[['BTC',R2],['ETH',R3],['SOL',R4],['BNB',R7],['XRP',R8],['LINK',R9],['AVAX',R10],['DOT',R11],['ADA',R12]]){
+        for(const[sym,kR]of[['BTC',R2],['ETH',R3],['SOL',R4],['BNB',R7],['XRP',R8],['LINK',R9],['AVAX',R10],['DOT',R11],['ADA',R12]]){
       try{
         // Handle both MEXC (direct array) and Bybit (result.list) formats
         let raw=[];
@@ -154,7 +136,7 @@ export default async function handler(req,res){
             divStrength=Math.min(100,Math.max(0,divStrength));
           }
         }catch{}
-        km[sym]={rsi:+rsi.toFixed(2),rsiSlope,rsiDir,d1rsi:+(d1Map[sym]?.rsi||0).toFixed(1),d1trend:d1Map[sym]?.trend||'—',macd,e9,e200,atr:+atr.toFixed(8),price:lp,aboveE200:lp>e200,isCoiling:a20>0&&r5<a20*0.65,vB:vBull>vBear*1.2,volTrend,pip:+cPip.toFixed(1),divergence,divStrength,src:'mx'};
+        km[sym]={rsi:+rsi.toFixed(2),rsiSlope,rsiDir,macd,e9,e200,atr:+atr.toFixed(8),price:lp,aboveE200:lp>e200,isCoiling:a20>0&&r5<a20*0.65,vB:vBull>vBear*1.2,volTrend,pip:+cPip.toFixed(1),divergence,divStrength,src:'mx'};
         realRSI++;
       }catch{}
     }
@@ -351,82 +333,45 @@ export default async function handler(req,res){
         const retailSignal=retailLongEst>=65?'Retail sangat long → SM biasanya jual ke mereka. HINDARI long baru.':retailLongEst>=58?'Retail sudah banyak long. Sizing kecil, SL ketat.':retailLongEst<=35?'Retail sangat short → squeeze bisa terjadi kapanpun! Entry long ideal.':retailLongEst<=42?'Retail lebih banyak short. FR negatif = shorts bayar. Setup long bagus.':'Retail balanced. Tidak ada extreme bias.';
         const retailSrc=by.bidAskRatio?'ba+fr-calc':'fr-calc';
 
-        // MTF (Multi-Timeframe) Analysis
-        // If coin has real klines data AND daily is also oversold = MTF confirmation
-        const d1Data=d1Map[sym]||null;
-        const d1rsiVal=d1Data?.rsi||0;
-        const d1trendVal=d1Data?.trend||'—';
-        // MTF confirmed: 4H oversold AND daily also oversold
-        const mtfConfirmed=rR&&d1rsiVal>0&&rsi<38&&d1rsiVal<42;
-        // MTF: daily trend alignment
-        const mtfBadge=mtfConfirmed?'🔥 MTF CONFIRMED':(rR&&d1trendVal==='UP'&&dir==='LONG')?'✅ Daily UP':(rR&&d1trendVal==='DOWN'&&dir==='LONG')?'⚠️ Counter-trend':'';
+        // MTF: based on 4H RSI slope only
+        const mtfConfirmed=rR&&rsi<35;
+        const mtfBadge=mtfConfirmed?'🔥 4H OVERSOLD+REAL':'';
 
-        coins.push({sym,sector:sec,price:p,c24,vol,rsi:+rsi.toFixed(1),rsiReal:rR,fr:fp||null,isCoiling:ic,rs,atr:atr>0?+atr.toFixed(p>1?4:8):null,atrPct:ap,pip:+pip.toFixed(1),signal:sig,signalColor:sc,signalDesc:desc,direction:dir,probability:prob,conv:{score:cv,label:lb},convStars,rrDisplay,retailLong:retailLongEst,retailShort:retailShortEst,retailBias,retailSignal,retailSrc,divergence:kDiv,divStrength:kDivStr,d1rsi:d1rsiVal||null,d1trend:d1trendVal,mtfConfirmed,mtfBadge,bidAskRatio:by.bidAskRatio||null,
+        // ── LEAN RETAIL ESTIMATE (fast: arithmetic only) ──
+        const frNum2=by.fr||0;
+        const rLong=Math.max(28,Math.min(72,+(50+frNum2*100*160).toFixed(1)));
+        const rShort=+(100-rLong).toFixed(1);
+        const rBias=rLong>=65?'🚨 RETAIL TRAP':rLong>=58?'⚠️ Long Heavy':rLong<=35?'🚀 SQUEEZE':rLong<=42?'💎 Short Dom':'⚖️ OK';
 
-          // ── FUTURES-SPECIFIC POWER DATA ───────────────────
-          // 1. OI Direction Analysis (4 market states)
-          oiDirection:(()=>{try{
-            const prevOI=CACHE.oiMap[sym]||0;
-            const curOI=by.oi||0;
-            CACHE.oiMap[sym]=curOI; // update for next request
-            if(prevOI===0||curOI===0)return null;
-            const oiChange=curOI-prevOI;
-            const oiChangePct=+(oiChange/prevOI*100).toFixed(2);
-            let state,stateColor,stateDesc;
-            if(oiChange>0&&c24>=0){state='🟢 NEW LONGS';stateColor='green';stateDesc='OI naik + harga naik = longs baru masuk. Trend bullish nyata.';}
-            else if(oiChange>0&&c24<0){state='🔴 NEW SHORTS';stateColor='red';stateDesc='OI naik + harga turun = shorts baru masuk. Trend bearish nyata.';}
-            else if(oiChange<0&&c24>=0){state='⚡ SHORT SQUEEZE';stateColor='cyan';stateDesc='OI turun + harga naik = shorts forced cover. Pump mungkin habis.';}
-            else if(oiChange<0&&c24<0){state='💀 LONG LIQ';stateColor='orange';stateDesc='OI turun + harga turun = longs di-liquidasi. Capitulation zone.';}
-            else{state='→ NEUTRAL';stateColor='gray';stateDesc='Tidak ada perubahan OI signifikan.';}
-            return{state,stateColor,stateDesc,oiChangePct};
-          }catch{return null;}})(),
+        // ── SIMPLE SL/TP (fast: no IIFE) ──
+        const slP2=ap?+(ap*1.5).toFixed(2):2.5;
+        const tp1P2=ap?+(ap*2.0).toFixed(2):4.0;
+        const tp2P2=ap?+(ap*3.5).toFixed(2):7.0;
+        const sl2=dir==='LONG'?+(p*(1-slP2/100)).toFixed(p>1?4:8):+(p*(1+slP2/100)).toFixed(p>1?4:8);
+        const tp12=dir==='LONG'?+(p*(1+tp1P2/100)).toFixed(p>1?4:8):+(p*(1-tp1P2/100)).toFixed(p>1?4:8);
+        const tp22=dir==='LONG'?+(p*(1+tp2P2/100)).toFixed(p>1?4:8):+(p*(1-tp2P2/100)).toFixed(p>1?4:8);
+        const rr2=+(tp2P2/slP2).toFixed(1);
 
-          // 2. Liquidation Zone (where forced closures happen)
-          liquidationZones:(()=>{try{
-            if(!p||p<=0)return null;
-            // Typical leverage distribution: 3x=30%, 5x=40%, 10x=25%, 20x=5%
-            // Long liquidations BELOW current price
-            const liq10x=+(p*0.9).toFixed(p>1?2:6);  // 10x longs liq at -10%
-            const liq5x=+(p*0.80).toFixed(p>1?2:6);   // 5x longs liq at -20%
-            const liq3x=+(p*0.67).toFixed(p>1?2:6);   // 3x longs liq at -33%
-            // Short liquidations ABOVE current price
-            const sLiq10x=+(p*1.1).toFixed(p>1?2:6);  // 10x shorts liq at +10%
-            const sLiq5x=+(p*1.20).toFixed(p>1?2:6);  // 5x shorts liq at +20%
-            // Closest liquidation zone = price magnet!
-            const closestLong=liq10x;
-            const closestShort=sLiq10x;
-            const distToLong=+((p-closestLong)/p*100).toFixed(1);
-            const distToShort=+((closestShort-p)/p*100).toFixed(1);
-            return{longLiq10x:liq10x,longLiq5x:liq5x,shortLiq10x:sLiq10x,shortLiq5x:sLiq5x,distToLongLiq:distToLong,distToShortLiq:distToShort};
-          }catch{return null;}})(),
+        // ── CONVICTION STARS (fast) ──
+        const cStars=Math.min(5,+(
+          (rsi<30?1:rsi<38?0.5:0)+
+          (fp<-0.02?1:fp<-0.01?0.5:0)+
+          (ic?0.5:0)+
+          (rs>3?0.5:rs>0?0.25:0)+
+          (vb&&c24>0?0.5:0)+
+          (rR?0.5:0)
+        ).toFixed(1));
 
-          // 3. Kelly Criterion Position Sizing (optimal bet size)
-          kellySizing:(()=>{try{
-            if(!prob||prob<=0)return null;
-            const p2=prob/100;
-            const rr2=ap?+(ap*3.5/(ap*1.5)).toFixed(2):2.3;
-            const fullKelly=Math.max(0,(p2*rr2-(1-p2))/rr2);
-            const halfKelly=fullKelly/2; // half kelly = standard risk management
-            const suggestPct=Math.max(0.5,Math.min(10,+(halfKelly*100).toFixed(1)));
-            // If $1000 portfolio at suggested %, SL at slP%
-            const riskPer1k=+((suggestPct/100)*1000).toFixed(0);
-            return{fullKelly:+(fullKelly*100).toFixed(1),halfKelly:+(halfKelly*100).toFixed(1),suggestedSizePct:suggestPct,riskPer1k};
-          }catch{return null;}})(),
-
-          // 4. Futures Risk Score (0-100, lower = safer entry)
-          futuresRisk:(()=>{try{
-            let risk=50;
-            if(fp>0.05)risk+=20;else if(fp>0.02)risk+=10;else if(fp<-0.05)risk-=10;
-            if(dir==='LONG'){if(rsi>70)risk+=20;else if(rsi>60)risk+=10;else if(rsi<30)risk-=15;else if(rsi<40)risk-=8;}
-            if(by.oi>0&&by.v>0){const oiVolRatio=by.oi/by.v;if(oiVolRatio>3)risk+=15;else if(oiVolRatio>1.5)risk+=8;}
-            if(divergence&&String(divergence).indexOf('Bull')>=0&&dir==='LONG')risk-=12;
-            if(mtfConfirmed)risk-=15;
-            risk=Math.max(5,Math.min(95,Math.round(risk)));
-            return{score:risk,label:risk<30?'🟢 LOW RISK':risk<50?'🟡 MODERATE':risk<70?'🟠 HIGH RISK':'🔴 DANGER'};
-          }catch{return{score:50,label:'🟡 MODERATE'};}})(),
-
-          divergence,divStrength,
-          levels:{sl:sl||0,tp1:tp1||0,tp2:tp2||0,slPct:slP,tp1Pct:tp1P,tp2Pct:tp2P},src:by.src||'by'});
+        coins.push({sym,sector:sec,price:p,c24,vol,rsi:+rsi.toFixed(1),rsiReal:rR,
+          fr:fp||null,isCoiling:ic,rs,atr:atr>0?+atr.toFixed(p>1?4:8):null,atrPct:ap,
+          pip:+pip.toFixed(1),signal:sig||null,signalColor:sc,signalDesc:desc,
+          direction:dir,probability:prob,conv:{score:cv,label:lb},convStars:cStars,
+          divergence:divergence||null,divStrength:divStrength||0,
+          retailLong:rLong,retailShort:rShort,retailBias:rBias,
+          bidAskRatio:by.bidAskRatio||null,
+          rr:rr2,
+          levels:{sl:sl2||0,tp1:tp12||0,tp2:tp22||0,slPct:slP2,tp1Pct:tp1P2,tp2Pct:tp2P2},
+          src:by.src||'by'})
       }catch{}// per-coin error never kills the loop
     }
 
@@ -712,6 +657,53 @@ export default async function handler(req,res){
           sizingGuidance='Jangan entry baru. Monitor saja. Simpan modal.';}
         return{regime,regimeColor,regimeDesc,sizingGuidance,osPct:+osPct.toFixed(1),obPct:+obPct.toFixed(1),fg,mvrv:+mvrv.toFixed(2)};
       }catch(e){return{regime:'⚖️ NORMAL',regimeColor:'gray',regimeDesc:'Error loading regime.',sizingGuidance:'Sizing normal.'};}})(),
+
+      // ── DAILY OPPORTUNITY SCORE (lightweight) ──
+      dailyOpportunityScore:(()=>{try{
+        let score=50;
+        if(fg<20)score+=20;else if(fg<35)score+=12;else if(fg>75)score-=15;
+        const osC=coins.filter(x=>x.rsi<30).length;
+        if(osC>15)score+=15;else if(osC>8)score+=10;else if(osC>4)score+=5;
+        if(cso.q==='PRIME')score+=10;else if(cso.q==='GOOD')score+=5;
+        const sqC=coins.filter(x=>x.fr!=null&&x.fr<-0.0005).length;
+        score+=Math.min(8,sqC*2);
+        score=Math.max(5,Math.min(98,Math.round(score)));
+        const label=score>=80?'🔥 EXTREME':score>=65?'💎 HIGH':score>=50?'✅ NORMAL':score>=35?'⚠️ LOW':'❌ POOR';
+        const action=score>=80?'Setup langka. Full sizing.':score>=65?'Setup bagus. Sizing normal.':score>=50?'Selektif. Hanya top setup.':'Tunggu kondisi lebih baik.';
+        return{score,label,action,osCoins:osC,squeezeCoins:sqC,session:cso.q,fg};
+      }catch(e){return{score:50,label:'⚖️ NORMAL',action:'Data terbatas.',osCoins:0,squeezeCoins:0};}})(),
+
+      // ── TODAY'S BEST TRADE (top 1 from longs) ──
+      todaysBestTrade:(()=>{try{
+        const top=coins.filter(x=>x.direction==='LONG'&&(x.conv?.score||0)>=60)
+          .sort((a,b)=>((b.conv?.score||0)+((b.rsi||50)<30?15:0)+((b.fr||0)<-0.0003?8:0))-((a.conv?.score||0)+((a.rsi||50)<30?15:0)+((a.fr||0)<-0.0003?8:0)))[0]||null;
+        if(!top)return null;
+        return{sym:top.sym,price:top.price,signal:top.signal||'—',rsi:top.rsi,
+          fr:top.fr,conv:top.conv?.score||0,convLabel:top.conv?.label||'',
+          mtfConfirmed:top.mtfConfirmed,divergence:top.divergence||null,
+          retailLong:top.retailLong,retailShort:top.retailShort,
+          entry:top.price,sl:top.levels?.sl||0,tp1:top.levels?.tp1||0,tp2:top.levels?.tp2||0,
+          slPct:top.levels?.slPct||0,tp1Pct:top.levels?.tp1Pct||0,tp2Pct:top.levels?.tp2Pct||0,
+          rr:top.rr||'2.3R',probability:top.probability||70,convStars:top.convStars||0};
+      }catch(e){return null;}})(),
+
+      // ── MARKET REGIME ──
+      marketRegime:(()=>{try{
+        const osC=coins.filter(x=>x.rsi<30).length;
+        const obC=coins.filter(x=>x.rsi>70).length;
+        const tot=coins.length||1;
+        const btcE2=btcK?.e200||0;const mvrvR=btcK?.price&&btcE2>0?+(btcK.price/btcE2).toFixed(2):1.3;
+        let regime,regimeColor,regimeDesc,sizingGuidance;
+        if(fg<30&&mvrvR<1.1&&osC/tot>0.05){regime='💎 ACCUMULATE';regimeColor='cyan';regimeDesc='Fear + MVRV rendah + oversold = zona akumulasi.';sizingGuidance='DCA bertahap 25-50%.';}
+        else if(fg>=30&&fg<=65&&obC/tot<0.15&&(cso.q==='PRIME'||cso.q==='GOOD')){regime='✅ TRADE';regimeColor='green';regimeDesc='Market seimbang + session bagus.';sizingGuidance='Full sizing. Patuhi SL.';}
+        else if(fg>65||mvrvR>1.8||obC/tot>0.2){regime='⚠️ CAUTION';regimeColor='amber';regimeDesc='Greedy atau overbought.';sizingGuidance='Max 0.5-1% risk/trade.';}
+        else{regime='🚫 AVOID';regimeColor='red';regimeDesc='Kondisi tidak ideal.';sizingGuidance='Jangan entry baru.';}
+        return{regime,regimeColor,regimeDesc,sizingGuidance,fg,mvrv:mvrvR,osCoins:osC,obCoins:obC};
+      }catch(e){return{regime:'⚖️ NORMAL',regimeColor:'gray',regimeDesc:'Data terbatas.',sizingGuidance:'Sizing normal.'};  }})(),
+
+      // ── RETAIL LISTS (lightweight filter) ──
+      retailTrapList:(()=>{try{return coins.filter(c=>c.retailLong>=63&&(c.rsi||50)>55&&(c.vol||0)>2e6).sort((a,b)=>b.retailLong-a.retailLong).slice(0,6).map(c=>({sym:c.sym,price:c.price,c24:+c.c24.toFixed(2),retailLong:c.retailLong,rsi:c.rsi}));}catch{return[];}})(),
+      retailSqueezeList:(()=>{try{return coins.filter(c=>c.retailLong<=40&&(c.rsi||50)<45&&(c.vol||0)>1e6).sort((a,b)=>a.retailLong-b.retailLong).slice(0,6).map(c=>({sym:c.sym,price:c.price,c24:+c.c24.toFixed(2),retailLong:c.retailLong,retailShort:c.retailShort,rsi:c.rsi}));}catch{return[];}})(),
 
       tradingSchedule:{wibHour:wibH,dayName:days[now.getUTCDay()],sessions:sess,currentSession:cs,positionSizeRec:cso.q==='PRIME'?'Full (100%)':cso.q==='GOOD'?'Large (75%)':cso.q==='MODERATE'?'Half (50%)':'Minimal (25%)',focusToday:mct+'. '+(cso.q==='PRIME'?'🔥 PRIME — aktif!':cso.q==='POOR'?'Istirahat.':'Session '+cso.q+'.'),nextPrimeSession:np},
       checklist:{marketChecks:mktC,marketPassCount:pass,marketTotal:8,coinChecks:['RSI koin < 72','Vol ≥ $5M','Conv Score ≥ '+(ec?70:60),'Size ≤ 2% equity','FR < +0.04%','SL ATR-based','RR min 1:2','Volume konfirmasi','No entry 30min sebelum news','Sesuai skenario Game Plan'],overallGreenLight:pass>=6,verdict:pass>=6?'✅ KONDISI LAYAK TRADING':'⚠️ HATI-HATI — '+(8-pass)+' kondisi belum terpenuhi'},
