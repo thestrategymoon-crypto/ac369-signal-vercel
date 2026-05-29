@@ -623,6 +623,100 @@ export default async function handler(req,res){
       // Retail Squeeze candidates: retail heavily short = squeeze when bulls trigger
       retailSqueezeList:(()=>{try{return coins.filter(c=>c.retailLong<=40&&c.rsi<45&&c.vol>1e6).sort((a,b)=>a.retailLong-b.retailLong).slice(0,8).map(c=>({sym:c.sym,price:c.price,c24:+c.c24.toFixed(2),retailLong:c.retailLong,retailShort:c.retailShort,rsi:c.rsi,opportunity:'Retail '+c.retailShort+'% SHORT. RSI '+c.rsi+'. Jika ada trigger bullish → SHORT SQUEEZE = pump cepat.'}));}catch{return[];}})(),
 
+      // ══ DAILY OPPORTUNITY SCORE ══════════════════════════
+      // Composite score (0-100) — seberapa besar peluang profit hari ini
+      dailyOpportunityScore:(()=>{
+        let score=50;
+        // F&G contrarian premium
+        if(fg<20)score+=20;else if(fg<35)score+=12;else if(fg>75)score-=15;else if(fg>60)score-=8;
+        // MVRV (from btcK)
+        const mvrv=btcK?.price&&ma200>0?btcK.price/ma200:1.3;
+        if(mvrv<1.0)score+=15;else if(mvrv>2)score-=15;
+        // Market session quality
+        if(cso.q==='PRIME')score+=12;else if(cso.q==='GOOD')score+=6;else if(cso.q==='POOR')score-=10;
+        // Oversold coins count (more oversold = more opportunity)
+        const osCount=coins.filter(x=>x.rsi<30).length;
+        if(osCount>15)score+=15;else if(osCount>8)score+=10;else if(osCount>4)score+=5;
+        // MTF confirmations
+        const mtfCount=coins.filter(x=>x.mtfConfirmed).length;
+        score+=Math.min(10,mtfCount*3);
+        // Signal quality
+        const flyCount=coins.filter(x=>x.signal&&(x.signal.includes('FLY')||x.signal.includes('CAPITULATION'))).length;
+        score+=Math.min(10,flyCount*4);
+        // Squeeze potential
+        const squeezeCount=coins.filter(x=>x.fr<-0.0005).length;
+        score+=Math.min(8,squeezeCount*2);
+        score=Math.max(5,Math.min(98,Math.round(score)));
+        const label=score>=80?'🔥 EXTREME OPPORTUNITY':score>=65?'💎 HIGH OPPORTUNITY':score>=50?'✅ NORMAL OPPORTUNITY':score>=35?'⚠️ LOW OPPORTUNITY':'❌ POOR DAY — TUNGGU';
+        const action=score>=80?'SEMUA setup valid. Sizing penuh. Ini hari langka!':score>=65?'Setup bagus. Sizing normal. Fokus MTF Confirmed.':score>=50?'Selektif. Hanya PRIME setups. Sizing kecil.':score>=35?'Hindari new entry. DCA saja jika sudah punya posisi.':'Jangan trading hari ini. Tunggu kondisi lebih baik.';
+        return{score,label,action,factors:{fg,mvrv:+mvrv.toFixed(2),session:cso.q,osCoins:osCount,mtfCoins:mtfCount,flyCoins:flyCount,squeezeCoins:squeezeCount}};
+      })(),
+
+      // ══ TODAY'S BEST TRADE ════════════════════════════════
+      // Setup #1 tertinggi confidence hari ini — satu trade, full conviction
+      todaysBestTrade:(()=>{
+        const top=coins.filter(x=>x.direction==='LONG'&&x.conv.score>=60)
+          .sort((a,b)=>{
+            // Sort by: MTF > Conviction > Divergence > RSI oversold
+            const scoreA=(a.mtfConfirmed?20:0)+(a.conv.score)+(a.divergence&&a.divergence.includes('BULL')?10:0)+(a.rsi<25?15:a.rsi<30?10:0)+(Math.abs(a.fr)>0.0003?8:0);
+            const scoreB=(b.mtfConfirmed?20:0)+(b.conv.score)+(b.divergence&&b.divergence.includes('BULL')?10:0)+(b.rsi<25?15:b.rsi<30?10:0)+(Math.abs(b.fr)>0.0003?8:0);
+            return scoreB-scoreA;
+          })[0]||null;
+        if(!top)return null;
+        const rrStr=top.levels.slPct&&top.levels.tp2Pct?'1:'+(+(top.levels.tp2Pct/top.levels.slPct).toFixed(1))+'R':'1:2.3R';
+        return{
+          sym:top.sym,price:top.price,signal:top.signal,rsi:top.rsi,
+          rsiReal:top.rsiReal,fr:top.fr,conv:top.conv.score,convLabel:top.conv.label,
+          mtfConfirmed:top.mtfConfirmed,mtfBadge:top.mtfBadge||'',
+          divergence:top.divergence||null,divStrength:top.divStrength||0,
+          retailLong:top.retailLong,retailShort:top.retailShort,retailBias:top.retailBias,
+          oiDirection:top.oiDirection?.state||null,
+          entry:top.price,sl:top.levels.sl,tp1:top.levels.tp1,tp2:top.levels.tp2,
+          slPct:top.levels.slPct,tp1Pct:top.levels.tp1Pct,tp2Pct:top.levels.tp2Pct,
+          rr:rrStr,probability:top.probability,
+          kellySizing:top.kellySizing,futuresRisk:top.futuresRisk,
+          convStars:top.convStars,
+          reasoning:[
+            top.mtfConfirmed?'🔥 MTF 4H+1D keduanya oversold':'',
+            top.rsi<30?'💎 RSI '+top.rsi.toFixed(1)+' deep oversold':'',
+            top.fr<-0.0003?'🚀 FR '++(top.fr*100).toFixed(3)+'% — shorts bayar longs':'',
+            top.divergence&&top.divergence.includes('BULL')?top.divergence:'',
+            top.oiDirection?.state==='🟢 NEW LONGS'?'🟢 OI naik + harga naik = new longs masuk':'',
+            top.retailShort>55?'👥 Retail '+top.retailShort+'% short = squeeze potential':'',
+          ].filter(Boolean),
+        };
+      })(),
+
+      // ══ MARKET REGIME ════════════════════════════════════
+      // 4 state: ACCUMULATE / TRADE / CAUTION / AVOID
+      marketRegime:(()=>{
+        const osCount=coins.filter(x=>x.rsi<30).length;
+        const obCount=coins.filter(x=>x.rsi>70).length;
+        const totalCoins=coins.length||1;
+        const osPct=osCount/totalCoins*100;
+        const obPct=obCount/totalCoins*100;
+        const mvrv=btcK?.price&&ma200>0?btcK.price/ma200:1.3;
+        
+        let regime,regimeColor,regimeDesc,sizingGuidance;
+        if(fg<30&&mvrv<1.1&&osPct>10){
+          regime='💎 ACCUMULATE';regimeColor='cyan';
+          regimeDesc='F&G fear + MVRV rendah + banyak oversold = zona akumulasi terbaik.';
+          sizingGuidance='DCA: 25-50% posisi awal. Tambah jika turun. Long-term bullish.';}
+        else if(fg>=30&&fg<=65&&osPct<15&&obPct<15&&cso.q==='PRIME'||cso.q==='GOOD'){
+          regime='✅ TRADE';regimeColor='green';
+          regimeDesc='Market seimbang + session bagus = kondisi trading aktif optimal.';
+          sizingGuidance='Full sizing: 1-3% risk per trade. Patuhi SL.';}
+        else if(fg>65||mvrv>1.8||obPct>20){
+          regime='⚠️ CAUTION';regimeColor='amber';
+          regimeDesc='F&G greedy atau market overbought. Sizing kecil, SL ketat.';
+          sizingGuidance='Max 0.5-1% risk per trade. Profit taking agresif.';}
+        else{
+          regime='🚫 AVOID';regimeColor='red';
+          regimeDesc='Kondisi tidak ideal. Tunggu setup yang lebih baik.';
+          sizingGuidance='Jangan entry baru. Monitor saja. Simpan modal.';}
+        return{regime,regimeColor,regimeDesc,sizingGuidance,osPct:+osPct.toFixed(1),obPct:+obPct.toFixed(1),fg,mvrv:+mvrv.toFixed(2)};
+      })(),
+
       tradingSchedule:{wibHour:wibH,dayName:days[now.getUTCDay()],sessions:sess,currentSession:cs,positionSizeRec:cso.q==='PRIME'?'Full (100%)':cso.q==='GOOD'?'Large (75%)':cso.q==='MODERATE'?'Half (50%)':'Minimal (25%)',focusToday:mct+'. '+(cso.q==='PRIME'?'🔥 PRIME — aktif!':cso.q==='POOR'?'Istirahat.':'Session '+cso.q+'.'),nextPrimeSession:np},
       checklist:{marketChecks:mktC,marketPassCount:pass,marketTotal:8,coinChecks:['RSI koin < 72','Vol ≥ $5M','Conv Score ≥ '+(ec?70:60),'Size ≤ 2% equity','FR < +0.04%','SL ATR-based','RR min 1:2','Volume konfirmasi','No entry 30min sebelum news','Sesuai skenario Game Plan'],overallGreenLight:pass>=6,verdict:pass>=6?'✅ KONDISI LAYAK TRADING':'⚠️ HATI-HATI — '+(8-pass)+' kondisi belum terpenuhi'},
     };
