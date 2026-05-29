@@ -897,7 +897,12 @@ async function runTIS(){
     if(content)content.style.display='block';
     renderTIS(d);
     var dq=d.dataQuality||{};
-    if(st)st.textContent='✅ v'+d.version+' · '+dq.coins+' koin · '+dq.realRSI+' real RSI · L/S: '+(dq.btcLS?'✓':'—')+' · '+d.elapsed+'ms';
+    if(st){
+      var deepOS=d.marketCharacter?.stats?.oversold||0;
+      var mcType=d.marketCharacter?.type||'';
+      var mcShort=mcType.includes('CAPITULATION')?'🔥CAPBOT':mcType.includes('OVERSOLD')?'💎OVERSOLD':mcType.includes('BULL')?'📈BULL':mcType.includes('BEAR')?'📉BEAR':'⚖️NEUTRAL';
+      st.textContent='✅ v'+d.version+' · '+dq.coins+' koin · '+dq.realRSI+' real RSI · '+mcShort+' · '+deepOS+' OS · '+d.elapsed+'ms';
+    }
     btn.textContent='🔄 Refresh';btn.disabled=false;
   }catch(e){
     if(st)st.textContent='❌ Error: '+e.message;
