@@ -252,6 +252,7 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
     <div class="tis-grid-2">
       <div class="card" id="tis-char" style="border-color:rgba(0,212,170,.2)"></div>
       <div class="card" id="tis-btc" style="border-color:rgba(74,240,255,.2)"></div>
+  <div id="tis-daily-power"></div>
     </div>
     <div class="card" id="tis-conv" style="margin-bottom:8px;border-color:rgba(168,85,247,.2)"></div>
     <div class="card" id="tis-plan" style="margin-bottom:8px;border-color:rgba(0,255,136,.2)"></div>
@@ -898,11 +899,24 @@ async function runTIS(){
     if(content)content.style.display='block';
     renderTIS(d);
     var dq=d.dataQuality||{};
+    // AUTO-RETRY if 0 coins (temporary API issue)
+    if(dq.coins===0&&!d._retried){
+      if(st)st.textContent='⚠️ 0 koin — auto-retry dalam 5 detik...';
+      btn.textContent='🔄 Refresh';btn.disabled=false;
+      setTimeout(function(){
+        d._retried=true;
+        if(st)st.textContent='🔄 Retry...';
+        runTIS();
+      },5000);
+      return;
+    }
     if(st){
       var deepOS=d.marketCharacter?.stats?.oversold||0;
       var mcType=d.marketCharacter?.type||'';
       var mcShort=mcType.includes('CAPITULATION')?'🔥CAPBOT':mcType.includes('OVERSOLD')?'💎OVERSOLD':mcType.includes('BULL')?'📈BULL':mcType.includes('BEAR')?'📉BEAR':'⚖️NEUTRAL';
-      st.textContent='✅ v'+d.version+' · '+dq.coins+' koin · '+dq.realRSI+' real RSI · '+mcShort+' · '+deepOS+' OS · '+d.elapsed+'ms';
+      var dos=d.dailyOpportunityScore;
+      var dosStr=dos?(' · 🎯'+dos.score):'';
+      st.textContent='✅ v'+d.version+' · '+dq.coins+' koin · '+dq.realRSI+' real RSI · '+mcShort+' · '+deepOS+' OS'+dosStr+' · '+d.elapsed+'ms';
     }
     btn.textContent='🔄 Refresh';btn.disabled=false;
   }catch(e){
@@ -919,6 +933,7 @@ function renderTIS(d){
   }
   try{tisMod2Char(d);}catch(e){console.warn('Char:',e.message);}
   try{tisMod2BTC(d);}catch(e){console.warn('BTC:',e.message);}
+  try{tisMod2DailyPower(d);}catch(e){console.warn('DailyPower:',e.message);}
   try{tisMod2Conv(d);}catch(e){console.warn('Conv:',e.message);}
   try{tisMod3Plan(d);}catch(e){console.warn('Plan:',e.message);}
   try{tisMod4Flow(d);}catch(e){console.warn('Flow:',e.message);}
@@ -1527,6 +1542,75 @@ function tisMod8Golden(d){
   el.innerHTML=h;
 }
 
+
+function tisMod2DailyPower(d){
+  var el=$('tis-daily-power');if(!el)return;
+  var dos=d.dailyOpportunityScore||{};
+  var regime=d.marketRegime||{};
+  var best=d.todaysBestTrade||null;
+  if(!dos.score&&!best){el.innerHTML='';return;}
+  var h='';
+  var scoreCol=dos.score>=80?'#ffd700':dos.score>=65?'var(--g)':dos.score>=50?'var(--g2)':dos.score>=35?'var(--amber)':'var(--red)';
+  var regCol=regime.regimeColor==='cyan'?'#00d4ff':regime.regimeColor==='green'?'var(--g)':regime.regimeColor==='amber'?'var(--amber)':'var(--red)';
+
+  // DAILY SCORE + REGIME
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">';
+  h+='<div style="background:rgba(255,215,0,.05);border:1px solid rgba(255,215,0,.2);border-radius:10px;padding:10px">';
+  h+='<div style="font-size:9px;font-weight:700;color:#ffd700;letter-spacing:1px;margin-bottom:4px">🎯 DAILY OPPORTUNITY</div>';
+  h+='<div style="font-size:28px;font-weight:900;color:'+scoreCol+'">'+dos.score+'<span style="font-size:12px">/100</span></div>';
+  h+='<div style="font-size:9px;font-weight:700;color:'+scoreCol+'">'+dos.label+'</div>';
+  h+='<div style="height:5px;background:rgba(255,255,255,.06);border-radius:3px;margin:5px 0;overflow:hidden"><div style="height:5px;width:'+dos.score+'%;background:'+scoreCol+';border-radius:3px"></div></div>';
+  h+='<div style="font-size:8px;color:var(--dim)">'+dos.action+'</div>';
+  h+='</div>';
+  h+='<div style="background:rgba(255,255,255,.02);border:1px solid '+regCol+'30;border-radius:10px;padding:10px">';
+  h+='<div style="font-size:9px;font-weight:700;color:#ffd700;margin-bottom:4px">📊 MARKET REGIME</div>';
+  h+='<div style="font-size:16px;font-weight:900;color:'+regCol+'">'+regime.regime+'</div>';
+  h+='<div style="font-size:8px;color:var(--dim);margin:4px 0">'+regime.regimeDesc+'</div>';
+  h+='<div style="font-size:8px;font-weight:700;color:'+regCol+'">'+regime.sizingGuidance+'</div>';
+  h+='</div>';
+  h+='</div>';
+
+  // BEST TRADE
+  if(best){
+    h+='<div style="background:rgba(0,255,208,.04);border:2px solid rgba(0,255,208,.3);border-radius:10px;padding:12px;margin-bottom:8px">';
+    h+='<div style="font-size:9px;font-weight:700;color:#00ffd0;letter-spacing:1px;margin-bottom:8px">⭐ BEST TRADE HARI INI</div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+    h+='<div>';
+    h+='<div style="font-size:22px;font-weight:900;color:#00ffd0">'+best.sym+'</div>';
+    h+='<div style="font-size:9px;color:var(--g2)">'+best.signal+'</div>';
+    if(best.convStars!=null){
+      var stars=Math.floor(best.convStars||0);
+      h+='<div style="font-size:11px;color:var(--amber)">'+('★'.repeat(stars)+'☆'.repeat(5-stars))+' '+(best.convStars>=4?'KUAT':best.convStars>=3?'BAIK':'CUKUP')+'</div>';
+    }
+    h+='<div style="margin-top:4px;display:flex;gap:3px;flex-wrap:wrap">';
+    if(best.mtfConfirmed)h+='<span style="font-size:7px;background:rgba(255,215,0,.2);color:#ffd700;padding:1px 5px;border-radius:3px">🔥 MTF</span>';
+    if(best.divergence&&best.divergence.indexOf('BULL')>=0)h+='<span style="font-size:7px;background:rgba(0,255,136,.1);color:var(--g);padding:1px 5px;border-radius:3px">DIV</span>';
+    h+='</div>';
+    if(A(best.reasoning).length){
+      h+='<div style="margin-top:5px">';
+      A(best.reasoning).forEach(function(r2){h+='<div style="font-size:7.5px;color:var(--g2);margin-bottom:1px">'+r2+'</div>';});
+      h+='</div>';
+    }
+    h+='</div>';
+    h+='<div style="background:rgba(255,255,255,.03);border-radius:8px;padding:8px">';
+    h+='<div style="font-size:8px;font-weight:700;color:var(--dim);margin-bottom:4px">TRADE PLAN</div>';
+    h+='<div style="font-size:8px;display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span>Entry</span><span style="color:#00ffd0;font-weight:700">$'+best.price+'</span></div>';
+    if(best.sl>0)h+='<div style="font-size:8px;display:flex;justify-content:space-between;padding:2px 0"><span>SL</span><span style="color:var(--red)">$'+(best.price>1?best.sl.toFixed(2):best.sl.toFixed(6))+' (-'+best.slPct+'%)</span></div>';
+    if(best.tp1>0)h+='<div style="font-size:8px;display:flex;justify-content:space-between;padding:2px 0"><span>TP1</span><span style="color:var(--g)">$'+(best.price>1?best.tp1.toFixed(2):best.tp1.toFixed(6))+' (+'+best.tp1Pct+'%)</span></div>';
+    if(best.tp2>0)h+='<div style="font-size:8px;display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span>TP2</span><span style="color:var(--g2)">$'+(best.price>1?best.tp2.toFixed(2):best.tp2.toFixed(6))+' (+'+best.tp2Pct+'%)</span></div>';
+    h+='<div style="font-size:8px;margin-top:4px;display:flex;justify-content:space-between">';
+    h+='<span style="color:var(--purple)">RR: '+best.rr+'</span>';
+    h+='<span style="color:var(--amber)">P: '+best.probability+'%</span>';
+    h+='</div>';
+    if(best.kellySizing)h+='<div style="font-size:8px;margin-top:3px;color:var(--purple)">Kelly: '+best.kellySizing.suggestedSizePct+'% portfolio</div>';
+    if(best.retailLong!=null)h+='<div style="font-size:7.5px;margin-top:2px;color:'+(best.retailLong<=42?'var(--g)':'var(--dim)')+'">👥 Retail: '+best.retailLong+'% Long '+best.retailShort+'% Short</div>';
+    if(best.futuresRisk)h+='<div style="font-size:7.5px;margin-top:2px;color:var(--g)">'+best.futuresRisk.label+'</div>';
+    h+='</div>';
+    h+='</div>';
+    h+='</div>';
+  }
+  el.innerHTML=h;
+}
 </script>
 </body>
 </html>
