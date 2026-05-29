@@ -365,7 +365,7 @@ export default async function handler(req,res){
 
           // ── FUTURES-SPECIFIC POWER DATA ───────────────────
           // 1. OI Direction Analysis (4 market states)
-          oiDirection:(()=>{
+          oiDirection:(()=>{try{
             const prevOI=CACHE.oiMap[sym]||0;
             const curOI=by.oi||0;
             CACHE.oiMap[sym]=curOI; // update for next request
@@ -379,10 +379,10 @@ export default async function handler(req,res){
             else if(oiChange<0&&c24<0){state='💀 LONG LIQ';stateColor='orange';stateDesc='OI turun + harga turun = longs di-liquidasi. Capitulation zone.';}
             else{state='→ NEUTRAL';stateColor='gray';stateDesc='Tidak ada perubahan OI signifikan.';}
             return{state,stateColor,stateDesc,oiChangePct};
-          })(),
+          }catch{return null;}})(),
 
           // 2. Liquidation Zone (where forced closures happen)
-          liquidationZones:(()=>{
+          liquidationZones:(()=>{try{
             if(!p||p<=0)return null;
             // Typical leverage distribution: 3x=30%, 5x=40%, 10x=25%, 20x=5%
             // Long liquidations BELOW current price
@@ -398,10 +398,10 @@ export default async function handler(req,res){
             const distToLong=+((p-closestLong)/p*100).toFixed(1);
             const distToShort=+((closestShort-p)/p*100).toFixed(1);
             return{longLiq10x:liq10x,longLiq5x:liq5x,shortLiq10x:sLiq10x,shortLiq5x:sLiq5x,distToLongLiq:distToLong,distToShortLiq:distToShort};
-          })(),
+          }catch{return null;}})(),
 
           // 3. Kelly Criterion Position Sizing (optimal bet size)
-          kellySizing:(()=>{
+          kellySizing:(()=>{try{
             if(!prob||prob<=0)return null;
             const p2=prob/100;
             const rr2=ap?+(ap*3.5/(ap*1.5)).toFixed(2):2.3;
@@ -411,23 +411,19 @@ export default async function handler(req,res){
             // If $1000 portfolio at suggested %, SL at slP%
             const riskPer1k=+((suggestPct/100)*1000).toFixed(0);
             return{fullKelly:+(fullKelly*100).toFixed(1),halfKelly:+(halfKelly*100).toFixed(1),suggestedSizePct:suggestPct,riskPer1k};
-          })(),
+          }catch{return null;}})(),
 
           // 4. Futures Risk Score (0-100, lower = safer entry)
-          futuresRisk:(()=>{
+          futuresRisk:(()=>{try{
             let risk=50;
-            // FR too high = dangerous (paying too much)
             if(fp>0.05)risk+=20;else if(fp>0.02)risk+=10;else if(fp<-0.05)risk-=10;
-            // RSI overbought = dangerous for long
             if(dir==='LONG'){if(rsi>70)risk+=20;else if(rsi>60)risk+=10;else if(rsi<30)risk-=15;else if(rsi<40)risk-=8;}
-            // High OI relative to volume = overleveraged market
             if(by.oi>0&&by.v>0){const oiVolRatio=by.oi/by.v;if(oiVolRatio>3)risk+=15;else if(oiVolRatio>1.5)risk+=8;}
-            // Divergence = reversal signal (reduces risk for counter-trend)
-            if(divergence&&divergence.includes('Bull')&&dir==='LONG')risk-=12;
-            if(mtfConfirmed)risk-=15; // MTF = lower risk
+            if(divergence&&String(divergence).indexOf('Bull')>=0&&dir==='LONG')risk-=12;
+            if(mtfConfirmed)risk-=15;
             risk=Math.max(5,Math.min(95,Math.round(risk)));
-            return{score:risk,label:risk<30?'🟢 LOW RISK':risk<50?'🟡 MODERATE':risk<70?'🟠 HIGH RISK':'🔴 DANGER',desc:risk<30?'Setup sangat baik untuk entry futures':risk<50?'Entry valid, sizing normal':risk<70?'Hati-hati, sizing kecil':'Hindari entry sekarang'};
-          })(),
+            return{score:risk,label:risk<30?'🟢 LOW RISK':risk<50?'🟡 MODERATE':risk<70?'🟠 HIGH RISK':'🔴 DANGER'};
+          }catch{return{score:50,label:'🟡 MODERATE'};}})(),
 
           divergence,divStrength,
           levels:{sl:sl||0,tp1:tp1||0,tp2:tp2||0,slPct:slP,tp1Pct:tp1P,tp2Pct:tp2P},src:by.src||'by'});
@@ -438,8 +434,8 @@ export default async function handler(req,res){
 
     const longs=coins.filter(x=>x.direction==='LONG'&&x.conv.score>=60).slice(0,25);
     const shorts=coins.filter(x=>x.direction==='SHORT'&&x.conv.score>=55).slice(0,10);
-    const flys=coins.filter(x=>x.signal.includes('ABOUT TO FLY')||x.signal.includes('CAPITULATION')).slice(0,8);
-    const accums=coins.filter(x=>x.signal.includes('ACCUMULATION')||x.signal.includes('COILING')||x.signal.includes('DECOUPLING')).slice(0,8);
+    const flys=coins.filter(x=>x.signal&&(x.signal.includes('ABOUT TO FLY')||x.signal.includes('CAPITULATION'))).slice(0,8);
+    const accums=coins.filter(x=>x.signal&&(x.signal.includes('ACCUMULATION')||x.signal.includes('COILING')||x.signal.includes('DECOUPLING'))).slice(0,8);
     const top25=coins.slice(0,25);
     const ec=top25.filter(x=>x.conv.score>=80).length;
     const pc=top25.filter(x=>x.conv.score>=70&&x.conv.score<80).length;
@@ -487,9 +483,9 @@ export default async function handler(req,res){
           // 5. SIGNAL QUALITY — berapa banyak high-confidence setups
           const eliteCoins=sc4.filter(x=>x.conv.score>=82).length;
           const primeCoins=sc4.filter(x=>x.conv.score>=72&&x.conv.score<82).length;
-          const flyCoins=sc4.filter(x=>x.signal.includes('ABOUT TO FLY')||x.signal.includes('CAPITULATION')||x.signal.includes('WHALE')).length;
+          const flyCoins=sc4.filter(x=>x.signal&&(x.signal.includes('ABOUT TO FLY')||x.signal.includes('CAPITULATION')||x.signal.includes('WHALE'))).length;
           const shortCoins2=sc4.filter(x=>x.direction==='SHORT').length;
-          const coilingCoins=sc4.filter(x=>x.signal.includes('COILING')||x.signal.includes('ACCUMULATION')).length;
+          const coilingCoins=sc4.filter(x=>x.signal&&(x.signal.includes('COILING')||x.signal.includes('ACCUMULATION'))).length;
 
           // 6. RSI PROFILE — berapa koin oversold vs overbought
           const oversoldCoins=sc4.filter(x=>x.rsi<35).length;
