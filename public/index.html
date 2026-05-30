@@ -229,13 +229,6 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
   </table>
 </div>
 
-<h2>📊 Analisis BTC/ETH</h2>
-<div class="g3">
-  <div class="ac btc" id="btc-c"><div class="ld"><span class="spin"></span> Memuat BTC...</div></div>
-  <div class="ac eth" id="eth-c"><div class="ld"><span class="spin"></span> Memuat ETH...</div></div>
-  <div class="card"><div class="ct">🧠 Narasi Smart Money</div><div class="narr" id="narr-sm">Memuat...</div></div>
-</div>
-
 <h2 style="color:var(--g);font-size:18px;letter-spacing:1px">🧠 TRADE INTELLIGENCE SYSTEM v2</h2>
 <div id="tis-wrap" style="margin-bottom:12px">
   <div style="background:linear-gradient(135deg,rgba(0,212,170,.08),rgba(74,240,255,.05));border:1.5px solid rgba(0,212,170,.3);border-radius:14px;padding:14px 16px;margin-bottom:10px">
@@ -386,40 +379,7 @@ async function fetchBias() {
 }
 
 // ── ANALYTICS ─────────────────────────────────────────────────
-async function fetchAnalytics() {
-  setStep(2, 'active');
-  try {
-    const d = await apiFetch('/api/analytics', 9000, 0);
-    setStep(2, 'done');
-    const btc = d.btc||{}, eth = d.eth||{};
-    const bpx = btc.currentPrice||0, epx = eth.currentPrice||0;
-    const bch = btc.change24h||0, ech = eth.change24h||0;
-    const ac = a => a?.includes('BUY')||a?.includes('BULL') ? 'var(--g)' : a?.includes('SELL')||a?.includes('BEAR') ? 'var(--red)' : 'var(--amber)';
-    const mkCard = (coin, px, ch, data, col) => {
-      const rsi = data.rsi?.['4h']||50;
-      const macd = data.macd?.['4h']||{};
-      return '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'
-        +'<div><div style="font-size:10px;color:var(--dim);margin-bottom:2px">'+coin+'</div>'
-        +'<div style="font-family:var(--m);font-size:22px;font-weight:800;color:'+col+'">$'+px.toLocaleString('en-US',{maximumFractionDigits:0})+'</div>'
-        +'<span class="achg '+(ch>=0?'up':'dn')+'">'+(ch>=0?'+':'')+ch.toFixed(2)+'%</span></div>'
-        +'<div style="text-align:right"><div style="font-size:12px;font-weight:700;color:'+ac(data.action)+'">'+data.action+'</div>'
-        +(data.probabilityScore?'<div style="font-size:10px;color:var(--muted)">'+data.probabilityScore+'%</div>':'')+'</div></div>'
-        +(data.technicalSummary?'<div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:5px">'+data.technicalSummary.substring(0,120)+'</div>':'')
-        +'<div style="display:flex;gap:8px;font-size:10px;font-family:var(--m)">'
-        +'<span style="color:var(--dim)">RSI: <span style="color:'+rsiCol(rsi)+'">'+rsi+'</span></span>'
-        +(macd.crossUp?'<span style="color:var(--g)">MACD ✅</span>':macd.crossDown?'<span style="color:var(--red)">MACD ⚠️</span>':'')
-        +(data.bb?.['4h']?.squeeze?'<span style="color:var(--amber)">BB Squeeze</span>':'')+'</div>';
-    };
-    if (bpx > 0) H('btc-c', mkCard('BITCOIN', bpx, bch, btc, 'var(--g)'));
-    if (epx > 0) H('eth-c', mkCard('ETHEREUM', epx, ech, eth, '#627EEA'));
-    if (d.smartMoneyNarrative) H('narr-sm', d.smartMoneyNarrative);
-    if (bpx) H('s-btc', '$'+(bpx/1000).toFixed(1)+'K');
-    if (epx) H('s-eth', '$'+epx.toLocaleString('en-US',{maximumFractionDigits:0}));
-  } catch(e) {
-    setStep(2, 'err');
-    H('btc-c', '<div class="ld" style="color:var(--red)">❌ '+e.message+'</div>');
-  }
-}
+
 
 // ── MACRO ──────────────────────────────────────────────────────
 async function fetchMacro() {
@@ -1409,8 +1369,7 @@ async function refreshAll() {
     // Step 2+3: Analytics (CC/Bybit) + Macro (AltMe/Bybit) parallel
     // Slight stagger untuk avoid rate limit
     await Promise.allSettled([
-      fetchAnalytics(),
-      new Promise(r=>setTimeout(r,150)).then(()=>fetchMacro()),
+            new Promise(r=>setTimeout(r,150)).then(()=>fetchMacro()),
     ]);
     // Step 4+5: Altcoins (CG) + Onchain (Bybit) parallel
     // Stagger 300ms antara keduanya
