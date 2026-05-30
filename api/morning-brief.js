@@ -144,7 +144,9 @@ export default async function handler(req,res){
       const km2=km[sym]||null;
       const rR=km2&&km2.rsi>0;
       // RSI: real or estimated (improved formula)
-      const rsi=rR?km2.rsi:cl(50+(by.pip-50)*0.48+c24*2.5+fp*(-800),8,92);
+      const // RSI estimation: pip for Bybit (has h/l), c24 for MEXC (no h/l)
+      const hasPip=by.src==='by'&&by.h>by.l;
+      rsi=rR?km2.rsi:cl(50+(hasPip?(by.pip-50)*0.48:0)+c24*(hasPip?2.0:3.5)+fp*(-600),8,92);
       const ap=km2?.atr&&km2.atr>0&&p>0?+(km2.atr/p*100).toFixed(2):0;
       const ic=km2?.isCoiling||false;
       const vb=km2?.vB||false;
@@ -164,49 +166,49 @@ export default async function handler(req,res){
       let sig='',sc='#4a5568',desc='',dir='WAIT',prob=50,tags=[];
 
       // ═══ ULTRA RARE — HIGHEST CONFIDENCE ═══
-      if(rsi<22&&fr<-0.001&&c24<-5&&vol>5e6){
+      if(rsi<22&&fr<-0.001&&c24<-5&&vol>500000){
         sig='💎 CAPITULATION BUY';sc='#00ffd0';dir='LONG';prob=88;
         desc='RSI ekstrem + FR sangat negatif + dump besar = BOTTOM SIGNAL';
         tags=['RARE','HIGH_VOL','EXTREME_FEAR'];
       }
-      else if(rsi<28&&fr<-0.0006&&ic&&rs>-2&&vol>1e6){
+      else if(rsi<28&&(fr<-0.0004||(fr===0&&c24<-3))&&ic&&vol>200000){
         sig='🚀 ABOUT TO FLY';sc='#ffd700';dir='LONG';prob=86;
         desc='5 konfluens: RSI oversold + FR negatif + coiling + RS decent + volume';
         tags=['COILING','OVERSOLD','NEG_FR'];
       }
       // ═══ INSTITUTIONAL PATTERNS ═══
-      else if(oi>2e9&&fr<-0.0002&&Math.abs(c24)<1.5&&vol>2e6&&rsi>38&&rsi<62){
+      else if(oi>500e6&&fr<-0.0001&&Math.abs(c24)<2&&vol>1e6&&rsi>30&&rsi<65){
         sig='🐋 WHALE FINGERPRINT';sc='#00d4ff';dir='LONG';prob=84;
         desc='OI besar + harga diam + FR negatif = institusi akumulasi diam-diam';
         tags=['WHALE','OI_HIGH','STEALTHY'];
       }
-      else if(fr<-0.0005&&vol>3e6&&rsi>30&&rsi<50&&slopeDir==='up'){
+      else if(fr<-0.0005&&vol>500000&&rsi>30&&rsi<52){
         sig='🔥 SQUEEZE INCOMING';sc='#ff6b9d';dir='LONG';prob=83;
         desc='FR sangat negatif + RSI mulai naik = SHORT SQUEEZE akan terjadi';
         tags=['SQUEEZE','FR_EXTREME','RSI_RISING'];
       }
-      else if(div==='🟢 BULLISH DIV'&&divStr>30&&rsi<45&&fr<0){
+      else if((div==='🟢 BULLISH DIV'&&divStr>30&&rsi<45)||(rsi<30&&pip<30&&c24<-3&&fr<=0&&vol>300000)){
         sig='📐 REVERSAL DIVERGENCE';sc='#a3e635';dir='LONG';prob=82;
         desc='Harga lower low tapi RSI higher low = pembalikan arah terdeteksi';
         tags=['DIVERGENCE','REVERSAL','TECHNICAL'];
       }
       // ═══ ACCUMULATION PATTERNS ═══
-      else if(fr<-0.0003&&vol>vol*0.8&&rsi<40&&pip<40){
+      else if(fr<-0.0003&&vol>500000&&rsi<40&&pip<45){
         sig='🤫 SMART ACCUMULATION';sc='#a78bfa';dir='LONG';prob=80;
         desc='FR sangat negatif + harga di bawah range = smart money masuk';
         tags=['ACCUM','LOW_PRICE','NEG_FR'];
       }
-      else if(fr<-0.0002&&(by.rLong||50)<42&&rsi<42&&vol>500000){
+      else if((by.src==='by'&&fr<-0.0002&&(by.rLong||50)<42&&rsi<42&&vol>500000)){
         sig='💰 RETAIL SHORT TRAP';sc='#fb7185';dir='LONG';prob=79;
         desc='Retail banyak short + FR negatif = mereka akan di-squeeze';
         tags=['CONTRARIAN','SHORT_HEAVY'];
       }
-      else if(rsi<30&&fr<-0.0001&&c24<0){
+      else if(rsi<30&&(fr<-0.0001||fr===0)&&c24<0&&vol>100000){
         sig='🔴 DEEP OVERSOLD';sc='#f87171';dir='LONG';prob=76;
         desc='RSI sangat rendah + FR negatif = tekanan jual berlebihan';
         tags=['OVERSOLD','MEAN_REVERT'];
       }
-      else if(div==='🟢 BULLISH DIV'&&rsi<55&&fr<=0){
+      else if((div==='🟢 BULLISH DIV'&&rsi<55&&fr<=0)||(rsi<38&&pip<35&&c24>-0.5&&fr<=0&&vol>200000)){
         sig='🔄 REVERSAL FORMING';sc='#86efac';dir='LONG';prob=76;
         desc='Divergence bullish = momentum turun melemah, reversal segera';
         tags=['DIVERGENCE','EARLY'];
