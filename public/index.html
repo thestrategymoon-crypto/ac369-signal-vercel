@@ -513,22 +513,233 @@ async function doSearch(){
 }
 
 function buildSearchCard(d){
-  var p=d.price||0,ch=+(d.change24h||0),up=ch>=0;
-  var prob=+(d.confluence?.probability||d.summary?.probability||50);
-  var probC=prob>=75?'var(--g)':prob>=60?'var(--g2)':prob>=48?'var(--amber)':'var(--red)';
-  var biasC=d.summary?.bias==='BULLISH'?'var(--g)':d.summary?.bias==='BEARISH'?'var(--red)':'var(--amber)';
-  var h='<div class="src">';
-  h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px"><div><div style="font-family:var(--m);font-size:22px;font-weight:900">'+d.symbol+'</div><div style="font-size:9px;color:var(--dim);margin-top:2px">src: '+(d.dataSource||'—')+'</div></div><div style="text-align:right"><div style="font-family:var(--m);font-size:22px;font-weight:900;color:var(--g)">$'+fP(p)+'</div><span class="achg '+(up?'up':'dn')+'">'+(up?'+':'')+ch.toFixed(2)+'%</span></div></div>';
-  h+='<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 13px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:13px;font-weight:900;color:'+biasC+'">'+(d.summary?.biasLabel||'NEUTRAL')+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px">'+(d.summary?.oneLiner||'—')+'</div></div><div style="text-align:center"><div style="font-family:var(--m);font-size:24px;font-weight:900;color:'+probC+'">'+prob+'%</div><div style="font-size:9px;color:var(--dim)">CONFLUENCE</div></div></div><div style="height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;margin-top:8px"><div style="height:5px;background:'+probC+';border-radius:3px;width:'+prob+'%;transition:width .8s"></div></div></div>';
-  // RSI grid
-  var rsiMap=d.rsi||{};
-  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">';
-  [['1H',rsiMap['1H']||50],['4H',rsiMap['4H']||50],['1D',rsiMap['1D']||50]].forEach(function(pair){var rsi=+pair[1];var rc=rsiCol(rsi);h+='<div style="background:rgba(255,255,255,.02);border-radius:7px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--dim);margin-bottom:3px">'+pair[0]+'</div><div style="font-family:var(--m);font-size:17px;font-weight:900;color:'+rc+'">'+rsi.toFixed(0)+'</div><div style="font-size:8px;color:var(--dim);margin-top:1px">'+(rsi<=30?'Oversold':rsi>=70?'Overbought':'Normal')+'</div></div>';});
+  if(!d||d.error&&!d.price){return '<div style="color:var(--red);font-size:12px;padding:14px;background:rgba(255,51,85,.06);border-radius:10px">❌ '+d.error+'</div>';}
+  const p=d.price||0,ch=+(d.change24h||0),up=ch>=0;
+  const bias=d.summary||{},prob=+(bias.prob||50),dir=bias.direction||'WAIT';
+  const biasC=bias.biasColor||'var(--amber)';
+  const rsi=d.rsi||{};const ema=d.ema||{};const mc=d.macd||{};
+  const smc=d.smc||{};const ew=d.elliottWave||null;const vol=d.volume||null;
+  const pts=d.patterns||[];const setup=d.tradeSetup||null;
+  const frPct=d.frPct||0;
+  const frC=frPct<-0.005?'var(--g)':frPct<0?'#4af0a0':frPct>0.08?'var(--red)':frPct>0.04?'var(--amber)':'var(--muted)';
+
+  let h='<div style="background:var(--c2);border:2px solid '+biasC+'40;border-radius:14px;overflow:hidden">';
+
+  // ── HEADER ──────────────────────────────────────────────────────
+  h+='<div style="background:linear-gradient(135deg,rgba('+( up?'0,255,136':'255,51,85')+',0.08),rgba(0,0,0,0.2));padding:12px 14px;display:flex;justify-content:space-between;align-items:flex-start">';
+  h+='<div><div style="font-family:var(--m);font-size:22px;font-weight:900">'+d.symbol+'USDT</div>';
+  h+='<div style="font-size:9px;color:var(--dim);margin-top:2px">src: '+(d.dataSource||'—')+' · klines 1H:'+rsi['1H']+'</div>';
+  if(d.klineData?.has) h+='<div style="font-size:8px;color:var(--g);margin-top:2px">✅ Real klines: 1H×'+(d.klineData.k1h||0)+' · 4H×'+(d.klineData.k4h||0)+' · 1D×'+(d.klineData.k1d||0)+'</div>';
+  h+='</div><div style="text-align:right"><div style="font-family:var(--m);font-size:20px;font-weight:900;color:var(--g)">$'+fP(p)+'</div>';
+  h+='<span style="font-size:13px;font-weight:700;color:'+(up?'var(--g2)':'var(--red)')+';background:rgba('+(up?'0,255,136':'255,51,85')+',.1);padding:2px 8px;border-radius:6px">'+(up?'+':'')+ch.toFixed(2)+'%</span>';
+  if(frPct) h+='<div style="font-size:9px;color:'+frC+';margin-top:3px">FR: '+(frPct>=0?'+':'')+frPct+'%</div>';
+  h+='</div></div>';
+
+  // ── BIAS BAR ─────────────────────────────────────────────────────
+  h+='<div style="padding:10px 14px;background:rgba(255,255,255,.015);border-top:1px solid rgba(255,255,255,.06)">';
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+  h+='<div style="font-size:16px;font-weight:900;color:'+biasC+'">'+bias.biasLabel+'</div>';
+  h+='<div style="text-align:center"><div style="font-family:var(--m);font-size:22px;font-weight:900;color:'+biasC+'">'+prob+'%</div><div style="font-size:8px;color:var(--dim)">CONFLUENCE</div></div></div>';
+  h+='<div style="height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;margin-bottom:6px"><div style="height:5px;width:'+prob+'%;background:'+biasC+';border-radius:3px"></div></div>';
+  if(bias.factors&&bias.factors.length){h+='<div style="display:flex;gap:4px;flex-wrap:wrap">';bias.factors.forEach(f=>{h+='<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-size:9px;color:var(--muted)">'+f+'</div>';});h+='</div>';}
   h+='</div>';
-  var ew4h=d.elliottWave?.['4H']||{};
-  var ewCol=(ew4h.wave||'').includes('Wave 3')||(ew4h.wave||'').includes('Impulse')?'var(--g)':(ew4h.wave||'').includes('Bear')||(ew4h.wave||'').includes('Capitulation')?'var(--red)':'var(--purple)';
-  h+='<div style="background:rgba(168,85,247,.04);border:1px solid rgba(168,85,247,.15);border-radius:9px;padding:9px 11px;margin-bottom:8px"><div style="font-size:10px;font-weight:700;color:var(--purple);margin-bottom:5px">🌊 ELLIOTT WAVE (4H)</div><div style="font-size:12px;font-weight:800;color:'+ewCol+'">'+(ew4h.wave||'—')+'</div><div style="font-size:9px;color:var(--dim);margin-top:3px">'+(ew4h.description||'')+'</div></div>';
-  h+='<div style="font-size:10px;font-weight:700;color:var(--amber);margin-bottom:6px">🌙 Astrology: '+(d.astrology?.moonEmoji||'🌙')+' '+(d.astrology?.moonPhase||'—')+'</div>';
+
+  // ── RSI MULTI-TF ──────────────────────────────────────────────────
+  h+='<div style="padding:10px 14px;border-top:1px solid rgba(255,255,255,.05)">';
+  h+='<div style="font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1.5px;margin-bottom:7px">📊 RSI MULTI-TIMEFRAME</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">';
+  [['1H',rsi['1H'],rsi['1H_zone']],['4H',rsi['4H'],rsi['4H_zone']],['1D',rsi['1D'],rsi['1D_zone']]].forEach(([tf,v,zone])=>{
+    const rc=v==null?'var(--dim)':v<30?'var(--g)':v<40?'#4af0a0':v>75?'var(--red)':v>65?'#ff7799':'var(--txt)';
+    h+='<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:7px;text-align:center">';
+    h+='<div style="font-size:9px;color:var(--dim);margin-bottom:3px">'+tf+'</div>';
+    h+='<div style="font-family:var(--m);font-size:18px;font-weight:900;color:'+rc+'">'+(v!=null?v:'—')+'</div>';
+    h+='<div style="height:3px;background:rgba(255,255,255,.06);border-radius:2px;margin:3px 0;overflow:hidden"><div style="height:3px;background:'+rc+';width:'+Math.min(100,v||50)+'%"></div></div>';
+    h+='<div style="font-size:7.5px;color:var(--muted)">'+zone+'</div></div>';
+  });
+  h+='</div>';
+  if(rsi.divergence){const dc=rsi.divergence.type==='bullish'?'var(--g)':'var(--red)';h+='<div style="background:rgba(255,255,255,.03);border-left:3px solid '+dc+';border-radius:0 6px 6px 0;padding:5px 9px;font-size:9px;color:'+dc+'">⚡ '+rsi.divergence.desc+' ('+rsi.divergence.strength+')</div>';}
+  h+='</div>';
+
+  // ── EMA + MACD ────────────────────────────────────────────────────
+  if(ema.trend||mc.signal){
+    h+='<div style="padding:8px 14px;border-top:1px solid rgba(255,255,255,.05);display:flex;gap:8px;flex-wrap:wrap">';
+    if(ema.trend){const ec=ema.trend.includes('Bull')?'var(--g)':'var(--red)';h+='<div style="background:rgba(255,255,255,.03);border-radius:6px;padding:5px 10px;font-size:9px"><span style="color:var(--dim)">EMA: </span><span style="color:'+ec+';font-weight:700">'+ema.trend+'</span>'+(ema.vs200?'<span style="color:var(--muted)"> · 200MA: '+(ema.vs200>=0?'+':'')+ema.vs200+'%</span>':'')+'</div>';}
+    if(mc.signal){const mc2=mc.signal.includes('Golden')||mc.signal.includes('Bull')?'var(--g)':'var(--red)';h+='<div style="background:rgba(255,255,255,.03);border-radius:6px;padding:5px 10px;font-size:9px"><span style="color:var(--dim)">MACD: </span><span style="color:'+mc2+';font-weight:700">'+mc.signal+'</span></div>';}
+    if(vol){const vc=vol.signal.includes('Bull')||vol.signal.includes('Accum')?'var(--g)':vol.signal.includes('Bear')||vol.signal.includes('Down')?'var(--red)':'var(--muted)';h+='<div style="background:rgba(255,255,255,.03);border-radius:6px;padding:5px 10px;font-size:9px"><span style="color:var(--dim)">Vol: </span><span style="color:'+vc+';font-weight:700">'+vol.signal+'</span>'+(vol.ratio?' ×'+vol.ratio:'')+'</div>';}
+    h+='</div>';
+  }
+
+  // ── SMC ANALYSIS ──────────────────────────────────────────────────
+  if(smc.hasData){
+    h+='<div style="padding:10px 14px;border-top:1px solid rgba(255,255,255,.05)">';
+    h+='<div style="font-size:9px;font-weight:700;color:var(--cyan);letter-spacing:1.5px;margin-bottom:7px">🏛 SMC ANALYSIS — SMART MONEY CONCEPTS</div>';
+    // Market Structure + PD Zone
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:7px">';
+    if(smc.marketStructure){
+      const ms=smc.marketStructure;const mC=ms.trend==='BULLISH'?'var(--g)':ms.trend==='BEARISH'?'var(--red)':'var(--amber)';
+      h+='<div style="background:rgba(255,255,255,.03);border:1px solid '+mC+'30;border-radius:7px;padding:7px">';
+      h+='<div style="font-size:8px;color:var(--dim);margin-bottom:3px">Market Structure</div>';
+      h+='<div style="font-size:12px;font-weight:800;color:'+mC+'">'+ms.trend+'</div>';
+      if(ms.bos) h+='<div style="font-size:8px;color:var(--g);margin-top:2px">'+ms.bos.type+' @ $'+fP(ms.bos.lvl)+'</div>';
+      if(ms.choch) h+='<div style="font-size:8px;color:var(--amber);margin-top:1px">'+ms.choch.type+' ⚠️</div>';
+      h+='</div>';
+    }
+    if(smc.premiumDiscount){
+      const pd=smc.premiumDiscount;const pdC=pd.zone.includes('DISCOUNT')?'var(--g)':pd.zone.includes('PREMIUM')?'var(--red)':'var(--amber)';
+      h+='<div style="background:rgba(255,255,255,.03);border:1px solid '+pdC+'30;border-radius:7px;padding:7px">';
+      h+='<div style="font-size:8px;color:var(--dim);margin-bottom:3px">Price Zone</div>';
+      h+='<div style="font-size:12px;font-weight:800;color:'+pdC+'">'+pd.zone+'</div>';
+      h+='<div style="font-size:8px;color:var(--muted);margin-top:2px">'+(pd.pct)+'% of range</div>';
+      h+='<div style="height:4px;background:rgba(255,255,255,.06);border-radius:2px;margin:4px 0;overflow:hidden"><div style="height:4px;background:linear-gradient(90deg,var(--g),var(--amber),var(--red));width:100%;border-radius:2px;position:relative"></div></div>';
+      h+='<div style="font-size:7px;color:var(--dim)">OTE zone: '+fP(pd.oteLow)+' – '+fP(pd.oteHigh)+'</div>';
+      h+='</div>';
+    }
+    h+='</div>';
+    // Bullish OBs
+    if(smc.bullOBs&&smc.bullOBs.length){
+      h+='<div style="margin-bottom:6px"><div style="font-size:8px;font-weight:700;color:var(--g);margin-bottom:4px">🟢 BULLISH ORDER BLOCKS (Demand Zones)</div>';
+      h+='<div style="display:flex;flex-direction:column;gap:3px">';
+      smc.bullOBs.forEach(ob=>{
+        const dC=ob.dist>=0?'var(--muted)':'var(--g)';
+        h+='<div style="background:rgba(0,255,136,.06);border:1px solid rgba(0,255,136,.2);border-radius:6px;padding:5px 9px;display:flex;justify-content:space-between;align-items:center">';
+        h+='<div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--g)">$'+fP(ob.bot)+' – $'+fP(ob.top)+'</div>';
+        h+='<div style="font-size:7.5px;color:var(--dim)">Mid: $'+fP(ob.mid)+' · Move: +'+ob.strength+'%</div></div>';
+        h+='<div style="text-align:right"><div style="font-size:9px;color:'+dC+';font-weight:700">'+(ob.dist>=0?'+':'')+ob.dist+'%</div>';
+        h+='<div style="font-size:7px;color:var(--g)">🟢 FRESH</div></div></div>';
+      });
+      h+='</div></div>';
+    }
+    // Bearish OBs
+    if(smc.bearOBs&&smc.bearOBs.length){
+      h+='<div style="margin-bottom:6px"><div style="font-size:8px;font-weight:700;color:var(--red);margin-bottom:4px">🔴 BEARISH ORDER BLOCKS (Supply Zones)</div>';
+      h+='<div style="display:flex;flex-direction:column;gap:3px">';
+      smc.bearOBs.forEach(ob=>{
+        h+='<div style="background:rgba(255,51,85,.06);border:1px solid rgba(255,51,85,.2);border-radius:6px;padding:5px 9px;display:flex;justify-content:space-between;align-items:center">';
+        h+='<div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--red)">$'+fP(ob.bot)+' – $'+fP(ob.top)+'</div>';
+        h+='<div style="font-size:7.5px;color:var(--dim)">Mid: $'+fP(ob.mid)+' · Move: -'+ob.strength+'%</div></div>';
+        h+='<div style="text-align:right"><div style="font-size:9px;color:var(--red);font-weight:700">'+(ob.dist>=0?'+':'')+ob.dist+'%</div>';
+        h+='<div style="font-size:7px;color:var(--red)">🔴 FRESH</div></div></div>';
+      });
+      h+='</div></div>';
+    }
+    // FVGs
+    if(smc.fvgs&&smc.fvgs.length){
+      h+='<div style="margin-bottom:6px"><div style="font-size:8px;font-weight:700;color:var(--purple);margin-bottom:4px">⚡ FAIR VALUE GAPS (FVG) — Unfilled</div>';
+      h+='<div style="display:flex;flex-direction:column;gap:3px">';
+      smc.fvgs.slice(0,4).forEach(fvg=>{
+        const fC=fvg.type==='bull'?'rgba(0,255,136,.15)':'rgba(255,51,85,.15)';const fTxt=fvg.type==='bull'?'var(--g)':'var(--red)';
+        h+='<div style="background:'+fC+';border-radius:5px;padding:4px 8px;display:flex;justify-content:space-between">';
+        h+='<div style="font-family:var(--m);font-size:9px"><span style="color:'+fTxt+';font-weight:700">'+(fvg.type==='bull'?'🟢 BULL':'🔴 BEAR')+' FVG</span> $'+fP(fvg.bot)+' – $'+fP(fvg.top)+'</div>';
+        h+='<div style="font-size:8px;color:var(--muted)">Size: '+fvg.size+'%</div></div>';
+      });
+      h+='</div></div>';
+    }
+    // Liquidity
+    if(smc.liquidity&&(smc.liquidity.buy.length||smc.liquidity.sell.length)){
+      h+='<div><div style="font-size:8px;font-weight:700;color:var(--amber);margin-bottom:4px">💧 LIQUIDITY ZONES</div>';
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">';
+      if(smc.liquidity.buy.length){
+        h+='<div style="background:rgba(0,212,255,.06);border-radius:6px;padding:5px">';
+        h+='<div style="font-size:7.5px;color:var(--cyan);margin-bottom:3px">🎯 Buy-side (Short stops)</div>';
+        smc.liquidity.buy.forEach(l=>{h+='<div style="font-family:var(--m);font-size:9px;color:var(--cyan)">$'+fP(l.lvl)+' <span style="color:var(--dim)">+'+l.dist+'%</span></div>';});
+        h+='</div>';
+      }
+      if(smc.liquidity.sell.length){
+        h+='<div style="background:rgba(255,179,0,.06);border-radius:6px;padding:5px">';
+        h+='<div style="font-size:7.5px;color:var(--amber);margin-bottom:3px">🎯 Sell-side (Long stops)</div>';
+        smc.liquidity.sell.forEach(l=>{h+='<div style="font-family:var(--m);font-size:9px;color:var(--amber)">$'+fP(l.lvl)+' <span style="color:var(--dim)">-'+l.dist+'%</span></div>';});
+        h+='</div>';
+      }
+      h+='</div></div>';
+    }
+    h+='</div>';
+  }
+
+  // ── CHART PATTERNS ────────────────────────────────────────────────
+  if(pts&&pts.length){
+    h+='<div style="padding:10px 14px;border-top:1px solid rgba(255,255,255,.05)">';
+    h+='<div style="font-size:9px;font-weight:700;color:var(--gold);letter-spacing:1.5px;margin-bottom:7px">📈 CHART PATTERNS</div>';
+    h+='<div style="display:flex;flex-direction:column;gap:6px">';
+    pts.forEach(pt=>{
+      const pC=pt.type==='bull'?'rgba(0,255,136,.08)':'rgba(255,51,85,.08)';const pB=pt.type==='bull'?'rgba(0,255,136,.25)':'rgba(255,51,85,.25)';const pT=pt.type==='bull'?'var(--g)':'var(--red)';
+      h+='<div style="background:'+pC+';border:1px solid '+pB+';border-radius:9px;padding:9px">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">';
+      h+='<div style="font-size:12px;font-weight:800;color:'+pT+'">'+pt.emoji+' '+pt.name+'</div>';
+      h+='<div style="display:flex;gap:5px;align-items:center">';
+      h+='<span style="background:'+pT+'20;color:'+pT+';font-size:9px;font-weight:700;padding:2px 8px;border-radius:5px">'+pt.conf+'% Conf</span>';
+      if(pt.confirmed) h+='<span style="background:rgba(0,255,136,.2);color:var(--g);font-size:8px;padding:1px 6px;border-radius:4px">✅ CONFIRMED</span>';
+      h+='</div></div>';
+      h+='<div style="font-size:9px;color:var(--muted);margin-bottom:5px">'+pt.desc+'</div>';
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">';
+      if(pt.target) h+='<div style="background:rgba(0,255,136,.06);border-radius:5px;padding:4px;text-align:center"><div style="font-size:7px;color:var(--dim)">TARGET</div><div style="font-family:var(--m);font-size:9px;font-weight:700;color:var(--g)">$'+fP(pt.target)+'</div><div style="font-size:7px;color:var(--g)">'+(pt.tpPct>0?'+':'')+pt.tpPct+'%</div></div>';
+      if(pt.sl) h+='<div style="background:rgba(255,51,85,.06);border-radius:5px;padding:4px;text-align:center"><div style="font-size:7px;color:var(--dim)">STOP LOSS</div><div style="font-family:var(--m);font-size:9px;font-weight:700;color:var(--red)">$'+fP(pt.sl)+'</div><div style="font-size:7px;color:var(--red)">'+(pt.slPct<0?'':'')+pt.slPct+'%</div></div>';
+      if(pt.neck) h+='<div style="background:rgba(255,179,0,.06);border-radius:5px;padding:4px;text-align:center"><div style="font-size:7px;color:var(--dim)">NECKLINE</div><div style="font-family:var(--m);font-size:9px;font-weight:700;color:var(--amber)">$'+fP(pt.neck)+'</div></div>';
+      h+='</div></div>';
+    });
+    h+='</div></div>';
+  }
+
+  // ── ELLIOTT WAVE ──────────────────────────────────────────────────
+  if(ew){
+    const ewC=ew.dir==='BULL'?'var(--g)':'var(--red)';
+    const ewBg=ew.dir==='BULL'?'rgba(0,255,136,.06)':'rgba(255,51,85,.06)';
+    const ewBd=ew.dir==='BULL'?'rgba(0,255,136,.25)':'rgba(255,51,85,.25)';
+    h+='<div style="padding:10px 14px;border-top:1px solid rgba(255,255,255,.05)">';
+    h+='<div style="font-size:9px;font-weight:700;color:var(--purple);letter-spacing:1.5px;margin-bottom:7px">🌊 ELLIOTT WAVE ANALYSIS (4H)</div>';
+    h+='<div style="background:'+ewBg+';border:1px solid '+ewBd+';border-radius:10px;padding:10px 12px">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">';
+    h+='<div><div style="font-size:16px;font-weight:900;color:'+ewC+'">'+ew.wave+'</div>';
+    h+='<div style="font-size:11px;font-weight:700;color:var(--muted)">'+ew.waveLabel+'</div>';
+    if(ew.daily) h+='<div style="font-size:8px;color:var(--dim);margin-top:2px">'+ew.daily+'</div>';
+    h+='</div><div style="text-align:center"><div style="font-family:var(--m);font-size:20px;font-weight:900;color:'+ewC+'">'+ew.prob+'%</div><div style="font-size:8px;color:var(--dim)">PROB</div></div></div>';
+    h+='<div style="font-size:10px;color:var(--muted);margin-bottom:7px;line-height:1.5">'+ew.desc+'</div>';
+    if(ew.fibLvl) h+='<div style="font-size:8px;color:var(--purple);margin-bottom:5px">📐 Fib: '+ew.fibLvl+'</div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">';
+    h+='<div style="background:rgba(255,255,255,.03);border-radius:5px;padding:4px;text-align:center"><div style="font-size:7px;color:var(--dim)">RANGE HI</div><div style="font-family:var(--m);font-size:9px">$'+fP(ew.priceRange?.hi)+'</div></div>';
+    h+='<div style="background:rgba(255,255,255,.03);border-radius:5px;padding:4px;text-align:center"><div style="font-size:7px;color:var(--dim)">RETRACEMENT</div><div style="font-family:var(--m);font-size:9px;color:var(--amber)">'+ew.retracePct+'%</div></div>';
+    h+='<div style="background:rgba(255,255,255,.03);border-radius:5px;padding:4px;text-align:center"><div style="font-size:7px;color:var(--dim)">RANGE LO</div><div style="font-family:var(--m);font-size:9px">$'+fP(ew.priceRange?.lo)+'</div></div>';
+    h+='</div>';
+    if(ew.hasDivergence) h+='<div style="margin-top:6px;font-size:8px;color:var(--amber)">⚠️ RSI Divergence terdeteksi di Wave 5 — hati-hati distribusi</div>';
+    if(ew.target) h+='<div style="margin-top:6px;display:flex;justify-content:space-between;font-size:9px"><span style="color:var(--dim)">EW Target:</span><span style="font-family:var(--m);font-weight:700;color:'+ewC+'">$'+fP(ew.target)+'</span></div>';
+    h+='</div></div>';
+  }
+
+  // ── TRADE SETUP ───────────────────────────────────────────────────
+  if(setup){
+    const sC=setup.dir==='LONG'?'var(--g)':'var(--red)';
+    const sBg=setup.dir==='LONG'?'rgba(0,255,136,.04)':'rgba(255,51,85,.04)';
+    h+='<div style="padding:10px 14px;border-top:1px solid rgba(255,255,255,.05)">';
+    h+='<div style="font-size:9px;font-weight:700;color:'+sC+';letter-spacing:1.5px;margin-bottom:7px">🎯 '+(setup.dir==='LONG'?'LONG':'SHORT')+' TRADE SETUP — High Probability</div>';
+    h+='<div style="background:'+sBg+';border:2px solid '+sC+'40;border-radius:10px;padding:10px">';
+    // Stars + entry type
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+    const stars='★'.repeat(Math.floor(setup.convStars))+'☆'.repeat(Math.max(0,5-Math.floor(setup.convStars)));
+    h+='<div><div style="font-size:12px;color:var(--gold)">'+stars+'</div><div style="font-size:8px;color:var(--dim)">'+setup.entryType+'</div></div>';
+    h+='<div style="text-align:right"><div style="font-size:11px;font-weight:700;color:'+sC+'">Conv '+prob+'%</div><div style="font-size:8px;color:var(--dim)">Kelly: '+setup.kelly+'% portfolio</div></div></div>';
+    // Price levels grid
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px">';
+    h+='<div style="background:rgba(255,255,255,.04);border-radius:6px;padding:6px 8px"><div style="font-size:7px;color:var(--dim)">ENTRY</div><div style="font-family:var(--m);font-size:11px;font-weight:800;color:'+sC+'">$'+fP(setup.entry)+'</div></div>';
+    h+='<div style="background:rgba(255,51,85,.08);border-radius:6px;padding:6px 8px"><div style="font-size:7px;color:var(--red)">STOP LOSS</div><div style="font-family:var(--m);font-size:11px;font-weight:800;color:var(--red)">$'+fP(setup.sl)+'</div><div style="font-size:7.5px;color:var(--red)">'+setup.slPct+'%</div></div>';
+    h+='<div style="background:rgba(0,255,136,.06);border-radius:6px;padding:6px 8px"><div style="font-size:7px;color:var(--g)">TP1 (FVG/OB)</div><div style="font-family:var(--m);font-size:11px;font-weight:800;color:var(--g)">$'+fP(setup.tp1)+'</div><div style="font-size:7.5px;color:var(--g)">+'+(setup.tp1Pct)+'%</div></div>';
+    h+='<div style="background:rgba(0,255,136,.09);border-radius:6px;padding:6px 8px"><div style="font-size:7px;color:var(--g)">TP2 (Liquidity)</div><div style="font-family:var(--m);font-size:11px;font-weight:800;color:#4af0a0">$'+fP(setup.tp2)+'</div><div style="font-size:7.5px;color:#4af0a0">+'+(setup.tp2Pct)+'%</div></div>';
+    h+='</div>';
+    if(setup.tp3) h+='<div style="background:rgba(0,212,255,.06);border-radius:6px;padding:5px 8px;margin-bottom:5px;display:flex;justify-content:space-between"><div style="font-size:8px;color:var(--cyan)">TP3 (EW Target)</div><div style="font-family:var(--m);font-size:10px;font-weight:700;color:var(--cyan)">$'+fP(setup.tp3)+' (+'+setup.tp3Pct+'%)</div></div>';
+    h+='<div style="display:flex;justify-content:space-between;font-size:9px;margin-top:4px">';
+    h+='<span style="color:var(--purple)">RR: <strong>'+setup.rr+'R</strong></span>';
+    h+='<span style="color:var(--amber)">Prob: <strong>'+prob+'%</strong></span>';
+    h+='<span style="color:var(--cyan)">ATR: <strong>'+d.atr?.pct+'%</strong></span>';
+    h+='</div></div></div>';
+  }else if(dir==='WAIT'){
+    h+='<div style="padding:10px 14px;border-top:1px solid rgba(255,255,255,.05)"><div style="color:var(--muted);font-size:11px;text-align:center;padding:8px">⏳ Bias terlalu lemah untuk setup. Tunggu konfluens lebih kuat.</div></div>';
+  }
+
+  // ── ASTROLOGY ─────────────────────────────────────────────────────
+  if(d.astrology){
+    h+='<div style="padding:7px 14px;border-top:1px solid rgba(255,255,255,.04);display:flex;justify-content:space-between;align-items:center">';
+    h+='<div style="font-size:10px;color:var(--dim)">🌙 Astrology: <span style="color:var(--muted)">'+d.astrology.moonEmoji+' '+d.astrology.moonPhase+'</span></div>';
+    h+='<div style="font-size:8px;color:var(--dim)">'+d.elapsed+'ms</div></div>';
+  }
+
   h+='</div>';
   return h;
 }
