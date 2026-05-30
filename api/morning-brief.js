@@ -250,8 +250,9 @@ export default async function handler(req,res){
     const btcSup=btcK&&btcK.e200?+(btcK.e200*0.995).toFixed(0):btcP?+(btcP*0.97).toFixed(0):null;
     const top3=longs.slice(0,3).map(x=>x.sym);
 
-    // SPOT ACCUMULATION - coins at RSI extreme with full DCA data
-    const spotAccum=coins.filter(x=>x.rsi<38&&x.direction==='LONG').sort((a,b)=>a.rsi-b.rsi).slice(0,10).map(x=>{
+    // SPOT ACCUMULATION - all oversold coins regardless of signal
+    // RSI<42 = accumulation zone. rsi<30 = extreme DCA zone.
+    const spotAccum=coins.filter(x=>x.rsi<42&&x.direction!=='SHORT').sort((a,b)=>a.rsi-b.rsi).slice(0,10).map(x=>{
       const dcaPct=x.atrPct>0?x.atrPct:2.5;
       const dcaLow=+(x.price*(1-dcaPct*1.5/100)).toFixed(x.price>1?2:8);
       const dcaHigh=+(x.price*(1-dcaPct*0.3/100)).toFixed(x.price>1?2:8);
