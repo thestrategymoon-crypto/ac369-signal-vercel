@@ -1,639 +1,262 @@
-// api/search.js — 369 GLOBAL CRYPTO v20.0
-// FULL ANALYSIS: Real Bybit Klines + SMC + Elliott Wave + Chart Patterns + Multi-TF RSI
-// Sources: Bybit Linear + Spot klines (1H/4H/1D) — semua real data
-'use strict';
-
-const N=(v,d=0)=>{const n=+v;return(isNaN(n)||!isFinite(n))?d:n;};
-const A=v=>Array.isArray(v)?v:[];
-const cl=(v,a,b)=>Math.max(a,Math.min(b,N(v)));
-const fmt=p=>{if(!p||p<=0)return'—';return p>10000?'$'+p.toFixed(0):p>1?'$'+p.toFixed(4):p>0.001?'$'+p.toFixed(6):'$'+p.toFixed(8);};
-const pct=(a,b)=>b>0?+((a-b)/b*100).toFixed(2):0;
-
-const sf=async(url,ms=6000)=>{
-  const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);
-  try{const r=await fetch(url,{signal:c.signal,headers:{'Accept':'application/json','User-Agent':'369Global/20.0'}});clearTimeout(t);if(!r.ok)return null;return await r.json();}
-  catch{clearTimeout(t);return null;}
+// api/search.js - AC369 v8 COIN ANALYSIS ENGINE
+// Full technical analysis: ICT/SMC, Multi-TF RSI, MACD, EMA, Fibonacci
+// Pure ASCII, 0 non-ASCII, 0 backtick. NO HTTP 500.
+const CACHE_MAP = new Map();
+const N = function(v,d){d=d===undefined?0:d;var n=+v;return isNaN(n)||!isFinite(n)?d:n;};
+const A = function(v){return Array.isArray(v)?v:[];};
+const cl = function(v,a,b){return Math.max(a,Math.min(b,N(v)));};
+const rsi14 = function(cls){
+  try{if(!cls||cls.length<16)return 50;var g=0,l=0;for(var i=1;i<=14;i++){var d=cls[cls.length-i]-cls[cls.length-i-1];if(d>0)g+=d;else l-=d;}var ag=g/14,al=l/14;if(al===0)return 100;return+(100-100/(1+ag/al)).toFixed(1);}catch(e){return 50;}
 };
-
-// Parse Bybit v5 klines: newest-first → oldest-first
-function parseK(raw){
-  if(!raw||!raw.length) return [];
-  return raw.slice().reverse()
-    .map(d=>({t:N(d[0]),o:N(d[1]),h:N(d[2]),l:N(d[3]),c:N(d[4]),v:N(d[5]),q:N(d[6]||d[5])}))
-    .filter(d=>d.c>0&&d.h>=d.l&&d.h>0&&d.c<1e13);
-}
-
-// ─── TA FUNCTIONS ─────────────────────────────────────────────────
-function rsi14(cls){
-  if(!cls||cls.length<16) return null;
-  let g=0,l=0;
-  for(let i=1;i<=14;i++){const d=cls[i]-cls[i-1];d>0?g+=d:l-=d;}
-  let ag=g/14,al=l/14;
-  for(let i=15;i<cls.length;i++){const d=cls[i]-cls[i-1];ag=(ag*13+Math.max(d,0))/14;al=(al*13+Math.max(-d,0))/14;}
-  if(al===0) return 100;
-  return +cl(100-100/(1+ag/al),0,100).toFixed(1);
-}
-function ema(arr,p){
-  if(!arr||arr.length<2) return N(arr?.[arr.length-1]);
-  const k=2/(p+1);let e=arr.slice(0,Math.min(p,arr.length)).reduce((s,v)=>s+v,0)/Math.min(p,arr.length);
-  for(let i=Math.min(p,arr.length);i<arr.length;i++) e=arr[i]*k+e*(1-k);
-  return e;
-}
-function atr14(K){
-  if(!K||K.length<15) return 0;
-  const trs=K.slice(1).map((k,i)=>Math.max(k.h-k.l,Math.abs(k.h-K[i].c),Math.abs(k.l-K[i].c)));
-  return trs.slice(-14).reduce((s,v)=>s+v,0)/14;
-}
-function macdCalc(cls){
-  if(!cls||cls.length<28) return null;
-  const k12=2/13,k26=2/27,k9=2/10;let e12=cls[0],e26=cls[0];const mv=[];
-  for(const v of cls){e12=v*k12+e12*(1-k12);e26=v*k26+e26*(1-k26);mv.push(e12-e26);}
-  let sig=mv.slice(0,9).reduce((s,v)=>s+v,0)/9;
-  for(let i=9;i<mv.length;i++) sig=mv[i]*k9+sig*(1-k9);
-  const n=mv.length,last=mv[n-1],prev=mv[n-2]||last,h=last-sig,ph=prev-sig;
-  return{bull:last>0&&h>0,bear:last<0&&h<0,xUp:h>0&&ph<=0,xDown:h<0&&ph>=0,val:+last.toFixed(8),hist:+h.toFixed(8)};
-}
-
-// ─── SMC FUNCTIONS ────────────────────────────────────────────────
-// Find swing highs and lows (ICT method)
-function swings(K,lb=3){
-  const hi=[],lo=[];
-  for(let i=lb;i<K.length-lb;i++){
-    const w=[...K.slice(i-lb,i),...K.slice(i+1,i+lb+1)];
-    if(w.every(c=>c.h<=K[i].h)) hi.push({i,v:K[i].h,t:K[i].t});
-    if(w.every(c=>c.l>=K[i].l)) lo.push({i,v:K[i].l,t:K[i].t});
-  }
-  return{hi:hi.slice(-10),lo:lo.slice(-10)};
-}
-
-// Market Structure: HH+HL=Bull, LH+LL=Bear, BOS, CHoCH
-function mktStructure(K,sw){
-  const{hi,lo}=sw;
-  const p=K[K.length-1].c;
-  if(!hi.length||!lo.length) return{trend:'UNKNOWN',bias:'NEUTRAL',bos:null,choch:null,lastHi:p,lastLo:p};
-  const lH=hi[hi.length-1],pH=hi.length>=2?hi[hi.length-2]:null;
-  const lL=lo[lo.length-1],pL=lo.length>=2?lo[lo.length-2]:null;
-  let trend='SIDEWAYS',bias='NEUTRAL';
-  if(pH&&lH.v>pH.v&&pL&&lL.v>pL.v){trend='BULLISH';bias='LONG';}
-  else if(pH&&lH.v<pH.v&&pL&&lL.v<pL.v){trend='BEARISH';bias='SHORT';}
-  const bos=trend==='BULLISH'&&p>lH.v?{type:'BOS ✅',dir:'bull',lvl:lH.v}:trend==='BEARISH'&&p<lL.v?{type:'BOS ✅',dir:'bear',lvl:lL.v}:null;
-  const choch=trend==='BULLISH'&&p<lL.v?{type:'CHoCH ⚠️',dir:'bear',lvl:lL.v}:trend==='BEARISH'&&p>lH.v?{type:'CHoCH ⚠️',dir:'bull',lvl:lH.v}:null;
-  return{trend,bias,bos,choch,lastHi:lH.v,lastLo:lL.v};
-}
-
-// Order Blocks: last opposing candle before displacement
-function detectOBs(K){
-  const p=K[K.length-1].c;
-  const bulls=[],bears=[];
-  const lb=Math.min(K.length-5,50);
-  for(let i=K.length-lb;i<K.length-4;i++){
-    const c=K[i];
-    if(c.c<c.o){ // Bearish candle → potential Bullish OB
-      const after=K.slice(i+1,i+6);
-      const moveUp=(Math.max(...after.map(x=>x.h))-c.l)/c.l*100;
-      if(moveUp>2){
-        const mitigated=K.slice(i+1).some(x=>x.l<c.o);
-        if(!mitigated) bulls.push({top:+c.o.toFixed(8),bot:+c.l.toFixed(8),mid:+((c.o+c.l)/2).toFixed(8),strength:+(moveUp.toFixed(1)),dist:+pct((c.o+c.l)/2,p).toFixed(2),fresh:true,idx:i});
-      }
-    }
-    if(c.c>c.o){ // Bullish candle → potential Bearish OB
-      const after=K.slice(i+1,i+6);
-      const moveDn=(c.h-Math.min(...after.map(x=>x.l)))/c.h*100;
-      if(moveDn>2){
-        const mitigated=K.slice(i+1).some(x=>x.h>c.c);
-        if(!mitigated) bears.push({top:+c.h.toFixed(8),bot:+c.c.toFixed(8),mid:+((c.h+c.c)/2).toFixed(8),strength:+(moveDn.toFixed(1)),dist:+pct((c.h+c.c)/2,p).toFixed(2),fresh:true,idx:i});
-      }
-    }
-  }
-  return{
-    bullOBs:bulls.sort((a,b)=>b.idx-a.idx).slice(0,3),
-    bearOBs:bears.sort((a,b)=>b.idx-a.idx).slice(0,3),
-  };
-}
-
-// Fair Value Gaps: 3-candle pattern (ICT method)
-function detectFVGs(K){
-  const p=K[K.length-1].c;const fvgs=[];
-  for(let i=1;i<K.length-1;i++){
-    // Bullish FVG: gap up (candle i-1 high < candle i+1 low)
-    if(K[i+1].l>K[i-1].h){
-      const top=K[i+1].l,bot=K[i-1].h,size=(top-bot)/bot*100;
-      if(size>=0.15){
-        const filled=K.slice(i+2).some(c=>c.l<=top&&c.h>=bot);
-        if(!filled) fvgs.push({type:'bull',top:+top.toFixed(8),bot:+bot.toFixed(8),mid:+((top+bot)/2).toFixed(8),size:+size.toFixed(2),dist:+pct(top,p).toFixed(2),idx:i});
-      }
-    }
-    // Bearish FVG: gap down
-    if(K[i+1].h<K[i-1].l){
-      const top=K[i-1].l,bot=K[i+1].h,size=(top-bot)/bot*100;
-      if(size>=0.15){
-        const filled=K.slice(i+2).some(c=>c.h>=bot&&c.l<=top);
-        if(!filled) fvgs.push({type:'bear',top:+top.toFixed(8),bot:+bot.toFixed(8),mid:+((top+bot)/2).toFixed(8),size:+size.toFixed(2),dist:+pct(bot,p).toFixed(2),idx:i});
-      }
-    }
-  }
-  return fvgs.slice(-20).sort((a,b)=>Math.abs(a.mid-p)-Math.abs(b.mid-p)).slice(0,6);
-}
-
-// Premium/Discount zones (ICT: 50% of range = equilibrium)
-function pdZone(K){
-  const seg=K.slice(-40);
-  const hi=Math.max(...seg.map(c=>c.h)),lo=Math.min(...seg.map(c=>c.l));
-  const p=K[K.length-1].c;
-  const pct50=hi>lo?+(((p-lo)/(hi-lo))*100).toFixed(1):50;
-  const eq=(hi+lo)/2;
-  const oteLow=lo+(hi-lo)*0.618,oteHigh=lo+(hi-lo)*0.786; // OTE zone 61.8-78.6%
-  const zone=pct50>62?'PREMIUM ⚠️':pct50<38?'DISCOUNT ✅':'EQUILIBRIUM';
-  return{zone,pct:pct50,hi:+hi.toFixed(8),lo:+lo.toFixed(8),eq:+eq.toFixed(8),oteLow:+oteLow.toFixed(8),oteHigh:+oteHigh.toFixed(8)};
-}
-
-// Liquidity zones (where stops are clustered)
-function liquidity(K,sw){
-  const p=K[K.length-1].c;const{hi,lo}=sw;
-  const buy=hi.slice(-5).filter(h=>h.v>p&&(h.v-p)/p<0.2).map(h=>({lvl:+h.v.toFixed(8),dist:+pct(h.v,p).toFixed(2),side:'Buy-side',desc:'Short stops clustered'})).slice(0,3);
-  const sell=lo.slice(-5).filter(l=>l.v<p&&(p-l.v)/p<0.2).map(l=>({lvl:+l.v.toFixed(8),dist:+pct(p,l.v).toFixed(2),side:'Sell-side',desc:'Long stops clustered'})).slice(0,3);
-  return{buy,sell};
-}
-
-// ─── CHART PATTERNS ───────────────────────────────────────────────
-function detectPatterns(K){
-  if(K.length<20) return [];
-  const pts=[];const p=K[K.length-1].c;
-  const seg=K.slice(-35);
-
-  // Find local extremes
-  const peaks=[],troughs=[];
-  for(let i=2;i<seg.length-2;i++){
-    if(seg[i].h>seg[i-1].h&&seg[i].h>seg[i-2].h&&seg[i].h>seg[i+1].h&&seg[i].h>seg[i+2].h) peaks.push({i,v:seg[i].h});
-    if(seg[i].l<seg[i-1].l&&seg[i].l<seg[i-2].l&&seg[i].l<seg[i+1].l&&seg[i].l<seg[i+2].l) troughs.push({i,v:seg[i].l});
-  }
-
-  // Double Bottom
-  if(troughs.length>=2){
-    const t1=troughs[troughs.length-2],t2=troughs[troughs.length-1];
-    if(t2.i>t1.i+3&&Math.abs(t1.v-t2.v)/Math.max(t1.v,t2.v)<0.05){
-      const midPeaks=peaks.filter(pk=>pk.i>t1.i&&pk.i<t2.i);
-      const neck=midPeaks.length?Math.max(...midPeaks.map(pk=>pk.v)):Math.max(...seg.slice(t1.i,t2.i).map(c=>c.h));
-      const botLow=Math.min(t1.v,t2.v),target=neck+(neck-botLow);
-      const conf=p>neck?88:p>botLow*1.02?75:65;
-      pts.push({name:'Double Bottom',emoji:'🔵',type:'bull',conf,neck:+neck.toFixed(8),target:+target.toFixed(8),sl:+(botLow*0.985).toFixed(8),slPct:+pct(botLow*0.985,p).toFixed(1),tpPct:+pct(target,p).toFixed(1),confirmed:p>neck,desc:'2 bottom setara → breakout neckline = LONG signal kuat'});
-    }
-  }
-
-  // Double Top
-  if(peaks.length>=2){
-    const p1=peaks[peaks.length-2],p2=peaks[peaks.length-1];
-    if(p2.i>p1.i+3&&Math.abs(p1.v-p2.v)/Math.max(p1.v,p2.v)<0.05){
-      const midTroughs=troughs.filter(tr=>tr.i>p1.i&&tr.i<p2.i);
-      const neck=midTroughs.length?Math.min(...midTroughs.map(tr=>tr.v)):Math.min(...seg.slice(p1.i,p2.i).map(c=>c.l));
-      const topHi=Math.max(p1.v,p2.v),target=neck-(topHi-neck);
-      const conf=p<neck?88:p<topHi*0.98?72:62;
-      pts.push({name:'Double Top',emoji:'🔴',type:'bear',conf,neck:+neck.toFixed(8),target:+target.toFixed(8),sl:+(topHi*1.015).toFixed(8),slPct:+pct(topHi*1.015,p).toFixed(1),tpPct:+pct(target,p).toFixed(1),confirmed:p<neck,desc:'2 top setara → breakdown neckline = SHORT signal'});
-    }
-  }
-
-  // Ascending Triangle (Bullish)
-  if(seg.length>=15){
-    const last20=seg.slice(-20);const hH=last20.map(c=>c.h),lL=last20.map(c=>c.l);
-    const maxH=Math.max(...hH),minH=Math.min(...hH),maxL=Math.max(...lL),minL=Math.min(...lL);
-    if((maxH-minH)/maxH<0.025&&maxL>minL*1.02){
-      pts.push({name:'Ascending Triangle',emoji:'📐',type:'bull',conf:78,breakout:+maxH.toFixed(8),target:+(maxH+(maxH-minL)).toFixed(8),sl:+(minL*0.985).toFixed(8),slPct:+pct(minL*0.985,p).toFixed(1),tpPct:+pct(maxH+(maxH-minL),p).toFixed(1),confirmed:p>maxH,desc:'Flat resistance + rising support → bullish breakout coming'});
-    }
-    // Descending Triangle (Bearish)
-    if((maxL-minL)/maxL<0.025&&minH<maxH*0.985){
-      pts.push({name:'Descending Triangle',emoji:'📐',type:'bear',conf:75,breakdown:+minL.toFixed(8),target:+(minL-(maxH-minL)).toFixed(8),sl:+(maxH*1.015).toFixed(8),slPct:+pct(maxH*1.015,p).toFixed(1),tpPct:+pct(minL-(maxH-minL),p).toFixed(1),confirmed:p<minL,desc:'Flat support + falling resistance → bearish breakdown'});
-    }
-  }
-
-  // Bull Flag
-  if(K.length>=25){
-    const pole=K.slice(-25,-10),flag=K.slice(-10);
-    const pHi=Math.max(...pole.map(c=>c.h)),pLo=Math.min(...pole.map(c=>c.l));
-    const poleRise=(pHi-pLo)/pLo*100;
-    const fHi=Math.max(...flag.map(c=>c.h)),fLo=Math.min(...flag.map(c=>c.l));
-    const flagRng=(fHi-fLo)/fHi*100,flagDir=(flag[flag.length-1].c-flag[0].o)/flag[0].o*100;
-    if(poleRise>8&&flagRng<poleRise*0.5&&flagDir<0&&flagDir>-poleRise*0.5){
-      const tgt=fHi+(pHi-pLo);
-      pts.push({name:'Bull Flag',emoji:'🚩',type:'bull',conf:82,target:+tgt.toFixed(8),sl:+(fLo*0.985).toFixed(8),slPct:+pct(fLo*0.985,p).toFixed(1),tpPct:+pct(tgt,p).toFixed(1),poleRise:+poleRise.toFixed(1),confirmed:p>fHi,desc:`Pole +${poleRise.toFixed(1)}% → flag koreksi → target pump setelah breakout`});
-    }
-    // Bear Flag
-    const poleFall=(pHi-pLo)/pHi*100;
-    if(K[K.length-25].c>K[K.length-10].c&&poleFall>8&&flagRng<poleFall*0.5&&flagDir>0){
-      const tgt=fLo-(pHi-pLo);
-      pts.push({name:'Bear Flag',emoji:'🚩',type:'bear',conf:80,target:+tgt.toFixed(8),sl:+(fHi*1.015).toFixed(8),slPct:+pct(fHi*1.015,p).toFixed(1),tpPct:+pct(tgt,p).toFixed(1),desc:`Drop ${poleFall.toFixed(1)}% → flag bounce → target dump berikutnya`});
-    }
-  }
-
-  // Head & Shoulders
-  if(peaks.length>=3){
-    const [lS,hd,rS]=[peaks[peaks.length-3],peaks[peaks.length-2],peaks[peaks.length-1]];
-    if(hd.v>lS.v&&hd.v>rS.v&&Math.abs(lS.v-rS.v)/Math.max(lS.v,rS.v)<0.07){
-      const neckTroughs=troughs.filter(tr=>tr.i>lS.i&&tr.i<rS.i);
-      const neck=neckTroughs.length?Math.min(...neckTroughs.map(tr=>tr.v)):p*0.95;
-      const target=neck-(hd.v-neck);
-      pts.push({name:'Head & Shoulders',emoji:'👤',type:'bear',conf:80,neck:+neck.toFixed(8),target:+target.toFixed(8),sl:+(hd.v*1.01).toFixed(8),slPct:+pct(hd.v*1.01,p).toFixed(1),tpPct:+pct(target,p).toFixed(1),confirmed:p<neck,desc:'Klasik reversal pattern. Breakdown neckline = SHORT signal kuat'});
-    }
-  }
-
-  return pts.sort((a,b)=>b.conf-a.conf).slice(0,4);
-}
-
-// ─── ELLIOTT WAVE ─────────────────────────────────────────────────
-function elliottWave(K4h,K1d){
-  if(!K4h||K4h.length<30) return null;
-  const p=K4h[K4h.length-1].c;
-  const cls=K4h.map(c=>c.c);
-  const rsiV=rsi14(cls);
-  const seg=K4h.slice(-50);
-  let minP=seg[0].l,maxP=seg[0].h,minI=0,maxI=0;
-  seg.forEach((c,i)=>{if(c.l<minP){minP=c.l;minI=i;}if(c.h>maxP){maxP=c.h;maxI=i;}});
-  const range=maxP-minP;if(range<minP*0.001) return null;
-
-  // Daily context
-  let daily='';
-  if(K1d&&K1d.length>=20){
-    const c1d=K1d.map(c=>c.c);const r1d=rsi14(c1d);
-    const e50=ema(c1d,Math.min(50,c1d.length));
-    daily=p>e50?(r1d>55?'Daily trend UP':'Daily above EMA50'):(r1d<45?'Daily trend DOWN':'Daily below EMA50');
-  }
-
-  let wave='',waveNum='',waveLabel='',prob=0,target=null,sl=null,desc='',dir='',fibLvl='';
-  const fromHi=(maxP-p)/range*100;
-  const fromLo=(p-minP)/range*100;
-
-  if(maxI>minI){ // Last major move = UP, currently correcting
-    if(fromHi<18){
-      wave='⑤ WAVE 5';waveNum='5';waveLabel='Final Impulse';prob=65;dir='BULL';fibLvl='>0%';
-      desc='Final impulse wave. RSI sering divergence di Wave 5. Hati-hati distribusi.';
-      target=+(maxP*1.038).toFixed(8);sl=+(p*(1-range/minP*0.3)).toFixed(8);
-    }else if(fromHi>=18&&fromHi<50){
-      wave='④ WAVE 4';waveNum='4';waveLabel='Correction Zone';prob=78;dir='BULL';fibLvl='23.6-38.2%';
-      desc='Koreksi Wave 4. Entry optimal sebelum Wave 5. BUY di zona retracement fib.';
-      target=+(maxP*1.08).toFixed(8);sl=+(minP+(range*0.236)).toFixed(8);
-    }else{
-      wave='Ⓑ WAVE B';waveNum='B';waveLabel='Counter-rally';prob=60;dir='BEAR';fibLvl='50-61.8%';
-      desc='Wave B counter-rally dalam koreksi ABC. Wave C akan turun setelah ini.';
-      target=+(minP*(0.97)).toFixed(8);sl=+(maxP*1.015).toFixed(8);
-    }
-  }else{ // Last major move = DOWN, currently recovering
-    if(fromLo>72){
-      wave='③ WAVE 3';waveNum='3';waveLabel='Extension Active 🚀';prob=90;dir='BULL';fibLvl='161.8%+';
-      desc='TERKUAT! Wave 3 extension aktif. 1.618-2.618x wave 1. ENTRY dengan momentum sekarang!';
-      target=+(minP+(range*2.618)).toFixed(8);sl=+(minP+(range*0.5)).toFixed(8);
-    }else if(fromLo>=38&&fromLo<=72){
-      wave='② WAVE 2';waveNum='2';waveLabel='Optimal Buy Zone';prob=84;dir='BULL';fibLvl='50-61.8%';
-      desc='Wave 2 deep retracement. ENTRY OPTIMAL. Stop di bawah Wave 1 low. Wave 3 dimulai segera.';
-      target=+(minP+(range*2.618)).toFixed(8);sl=+(minP*(0.988)).toFixed(8);
-    }else{
-      wave='① WAVE 1';waveNum='1';waveLabel='Impulse Starting';prob=70;dir='BULL';fibLvl='0-38.2%';
-      desc='Awal impulse baru. Konfirmasi BOS sebelum entry. Target: 0.618x range sebagai Wave 1.';
-      target=+(minP+(range*0.618)).toFixed(8);sl=+(minP*(0.985)).toFixed(8);
-    }
-  }
-
-  // RSI divergence (Wave 5 weakness indicator)
-  const prevRsi=cls.length>10?rsi14(cls.slice(0,-8)):null;
-  const divBear=waveNum==='5'&&rsiV&&prevRsi&&p>maxP*0.97&&rsiV<prevRsi-5;
-
-  return{wave,waveNum,waveLabel,prob,target,sl,desc,dir,daily,fibLvl,
-    hasDivergence:divBear,
-    priceRange:{hi:+maxP.toFixed(8),lo:+minP.toFixed(8),cur:+p.toFixed(8)},
-    retracePct:+fromLo.toFixed(1),fromHighPct:+fromHi.toFixed(1)};
-}
-
-// ─── RSI DIVERGENCE ────────────────────────────────────────────────
-function rsiDiv(K4h){
-  if(!K4h||K4h.length<25) return null;
-  const cls=K4h.map(c=>c.c);
-  const seg=K4h.slice(-15);const segCls=cls.slice(-15);
-  // Build RSI for each point in segment
-  const rsiArr=segCls.map((_,i)=>rsi14(cls.slice(0,cls.length-15+i+1))).filter(v=>v!==null);
-  if(rsiArr.length<10) return null;
-  // Find swing lows in price
-  const pLows=[],pHighs=[];
-  for(let i=2;i<seg.length-2;i++){
-    if(seg[i].l<seg[i-1].l&&seg[i].l<seg[i+1].l) pLows.push({i,pv:seg[i].l,rv:rsiArr[i]||50});
-    if(seg[i].h>seg[i-1].h&&seg[i].h>seg[i+1].h) pHighs.push({i,pv:seg[i].h,rv:rsiArr[i]||50});
-  }
-  if(pLows.length>=2){
-    const[l1,l2]=[pLows[pLows.length-2],pLows[pLows.length-1]];
-    if(l2.pv<l1.pv&&l2.rv>l1.rv+2){
-      return{type:'bullish',desc:`Price: lower low ($${l2.pv.toFixed(6)}) + RSI: higher low (${l2.rv.toFixed(0)}) = BULLISH DIVERGENCE`,strength:l2.rv-l1.rv>12?'STRONG':'MODERATE',prob:82};
-    }
-  }
-  if(pHighs.length>=2){
-    const[h1,h2]=[pHighs[pHighs.length-2],pHighs[pHighs.length-1]];
-    if(h2.pv>h1.pv&&h2.rv<h1.rv-2){
-      return{type:'bearish',desc:`Price: higher high + RSI: lower high (${h2.rv.toFixed(0)}) = BEARISH DIVERGENCE`,strength:h1.rv-h2.rv>12?'STRONG':'MODERATE',prob:80};
-    }
-  }
-  return null;
-}
-
-// ─── VOLUME ANALYSIS ──────────────────────────────────────────────
-function volAnalysis(K4h){
-  if(!K4h||K4h.length<10) return null;
-  const seg=K4h.slice(-20);const avgV=seg.slice(0,-5).reduce((s,c)=>s+c.q,0)/Math.max(1,seg.length-5);
-  const lastV=seg.slice(-5).reduce((s,c)=>s+c.q,0)/5;
-  const vR=avgV>0?+(lastV/avgV).toFixed(2):1;
-  const p=K4h[K4h.length-1].c;const c7=K4h.length>=7?pct(p,K4h[K4h.length-7].c):0;
-  // OBV
-  let obv=0,obvUp=0,obvDn=0;
-  for(let i=1;i<K4h.length;i++){
-    if(K4h[i].c>K4h[i-1].c){obv+=K4h[i].q;obvUp+=K4h[i].q;}
-    else if(K4h[i].c<K4h[i-1].c){obv-=K4h[i].q;obvDn+=K4h[i].q;}
-  }
-  const obvTrend=obvUp>obvDn*1.1?'UP 📈':obvDn>obvUp*1.1?'DOWN 📉':'FLAT';
-  let sig='Normal';
-  if(vR>2&&c7>0) sig='🚀 Volume Breakout Bull';
-  else if(vR>2&&c7<0) sig='💀 Volume Breakdown Bear';
-  else if(vR>1.5&&Math.abs(c7)<1.5) sig='🤫 Stealth Accumulation';
-  else if(vR>1.3&&c7>2) sig='📈 Volume Confirms Bull';
-  else if(vR<0.5) sig='⚠️ Low Volume Caution';
-  return{ratio:vR,signal:sig,obvTrend,avgVol:+avgV.toFixed(0),lastVol:+lastV.toFixed(0)};
-}
-
-// ─── BIAS CALCULATOR ──────────────────────────────────────────────
-function calcBias(r1h,r4h,r1d,macdV,ms,pd,ew,div,volA,fr,ema9,ema21,ema50){
-  let s=0;const f=[];
-  // RSI multi-TF
-  if(r4h!==null){
-    if(r4h<28){s+=20;f.push(`4H RSI ${r4h} OVERSOLD`);} else if(r4h<38){s+=12;f.push(`4H RSI ${r4h} bearish zone`);}
-    else if(r4h>78){s-=20;f.push(`4H RSI ${r4h} OVERBOUGHT`);} else if(r4h>65){s-=10;f.push(`4H RSI ${r4h} elevated`);}
-    else if(r4h>=38&&r4h<=62){s+=2;}
-  }
-  if(r1h!==null){if(r1h<30)s+=8;else if(r1h>72)s-=8;}
-  if(r1d!==null){if(r1d<35){s+=10;f.push(`1D RSI ${r1d} oversold`);}else if(r1d>75){s-=10;f.push(`1D RSI ${r1d} overbought`);}}
-  // MACD
-  if(macdV){if(macdV.xUp){s+=14;f.push('4H MACD Golden Cross 🚀');}else if(macdV.xDown){s-=14;f.push('4H MACD Death Cross 💀');}else if(macdV.bull){s+=5;}else if(macdV.bear){s-=5;}}
-  // EMA
-  if(ema9&&ema21){if(ema9>ema21){s+=6;f.push('EMA9 > EMA21 Bull alignment');}else{s-=6;f.push('EMA9 < EMA21 Bear alignment');}}
-  if(ema50){const p2=arguments[13];} // price passed as 14th arg if needed
-  // Market structure
-  if(ms){if(ms.trend==='BULLISH'){s+=15;f.push('Market Structure: BULLISH (HH+HL)');}else if(ms.trend==='BEARISH'){s-=15;f.push('Market Structure: BEARISH (LH+LL)');}if(ms.bos?.dir==='bull'){s+=8;f.push('Recent BOS Bullish ✅');}else if(ms.bos?.dir==='bear'){s-=8;}if(ms.choch?.dir==='bull'){s+=5;}}
-  // Premium/Discount
-  if(pd){if(pd.zone.includes('DISCOUNT')){s+=8;f.push(`Price in DISCOUNT zone (${pd.pct}%)`);}else if(pd.zone.includes('PREMIUM')){s-=8;f.push(`Price in PREMIUM zone (${pd.pct}%)`);}}
-  // Elliott Wave
-  if(ew){if(ew.dir==='BULL'){const b=ew.waveNum==='3'?22:ew.waveNum==='2'?16:ew.waveNum==='4'?10:8;s+=b;f.push(ew.wave+' ('+ew.prob+'% prob)');}else if(ew.dir==='BEAR'){s-=8;f.push(ew.wave);}}
-  // RSI Divergence
-  if(div){if(div.type==='bullish'){s+=16;f.push(`Bullish RSI Divergence (${div.strength})`);}else{s-=14;f.push(`Bearish RSI Divergence (${div.strength})`);}}
-  // Volume
-  if(volA){if(volA.signal.includes('Breakout Bull')){s+=10;f.push(volA.signal);}else if(volA.signal.includes('Breakdown')){s-=10;f.push(volA.signal);}else if(volA.signal.includes('Stealth')){s+=12;f.push(volA.signal);}}
-  // FR
-  const frP=(fr||0)*100;
-  if(frP<-0.005){s+=14;f.push(`FR ${frP.toFixed(4)}% extreme short → squeeze`);}
-  else if(frP<0){s+=7;f.push(`FR ${frP.toFixed(4)}% negatif → contrarian buy`);}
-  else if(frP>0.08){s-=12;f.push(`FR +${frP.toFixed(4)}% overheated`);}
-  const score=cl(s,-60,60);
-  const prob=cl(Math.round(50+score*0.62),15,96);
-  let bias,label;
-  if(score>=35){bias='STRONG_BULLISH';label='STRONG BULLISH';}
-  else if(score>=18){bias='BULLISH';label='BULLISH';}
-  else if(score>=7){bias='MILD_BULLISH';label='MILD BULLISH';}
-  else if(score<=-35){bias='STRONG_BEARISH';label='STRONG BEARISH';}
-  else if(score<=-18){bias='BEARISH';label='BEARISH';}
-  else if(score<=-7){bias='MILD_BEARISH';label='MILD BEARISH';}
-  else{bias='NEUTRAL';label='NEUTRAL';}
-  const color=score>=18?'#00ffd0':score>=7?'#00ff88':score<=-18?'#ff3355':score<=-7?'#ff7799':'#ffd700';
-  return{bias,label,score,prob,factors:f.slice(0,7),color};
-}
-
-// ─── TRADE SETUP ──────────────────────────────────────────────────
-function buildSetup(p,dir,atr4h,ob,fvg,ew,prob){
-  const a=atr4h||p*0.025;
-  let entry=p,sl,tp1,tp2,tp3,entryType='Market';
-  if(dir==='LONG'){
-    // Entry: nearest bullish OB below price, or current price
-    const nearOB=ob.bullOBs.find(x=>x.top<p&&x.top>p*0.85);
-    if(nearOB){entry=nearOB.mid;entryType='Bull OB Entry';}
-    sl=nearOB?nearOB.bot*0.99:p-a*1.4;
-    // TP: nearest bearish OB above, or FVG fill
-    const aboveFVG=fvg.filter(f=>f.type==='bear'&&f.bot>p).sort((a,b)=>a.bot-b.bot)[0];
-    const aboveOB=ob.bearOBs.filter(x=>x.bot>p).sort((a,b)=>a.bot-b.bot)[0];
-    tp1=aboveFVG?aboveFVG.mid:p+a*2;
-    tp2=aboveOB?aboveOB.mid:p+a*3.5;
-    tp3=ew?.target||p+a*5.5;
-  }else{
-    const nearOB=ob.bearOBs.find(x=>x.bot>p&&x.bot<p*1.15);
-    if(nearOB){entry=nearOB.mid;entryType='Bear OB Entry';}
-    sl=nearOB?nearOB.top*1.01:p+a*1.4;
-    const belowFVG=fvg.filter(f=>f.type==='bull'&&f.top<p).sort((a,b)=>b.top-a.top)[0];
-    const belowOB=ob.bullOBs.filter(x=>x.top<p).sort((a,b)=>b.top-a.top)[0];
-    tp1=belowFVG?belowFVG.mid:p-a*2;
-    tp2=belowOB?belowOB.mid:p-a*3.5;
-    tp3=ew?.target||p-a*5.5;
-  }
-  const rrRaw=dir==='LONG'?(tp2-entry)/(entry-sl):(entry-tp2)/(sl-entry);
-  const rr=isFinite(rrRaw)&&rrRaw>0?+rrRaw.toFixed(2):2.5; // guard div/0
-  const slP=dir==='LONG'?pct(sl,entry):pct(entry,sl);
-  const tp1P=dir==='LONG'?pct(tp1,entry):pct(entry,tp1);
-  const tp2P=dir==='LONG'?pct(tp2,entry):pct(entry,tp2);
-  const tp3P=dir==='LONG'?pct(tp3,entry):pct(entry,tp3);
-  const w=cl(prob/100,.1,.95);
-  const kellyRaw=(w*rr-(1-w))/rr/2*100;
-  const kelly=+Math.max(.5,Math.min(8,isFinite(kellyRaw)?kellyRaw:2)).toFixed(1);
-  return{dir,entry:+entry.toFixed(8),sl:+sl.toFixed(8),tp1:+tp1.toFixed(8),tp2:+tp2.toFixed(8),tp3:+tp3.toFixed(8),slPct:+slP.toFixed(2),tp1Pct:+tp1P.toFixed(2),tp2Pct:+tp2P.toFixed(2),tp3Pct:+tp3P.toFixed(2),rr:+rr.toFixed(2),kelly,entryType};
-}
-
-// ─── MOON PHASE ────────────────────────────────────────────────────
-function moonPhase(){
-  const phases=[{p:.0625,n:'New Moon',e:'🌑'},{p:.1875,n:'Waxing Crescent',e:'🌒'},{p:.3125,n:'First Quarter',e:'🌓'},{p:.4375,n:'Waxing Gibbous',e:'🌔'},{p:.5625,n:'Full Moon',e:'🌕'},{p:.6875,n:'Waning Gibbous',e:'🌖'},{p:.8125,n:'Last Quarter',e:'🌗'},{p:.9375,n:'Waning Crescent',e:'🌘'},{p:1,n:'New Moon',e:'🌑'}];
-  const pct=(Date.now()/1000-592500)%(29.53*86400)/(29.53*86400);
-  const ph=phases.find(p=>pct<p.p)||phases[8];
-  return{moonPhase:ph.n,moonEmoji:ph.e};
-}
-
-// ─── MAIN HANDLER ─────────────────────────────────────────────────
+const ema = function(cls,p){
+  try{if(!cls||cls.length<2)return cls[cls.length-1]||0;var k=2/(p+1);return cls.reduce(function(prev,v,i){return i===0?v:prev*(1-k)+v*k;});}catch(e){return 0;}
+};
+const atr14 = function(K){
+  try{if(!K||K.length<15)return 0;var tr=0;for(var i=K.length-14;i<K.length;i++){var ph=K[i-1].c;tr+=Math.max(K[i].h-K[i].l,Math.abs(K[i].h-ph),Math.abs(K[i].l-ph));}return tr/14;}catch(e){return 0;}
+};
 export default async function handler(req,res){
   res.setHeader('Access-Control-Allow-Origin','*');
-  res.setHeader('Cache-Control','no-store');
-  if(req.method==='OPTIONS') return res.status(200).end();
-
-  const sym=(req.query?.symbol||req.query?.s||'').toString().toUpperCase().replace(/USDT|PERP/gi,'').trim();
-  if(!sym||sym.length>12) return res.status(400).json({ok:false,error:'Symbol required. Example: ?symbol=BTC'});
-  const t0=Date.now();
-
+  res.setHeader('Cache-Control','s-maxage=180,stale-while-revalidate=60');
+  if(req.method==='OPTIONS')return res.status(200).end();
+  var t0=Date.now();
+  var sym=((req.query&&req.query.symbol)||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,12);
+  if(!sym)return res.status(200).json({ok:false,error:'Symbol required',price:0});
+  var cacheKey=sym;
+  if(CACHE_MAP.has(cacheKey)&&Date.now()-CACHE_MAP.get(cacheKey).t<180000){
+    return res.status(200).json(Object.assign({},CACHE_MAP.get(cacheKey).d,{cached:true}));
+  }
+  var g=async function(url,ms){
+    try{var ctrl=new AbortController();var tmr=setTimeout(function(){ctrl.abort();},ms||3000);var r=await fetch(url,{signal:ctrl.signal});clearTimeout(tmr);return r.ok?await r.json():null;}catch(e){return null;}
+  };
   try{
-    // ── PARALLEL FETCH: ticker + 3 TF klines ──────────────────────
-    const [linR,spR,k1hR,k4hR,k1dR]=await Promise.allSettled([
-      sf(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${sym}USDT`,5500),
-      sf(`https://api.bybit.com/v5/market/tickers?category=spot&symbol=${sym}USDT`,4000),
-      sf(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${sym}USDT&interval=60&limit=120`,6000),
-      sf(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${sym}USDT&interval=240&limit=80`,6000),
-      sf(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${sym}USDT&interval=D&limit=60`,6000),
+    var symbolUSDT=sym+'USDT';
+    var results=await Promise.allSettled([
+      g('https://api.mexc.com/api/v3/klines?symbol='+symbolUSDT+'&interval=1h&limit=52',3000),
+      g('https://api.mexc.com/api/v3/klines?symbol='+symbolUSDT+'&interval=4h&limit=52',3000),
+      g('https://api.mexc.com/api/v3/klines?symbol='+symbolUSDT+'&interval=1d&limit=60',3000),
+      g('https://api.bybit.com/v5/market/tickers?category=linear&symbol='+symbolUSDT,2500),
+      g('https://api.mexc.com/api/v3/ticker/24hr?symbol='+symbolUSDT,2000),
+      g('https://alternative.me/crypto/fear-and-greed-index/?format=json&limit=1',2000),
     ]);
-
-    // ── Parse ticker ──────────────────────────────────────────────
-    let price=0,fr=0,oi=0,vol=0,c24=0,src='';
-    const linT=linR.value?.result?.list?.[0];
-    if(linT&&N(linT.lastPrice)>0){
-      price=N(linT.lastPrice);fr=N(linT.fundingRate);oi=N(linT.openInterestValue);vol=N(linT.turnover24h);
-      const prev=N(linT.prevPrice24h||price);c24=prev>0?pct(price,prev):0;src='Bybit Futures';
-    }else{
-      const spT=spR.value?.result?.list?.[0];
-      if(spT&&N(spT.lastPrice)>0){
-        price=N(spT.lastPrice);vol=N(spT.turnover24h);
-        const prev=N(spT.prevPrice24h||price);c24=prev>0?pct(price,prev):0;src='Bybit Spot';
-      }
-    }
-    // ── CryptoCompare fallback — store in ccK4h (used when building K4h below) ──
-    let ccK4h=[], ccK1h=[], ccK1d=[], ccVol=0;
-    if(price<=0){
+    var R1h=results[0],R4h=results[1],R1d=results[2],Rby=results[3],Rmx=results[4],Rfg=results[5];
+    // Price data
+    var price=0,change24h=0,vol24=0,fr=0,oi=0;
+    try{var bt=Rby.value&&Rby.value.result&&Rby.value.result.list&&Rby.value.result.list[0];if(bt&&N(bt.lastPrice)>0){price=N(bt.lastPrice);var prev=N(bt.prevPrice24h||price);change24h=prev>0?+((price-prev)/prev*100).toFixed(2):0;vol24=N(bt.turnover24h);fr=N(bt.fundingRate);oi=N(bt.openInterestValue);}}catch(e){}
+    if(!price){try{var mx=Rmx.value;if(mx&&N(mx.lastPrice)>0){price=N(mx.lastPrice);change24h=+N(mx.priceChangePercent).toFixed(2);vol24=N(mx.quoteVolume);}}catch(e){}}
+    if(!price)return res.status(200).json({ok:false,error:sym+' tidak ditemukan',symbol:sym,price:0,dataSource:'not found'});
+    // Process klines per timeframe
+    var tf=function(rawKlines){
       try{
-        // Fetch price + 3 timeframes in parallel from CryptoCompare
-        const [ccPR,ccK4R,ccK1R,ccK1dR]=await Promise.allSettled([
-          sf('https://min-api.cryptocompare.com/data/price?fsym='+sym+'&tsyms=USD',4500),
-          sf('https://min-api.cryptocompare.com/data/v2/histohour?fsym='+sym+'&tsym=USD&limit=42&aggregate=4&e=CCCAGG',5500),
-          sf('https://min-api.cryptocompare.com/data/v2/histohour?fsym='+sym+'&tsym=USD&limit=120&aggregate=1&e=CCCAGG',5500),
-          sf('https://min-api.cryptocompare.com/data/histoday?fsym='+sym+'&tsym=USD&limit=60&e=CCCAGG',5500),
-        ]);
-        const ccP=N(ccPR.value?.USD);
-        if(ccP>0){
-          price=ccP; src='CryptoCompare (Full Analysis)';
-          // Parse 4H klines
-          const ccRows4=A(ccK4R.value?.Data?.Data).filter(d=>N(d.close)>0&&N(d.close)<1e10);
-          if(ccRows4.length>=16){
-            ccK4h=ccRows4.map(d=>({t:N(d.time),o:N(d.open),h:N(d.high),l:N(d.low),c:N(d.close),v:N(d.volumeto),q:N(d.volumeto)}));
-            ccVol=ccRows4.slice(-7).reduce((s,d)=>s+N(d.volumeto),0)/7;
+        var raw=A(rawKlines);if(raw.length<16)return null;
+        var K=raw.map(function(d){return{o:N(d[1]),h:N(d[2]),l:N(d[3]),c:N(d[4]),v:N(d[5]),t:N(d[0])};});
+        var cls=K.map(function(k){return k.c;}).filter(function(v){return v>0;});
+        var rsi=N(rsi14(cls));
+        var e9=ema(cls.slice(-9),9),e21=ema(cls.slice(-21),21),e50=ema(cls.slice(-50),50),e200=ema(cls,200);
+        var atrV=atr14(K.slice(-15));
+        var atrPct=price>0?+(atrV/price*100).toFixed(2):0;
+        // MACD
+        var k12=2/13,k26=2/27;var em12=cls[0],em26=cls[0];
+        cls.forEach(function(v){em12=em12*(1-k12)+v*k12;em26=em26*(1-k26)+v*k26;});
+        var macdLine=em12-em26,signalLine=macdLine*(2/10);
+        var macdHist=+(macdLine-signalLine).toFixed(6);
+        var macdBull=macdLine>signalLine;
+        var macdCross=macdBull&&macdLine<0?'CROSS_UP':(!macdBull&&macdLine>0?'CROSS_DOWN':null);
+        // RSI slope
+        var rsiPrev=rsi14(cls.slice(0,-1));
+        var rsiSlope=rsi>rsiPrev+0.5?'rising':rsi<rsiPrev-0.5?'falling':'flat';
+        // RSI divergence
+        var divType=null,divStr=0;
+        try{var p4=cls[cls.length-5]||price,p8=cls[cls.length-9]||price;var r4=rsi14(cls.slice(0,-4)),r8=rsi14(cls.slice(0,-8));
+          if(r4&&r8){if(price<p4&&p4<p8&&rsi>r4&&r4>r8){divType='BULLISH';divStr=Math.round((rsi-r4)*3+10);}
+          else if(price>p4&&p4>p8&&rsi<r4&&r4<r8){divType='BEARISH';divStr=Math.round((r4-rsi)*3+10);}}}catch(e){}
+        // Bollinger Bands
+        var last20=cls.slice(-20);var mean=last20.reduce(function(s,v){return s+v;},0)/20;
+        var std=Math.sqrt(last20.reduce(function(s,v){return s+Math.pow(v-mean,2);},0)/20);
+        var bbUpper=+(mean+std*2).toFixed(price>1?2:8),bbLower=+(mean-std*2).toFixed(price>1?2:8);
+        var bbPct=std>0?cl((price-bbLower)/(bbUpper-bbLower),0,1):0.5;
+        var bbSqueeze=(std*4/mean)<0.05;
+        // Volume analysis
+        var avgVol=K.slice(-20).reduce(function(s,k){return s+k.v;},0)/20;
+        var curVol=K[K.length-1].v;
+        var volRatio=avgVol>0?+(curVol/avgVol).toFixed(2):1;
+        var volTrend=volRatio>1.5?'HIGH':volRatio>1.1?'ABOVE_AVG':volRatio<0.6?'LOW':'NORMAL';
+        // Stoch RSI (simple approximation)
+        var rsiSeries=[];for(var i=14;i<cls.length;i++){rsiSeries.push(N(rsi14(cls.slice(0,i+1))));}
+        var rsiMin=Math.min.apply(null,rsiSeries.slice(-14));var rsiMax=Math.max.apply(null,rsiSeries.slice(-14));
+        var stochRsi=rsiMax>rsiMin?cl((rsi-rsiMin)/(rsiMax-rsiMin)*100,0,100):50;
+        // ADX approximation (directional movement)
+        var adx=50;try{var gains=0,losses=0;for(var i2=K.length-14;i2<K.length;i2++){var dm=K[i2].h-K[i2-1>0?i2-1:0].h;var dm2=K[i2-1>0?i2-1:0].l-K[i2].l;gains+=(dm>dm2&&dm>0?dm:0);losses+=(dm2>dm&&dm2>0?dm2:0);}adx=gains+losses>0?cl((Math.abs(gains-losses)/(gains+losses))*100,0,100):50;}catch(e){}
+        // Determine trend
+        var trend=rsi>55&&price>e21?'BULLISH':rsi<45&&price<e21?'BEARISH':'NEUTRAL';
+        var aboveE200=price>e200;var aboveE21=price>e21;
+        return{rsi,rsiSlope,divType,divStr,
+          e9:+e9.toFixed(price>1?2:8),e21:+e21.toFixed(price>1?2:8),e50:+e50.toFixed(price>1?2:8),e200:+e200.toFixed(price>1?2:8),
+          aboveE200,aboveE21,
+          atr:+atrV.toFixed(price>1?4:8),atrPct,
+          macdLine:+macdLine.toFixed(6),macdHist,macdBull,macdCross,
+          bbUpper,bbLower,bbPct:+bbPct.toFixed(3),bbSqueeze,
+          stochRsi:+stochRsi.toFixed(1),adx:+adx.toFixed(1),
+          volRatio,volTrend,
+          trend,K,cls};
+      }catch(e){return null;}
+    };
+    var t1h=tf(A(R1h.value));
+    var t4h=tf(A(R4h.value));
+    var t1d=tf(A(R1d.value));
+    // Use 4H as primary if available, fallback to 1H or 1D
+    var primary=t4h||t1h||t1d;
+    if(!primary)return res.status(200).json({ok:false,error:'Tidak cukup data klines untuk '+sym,symbol:sym,price:price,dataSource:'mexc-klines'});
+    // ICT/SMC: BOS and CHoCH detection from 4H klines
+    var bosD=null,chochD=null,obs=[],fvgs=[];
+    try{
+      var K4=primary.K;
+      if(K4&&K4.length>=10){
+        // Find swing highs and lows
+        var swingHighs=[],swingLows=[];
+        for(var i=2;i<K4.length-2;i++){
+          if(K4[i].h>K4[i-1].h&&K4[i].h>K4[i-2].h&&K4[i].h>K4[i+1].h&&K4[i].h>K4[i+2].h){swingHighs.push({idx:i,level:K4[i].h,t:K4[i].t});}
+          if(K4[i].l<K4[i-1].l&&K4[i].l<K4[i-2].l&&K4[i].l<K4[i+1].l&&K4[i].l<K4[i+2].l){swingLows.push({idx:i,level:K4[i].l,t:K4[i].t});}
+        }
+        // BOS: price breaks above last swing high or below last swing low
+        var lastHigh=swingHighs.length>0?swingHighs[swingHighs.length-1]:null;
+        var lastLow=swingLows.length>0?swingLows[swingLows.length-1]:null;
+        var recentHigh=swingHighs.length>1?swingHighs[swingHighs.length-2]:null;
+        var recentLow=swingLows.length>1?swingLows[swingLows.length-2]:null;
+        if(lastHigh&&price>lastHigh.level*0.999){bosD={type:'BOS Bullish',level:+lastHigh.level.toFixed(price>1?2:8),color:'var(--g)'};}
+        else if(lastLow&&price<lastLow.level*1.001){bosD={type:'BOS Bearish',level:+lastLow.level.toFixed(price>1?2:8),color:'var(--red)'};}
+        // CHoCH: lower high after uptrend, or higher low after downtrend
+        if(!bosD&&recentHigh&&lastHigh&&lastHigh.level<recentHigh.level&&price<lastHigh.level){
+          chochD={type:'CHoCH Bearish - Trend Reversal',level:+lastHigh.level.toFixed(price>1?2:8)};}
+        else if(!bosD&&recentLow&&lastLow&&lastLow.level>recentLow.level&&price>lastLow.level){
+          chochD={type:'CHoCH Bullish - Trend Reversal',level:+lastLow.level.toFixed(price>1?2:8)};}
+        // Order Blocks: find last bearish candle before bullish move and vice versa
+        for(var i=K4.length-8;i<K4.length-1;i++){
+          var candle=K4[i],nextC=K4[i+1];
+          // Bullish OB: bearish candle before bullish move (price came from below)
+          if(candle.c<candle.o&&nextC.c>candle.h*0.995){
+            obs.push({type:'Bullish OB',top:+candle.o.toFixed(price>1?2:8),bottom:+candle.c.toFixed(price>1?2:8),strength:'HIGH'});
+            if(obs.length>=2)break;
           }
-          // Parse 1H klines
-          const ccRows1=A(ccK1R.value?.Data?.Data).filter(d=>N(d.close)>0&&N(d.close)<1e10);
-          if(ccRows1.length>=16){
-            ccK1h=ccRows1.map(d=>({t:N(d.time),o:N(d.open),h:N(d.high),l:N(d.low),c:N(d.close),v:N(d.volumeto),q:N(d.volumeto)}));
-          }
-          // Parse 1D klines
-          // CC histoday returns flat Data array (not Data.Data like histohour)
-          const ccRawD=ccK1dR.value;
-          const ccRowsD=A(
-            ccRawD?.Response==='Success'?(Array.isArray(ccRawD?.Data)?ccRawD.Data:A(ccRawD?.Data?.Data)):[]
-          ).filter(d=>N(d.close)>0&&N(d.close)<1e10);
-          if(ccRowsD.length>=16){
-            ccK1d=ccRowsD.map(d=>({t:N(d.time),o:N(d.open),h:N(d.high),l:N(d.low),c:N(d.close),v:N(d.volumeto),q:N(d.volumeto)}));
+          // Bearish OB: bullish candle before bearish move
+          if(candle.c>candle.o&&nextC.c<candle.l*1.005){
+            obs.push({type:'Bearish OB',top:+candle.c.toFixed(price>1?2:8),bottom:+candle.o.toFixed(price>1?2:8),strength:'HIGH'});
+            if(obs.length>=2)break;
           }
         }
-      }catch{}
-    }
-    if(price<=0) return res.status(200).json({ok:false,symbol:sym,error:sym+' tidak ditemukan di Bybit atau CryptoCompare. Cek ejaan.',elapsed:Date.now()-t0});
-
-    // ── Parse klines ──────────────────────────────────────────────
-    const getK=r=>{
-      if(r.status!=='fulfilled'||!r.value) return [];
-      const d=r.value;if(d.retCode!==undefined&&d.retCode!==0) return [];
-      return parseK(A(d?.result?.list));
-    };
-    const K1h=ccK1h.length>=16?ccK1h:getK(k1hR),K4h=ccK4h.length>=16?ccK4h:getK(k4hR),K1d=ccK1d.length>=16?ccK1d:getK(k1dR);if(ccVol>0)vol=ccVol;
-    const has=K4h.length>=16;
-
-    // ── Indicators ────────────────────────────────────────────────
-    const cls4h=K4h.map(c=>c.c);
-    const r1h=K1h.length>=16?rsi14(K1h.map(c=>c.c)):null;
-    const r4h=K4h.length>=16?rsi14(cls4h):null;
-    const r1d=K1d.length>=16?rsi14(K1d.map(c=>c.c)):null;
-    const macdV=K4h.length>=28?macdCalc(cls4h):null;
-    const atr4h=K4h.length>=15?atr14(K4h):0;
-    const atrPct=atr4h>0&&price>0?+(atr4h/price*100).toFixed(3):0;
-    const e9=cls4h.length>=9?ema(cls4h,9):null;
-    const e21=cls4h.length>=21?ema(cls4h,21):null;
-    const e50=cls4h.length>=50?ema(cls4h,50):null;
-    const e200=cls4h.length>=50?ema(cls4h,Math.min(200,cls4h.length)):null;
-
-    // ── SMC Analysis ──────────────────────────────────────────────
-    let smcData={bullOBs:[],bearOBs:[],fvgs:[],ms:null,pd:null,liq:{buy:[],sell:[]}};
-    if(has){
-      const sw=swings(K4h,3);
-      const ms=mktStructure(K4h,sw);
-      const{bullOBs,bearOBs}=detectOBs(K4h);
-      const fvgs=detectFVGs(K4h);
-      const pd=pdZone(K4h);
-      const liq=liquidity(K4h,sw);
-      smcData={bullOBs,bearOBs,fvgs,ms,pd,liq};
-    }
-
-    // ── Chart Patterns ────────────────────────────────────────────
-    const patterns=has?detectPatterns(K4h):[];
-
-    // ── Elliott Wave ──────────────────────────────────────────────
-    const ew=has?elliottWave(K4h,K1d):null;
-
-    // ── RSI Divergence ────────────────────────────────────────────
-    const div=has&&K4h.length>=25?rsiDiv(K4h):null;
-
-    // ── Volume ────────────────────────────────────────────────────
-    const volA=has?volAnalysis(K4h):null;
-
-    // ── Overall Bias ──────────────────────────────────────────────
-    const biasData=calcBias(r1h,r4h,r1d,macdV,smcData.ms,smcData.pd,ew,div,volA,fr,e9,e21,e50);
-
-    // ── Trade Setup ───────────────────────────────────────────────
-    const dir=biasData.score>8?'LONG':biasData.score<-8?'SHORT':'WAIT';
-    let setup=null;
-    if(dir!=='WAIT'&&atr4h>0){
-      setup=buildSetup(price,dir,atr4h,smcData,smcData.fvgs,ew,biasData.prob);
-      // Conviction stars
-      const cx=(biasData.score>35?2:biasData.score>18?1:0)+
-        (smcData.bullOBs.length>0&&dir==='LONG'?0.8:smcData.bearOBs.length>0&&dir==='SHORT'?0.8:0)+
-        (smcData.fvgs.length>0?0.5:0)+(ew&&((ew.dir==='BULL'&&dir==='LONG')||(ew.dir==='BEAR'&&dir==='SHORT'))?1.2:0)+
-        (div&&((div.type==='bullish'&&dir==='LONG')||(div.type==='bearish'&&dir==='SHORT'))?1.2:0)+
-        (patterns.length>0&&((patterns[0].type==='bull'&&dir==='LONG')||(patterns[0].type==='bear'&&dir==='SHORT'))?0.8:0)+
-        (r4h!==null&&r4h<35&&dir==='LONG'?1:0)+(atr4h>0?0.5:0);
-      setup.convStars=Math.min(5,+cx.toFixed(1));
-    }
-
-    // ── RSI Zone labels ───────────────────────────────────────────
-    const rzone=v=>v===null?'—':v<25?'⚡ EXTREME OS':v<35?'🟢 Oversold':v<45?'↘ Bearish':v<55?'↔ Neutral':v<65?'↗ Bullish':v<75?'🟡 Overbought':'🔴 EXTREME OB';
-
-    // ── Output ────────────────────────────────────────────────────
-    return res.status(200).json({
-      ok:true, symbol:sym, price:+price.toFixed(8), change24h:+c24.toFixed(3),
-      volume24h:vol, fundingRate:fr, frPct:+(fr*100).toFixed(5), openInterest:oi, dataSource:src,
-      klineData:{has,k1h:K1h.length,k4h:K4h.length,k1d:K1d.length},
-      rsi:{
-        '1H':r1h,'4H':r4h,'1D':r1d,
-        '1H_zone':rzone(r1h),'4H_zone':rzone(r4h),'1D_zone':rzone(r1d),
-        divergence:div,
+        // Fair Value Gaps (FVG): gap between candle[i-1].high and candle[i+1].low (or vice versa)
+        for(var i=K4.length-8;i<K4.length-1&&fvgs.length<3;i++){
+          if(i>0&&i<K4.length-1){
+            var gap=K4[i+1].l-K4[i-1].h;
+            if(gap>0&&gap/price>0.002){fvgs.push({type:'Bullish FVG',top:+K4[i+1].l.toFixed(price>1?2:8),bottom:+K4[i-1].h.toFixed(price>1?2:8),filled:price>K4[i-1].h});}
+            var gap2=K4[i-1].l-K4[i+1].h;
+            if(gap2>0&&gap2/price>0.002){fvgs.push({type:'Bearish FVG',top:+K4[i-1].l.toFixed(price>1?2:8),bottom:+K4[i+1].h.toFixed(price>1?2:8),filled:price<K4[i-1].l});}
+          }
+        }
+      }
+    }catch(e){}
+    // Fibonacci levels from 4H recent swing
+    var fib={};
+    try{
+      var K4f=primary.K;var hh=K4f.reduce(function(a,k){return k.h>a?k.h:a;},0);var ll=K4f.reduce(function(a,k){return k.l<a?k.l:a;},9e99);
+      var diff=hh-ll;
+      fib={high:+hh.toFixed(price>1?2:8),low:+ll.toFixed(price>1?2:8),f236:+(hh-diff*0.236).toFixed(price>1?2:8),f382:+(hh-diff*0.382).toFixed(price>1?2:8),f500:+(hh-diff*0.5).toFixed(price>1?2:8),f618:+(hh-diff*0.618).toFixed(price>1?2:8),f786:+(hh-diff*0.786).toFixed(price>1?2:8)};
+    }catch(e){}
+    // Pivot Points (Classic)
+    var pivots={};
+    try{
+      var K4p=primary.K;var prev=K4p[K4p.length-2]||K4p[K4p.length-1];
+      var pp=(prev.h+prev.l+prev.c)/3;
+      pivots={pp:+pp.toFixed(price>1?2:8),r1:+(2*pp-prev.l).toFixed(price>1?2:8),r2:+(pp+(prev.h-prev.l)).toFixed(price>1?2:8),r3:+(prev.h+2*(pp-prev.l)).toFixed(price>1?2:8),s1:+(2*pp-prev.h).toFixed(price>1?2:8),s2:+(pp-(prev.h-prev.l)).toFixed(price>1?2:8),s3:+(prev.l-2*(prev.h-pp)).toFixed(price>1?2:8)};
+    }catch(e){}
+    // Elliott Wave (simplified detection)
+    var ew={};
+    try{
+      var K4e=primary.K;var rsi4=t4h?t4h.rsi:50;var tr=t4h?t4h.trend:'NEUTRAL';
+      var recentSlope=K4e.length>=5?(K4e[K4e.length-1].c-K4e[K4e.length-5].c)/K4e[K4e.length-5].c*100:0;
+      var emaSlope=t4h&&t4h.e9&&t4h.e21?(t4h.e9-t4h.e21)/t4h.e21*100:0;
+      var wave,waveDesc,waveConf,waveColor;
+      if(rsi4<30&&recentSlope<-5){wave=5;waveDesc='Wave 5 bottom - reversal zone';waveConf=72;waveColor='var(--g)';}
+      else if(rsi4<35&&recentSlope<0&&price<(t4h?t4h.e21:price)*0.98){wave=4;waveDesc='Wave 4 correction';waveConf=60;waveColor='var(--amber)';}
+      else if(rsi4>65&&recentSlope>3&&price>(t4h?t4h.e21:price)*1.01){wave=3;waveDesc='Wave 3 extension (strongest)';waveConf=65;waveColor='var(--g)';}
+      else if(rsi4>55&&recentSlope>0&&emaSlope>0){wave=1;waveDesc='Wave 1 initiation - early bull';waveConf=55;waveColor='var(--g)';}
+      else if(rsi4<50&&recentSlope<0&&price>(t4h?t4h.e200:price)*0.97){wave=2;waveDesc='Wave 2 pullback - buy zone';waveConf=58;waveColor='var(--amber)';}
+      else{wave=0;waveDesc='Consolidation - no clear wave';waveConf=30;waveColor='var(--dim)';}
+      ew={'4H':{wave:wave,w:wave>0?'Wave '+wave:'',c:waveColor,d:waveDesc,confidence:waveConf,description:waveDesc}};
+    }catch(e){}
+    // Confluence scoring
+    var confScore=50,bullishFactors=[],bearishFactors=[];
+    var rsi4h=t4h?t4h.rsi:50;
+    if(rsi4h<30){confScore+=20;bullishFactors.push('RSI 4H oversold ('+rsi4h.toFixed(0)+')');}
+    else if(rsi4h<40){confScore+=12;bullishFactors.push('RSI 4H bearish zone ('+rsi4h.toFixed(0)+')');}
+    else if(rsi4h>70){confScore-=20;bearishFactors.push('RSI 4H overbought ('+rsi4h.toFixed(0)+')');}
+    if(t4h&&t4h.divType==='BULLISH'){confScore+=15;bullishFactors.push('Bullish divergence 4H');}
+    else if(t4h&&t4h.divType==='BEARISH'){confScore-=15;bearishFactors.push('Bearish divergence 4H');}
+    if(t4h&&t4h.macdBull&&t4h.macdLine<0){confScore+=10;bullishFactors.push('MACD bullish cross');}
+    if(bosD&&bosD.type.includes('Bullish')){confScore+=12;bullishFactors.push('BOS Bullish confirmed');}
+    else if(bosD&&bosD.type.includes('Bearish')){confScore-=12;bearishFactors.push('BOS Bearish confirmed');}
+    if(fr<-0.0003){confScore+=10;bullishFactors.push('FR negatif ('+( fr*100).toFixed(3)+'%) shorts bayar');}
+    if(t4h&&t4h.aboveE200){confScore+=8;bullishFactors.push('Di atas 200 EMA 4H');}else if(t4h){confScore-=8;bearishFactors.push('Di bawah 200 EMA 4H');}
+    if(t1h&&t1h.rsi<40&&rsi4h<45){confScore+=8;bullishFactors.push('MTF: 1H+4H keduanya oversold');}
+    if(t1d&&t1d.rsi>50&&rsi4h<45){confScore+=6;bullishFactors.push('1D bullish, 4H pullback = buy dip');}
+    confScore=Math.max(5,Math.min(95,Math.round(confScore)));
+    var confSignal=confScore>=75?'STRONG BUY':confScore>=60?'BUY':confScore>=50?'MILD BUY':confScore<=30?'STRONG SELL':confScore<=40?'SELL':'NEUTRAL';
+    // Overall bias
+    var biasScore=0;
+    if(rsi4h<35)biasScore+=3;else if(rsi4h<45)biasScore+=1;else if(rsi4h>65)biasScore-=3;else if(rsi4h>55)biasScore-=1;
+    if(t4h&&t4h.macdBull)biasScore+=1;else if(t4h&&!t4h.macdBull)biasScore-=1;
+    if(t4h&&t4h.aboveE200)biasScore+=1;else if(t4h)biasScore-=1;
+    if(t4h&&t4h.divType==='BULLISH')biasScore+=2;else if(t4h&&t4h.divType==='BEARISH')biasScore-=2;
+    if(bosD&&bosD.type.includes('Bullish'))biasScore+=2;else if(bosD&&bosD.type.includes('Bearish'))biasScore-=2;
+    var biasLabel=biasScore>=4?'STRONG BULLISH':biasScore>=2?'BULLISH':biasScore===1?'MILD BULLISH':biasScore===-1?'MILD BEARISH':biasScore<=-2?'BEARISH':'NEUTRAL';
+    var biasColor=biasLabel.includes('BULL')?'var(--g)':biasLabel.includes('BEAR')?'var(--red)':'var(--amber)';
+    // RSI map for display
+    var rsiMap={'1H':t1h?+t1h.rsi.toFixed(1):50,'4H':t4h?+t4h.rsi.toFixed(1):50,'1D':t1d?+t1d.rsi.toFixed(1):50};
+    // Astrology
+    var jd=Date.now()/86400000+2440587.5;var dm=((jd-2460320.5)%29.53+29.53)%29.53;
+    var moonPhase='Waxing',moonEmoji='moon';
+    if(dm<1.5){moonPhase='New Moon';moonEmoji='new-moon';}else if(dm<8.5){moonPhase='First Quarter';moonEmoji='first-quarter';}
+    else if(dm<16){moonPhase='Full Moon';moonEmoji='full-moon';}else if(dm<22){moonPhase='Waning';moonEmoji='waning';}
+    else{moonPhase='Dark Moon';moonEmoji='waning-crescent';}
+    var ds=Math.floor((Date.now()-1713571200000)/86400000);
+    var chaotic=moonPhase==='Full Moon'||moonPhase==='New Moon';
+    // SL/TP levels based on ATR
+    var atr4h=t4h?t4h.atr:price*0.02;
+    var entry=price;
+    var sl=+(entry-atr4h*1.5).toFixed(price>1?2:8),tp1=+(entry+atr4h*2).toFixed(price>1?2:8),tp2=+(entry+atr4h*3.5).toFixed(price>1?2:8),tp3=+(entry+atr4h*6).toFixed(price>1?2:8);
+    var slPct=+((entry-sl)/entry*100).toFixed(2),tp1Pct=+((tp1-entry)/entry*100).toFixed(2),tp2Pct=+((tp2-entry)/entry*100).toFixed(2);
+    var oneLiner=biasLabel+' RSI4H:'+rsiMap['4H']+(t4h&&t4h.divType?' '+t4h.divType+' DIV':'')+(bosD?' '+bosD.type:'')+' F'+Math.round(confScore)+'%';
+    var out={
+      ok:true,symbol:sym,price:price,change24h:change24h,vol24h:vol24,fr:fr?+(fr*100).toFixed(4):null,oi:oi,
+      dataSource:'MEXC Klines (1H+4H+1D) + Bybit',ts:Date.now(),elapsed:Date.now()-t0,
+      timeframes:{
+        '1H':t1h?{rsi:rsiMap['1H'],trend:t1h.trend,rsiSlope:t1h.rsiSlope,macdBull:t1h.macdBull,aboveE21:t1h.aboveE21}:{rsi:50,trend:'NEUTRAL'},
+        '4H':t4h?{rsi:rsiMap['4H'],trend:t4h.trend,rsiSlope:t4h.rsiSlope,macdBull:t4h.macdBull,aboveE21:t4h.aboveE21,aboveE200:t4h.aboveE200,divType:t4h.divType,divStr:t4h.divStr}:{rsi:50,trend:'NEUTRAL'},
+        '1D':t1d?{rsi:rsiMap['1D'],trend:t1d.trend,rsiSlope:t1d.rsiSlope,macdBull:t1d.macdBull,aboveE21:t1d.aboveE21}:{rsi:50,trend:'NEUTRAL'},
       },
-      ema:{
-        e9_4h:e9?+e9.toFixed(8):null,e21_4h:e21?+e21.toFixed(8):null,
-        e50_4h:e50?+e50.toFixed(8):null,e200_4h:e200?+e200.toFixed(8):null,
-        aboveEma200:e200?price>e200:null,
-        trend:e9&&e21?(e9>e21?'🟢 EMA Bull':'🔴 EMA Bear'):'—',
-        vs200:e200?+(pct(price,e200).toFixed(2)):null,
-      },
-      macd:macdV?{...macdV,signal:macdV.xUp?'🚀 Golden Cross':macdV.xDown?'💀 Death Cross':macdV.bull?'🟢 Bull Hist':'🔴 Bear Hist'}:null,
-      atr:{val:+atr4h.toFixed(8),pct:atrPct},
-      volume:volA,
-      smc:{
-        hasData:has,
-        marketStructure:smcData.ms,
-        premiumDiscount:smcData.pd,
-        bullOBs:smcData.bullOBs,
-        bearOBs:smcData.bearOBs,
-        fvgs:smcData.fvgs,
-        liquidity:smcData.liq,
-      },
-      patterns,
+      rsiMap:rsiMap,
+      ict:{bosD:bosD||null,chochD:chochD||null,obs:obs,fvgs:fvgs},
       elliottWave:ew,
-      summary:{
-        bias:biasData.bias,biasLabel:biasData.label,
-        score:biasData.score,prob:biasData.prob,
-        factors:biasData.factors,direction:dir,
-        oneLiner:biasData.factors[0]||`${sym} — ${biasData.label}`,
-        biasColor:biasData.color,
-      },
-      tradeSetup:setup,
-      confluence:{
-        smcOB:smcData.bullOBs.length+smcData.bearOBs.length,
-        fvg:smcData.fvgs.length,
-        patterns:patterns.length,
-        ew:ew?1:0,
-        divergence:div?1:0,
-        totalPoints:biasData.prob,
-      },
-      astrology:moonPhase(),
-      elapsed:Date.now()-t0,
-    });
-
+      fibonacci:fib,
+      pivotPoints:{'4H':pivots},
+      macd:{bull:t4h?t4h.macdBull:false,hist:t4h?t4h.macdHist:0,line:t4h?t4h.macdLine:0,cross:t4h?t4h.macdCross:null},
+      bb:{'4H':{upper:t4h?t4h.bbUpper:0,lower:t4h?t4h.bbLower:0,pct:t4h?t4h.bbPct:0.5,squeeze:t4h?t4h.bbSqueeze:false}},
+      rsi:rsiMap['4H'],
+      rsiDivergence:t4h&&t4h.divType?{type:t4h.divType,strength:t4h.divStr,timeframe:'4H'}:null,
+      stochRSI:t4h?t4h.stochRsi:50,
+      adx:t4h?t4h.adx:50,
+      atr:{pct:t4h?t4h.atrPct:0,val:t4h?t4h.atr:0},
+      volume:{ratio:t4h?t4h.volRatio:1,trend:t4h?t4h.volTrend:'NORMAL'},
+      emaAnalysis:{e9:t4h?t4h.e9:0,e21:t4h?t4h.e21:0,e50:t4h?t4h.e50:0,e200:t4h?t4h.e200:0,aboveE200:t4h?t4h.aboveE200:false,aboveE21:t4h?t4h.aboveE21:false},
+      chartPatterns:[],
+      confluence:{probability:confScore,signal:confSignal,bullishFactors:bullishFactors,bearishFactors:bearishFactors},
+      summary:{bias:biasLabel,biasLabel:biasLabel,biasColor:biasColor,probability:confScore,oneLiner:oneLiner},
+      levels:{entry:entry,sl:sl,slPct:slPct,tp1:tp1,tp1Pct:tp1Pct,tp2:tp2,tp2Pct:tp2Pct,tp3:tp3},
+      astrology:{moonPhase:moonPhase,moonEmoji:moonEmoji,halvingPhase:ds<240?'Bull Mid-Cycle':'Late Cycle',chaotic:chaotic,daysSinceHalving:ds},
+    };
+    CACHE_MAP.set(cacheKey,{d:out,t:Date.now()});
+    if(CACHE_MAP.size>100){var first=CACHE_MAP.keys().next().value;CACHE_MAP.delete(first);}
+    return res.status(200).json(out);
   }catch(e){
-    return res.status(200).json({ok:false,symbol:sym,error:String(e?.message||'Error'),price:0,change24h:0,rsi:{'1H':null,'4H':null,'1D':null,'1H_zone':'—','4H_zone':'—','1D_zone':'—'},smc:{hasData:false,bullOBs:[],bearOBs:[],fvgs:[]},patterns:[],elliottWave:null,summary:{bias:'NEUTRAL',biasLabel:'ERROR',score:0,prob:50,factors:[String(e?.message||'')],direction:'WAIT',biasColor:'#888'},tradeSetup:null,astrology:moonPhase(),elapsed:Date.now()-t0});
+    return res.status(200).json({ok:false,error:String(e.message||e),symbol:sym,price:0,ts:Date.now(),dataSource:'error',timeframes:{'1H':{rsi:50},'4H':{rsi:50},'1D':{rsi:50}},rsiMap:{'1H':50,'4H':50,'1D':50},confluence:{probability:50,signal:'NEUTRAL'},summary:{bias:'NEUTRAL',biasLabel:'NEUTRAL',probability:50,oneLiner:'Error saat analisis'},ict:{bosD:null,chochD:null,obs:[],fvgs:[]},elliottWave:{},pivotPoints:{'4H':{}},astrology:{moonPhase:'Waxing',moonEmoji:'moon',halvingPhase:'Bull Cycle',chaotic:false}});
   }
 }
