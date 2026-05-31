@@ -47,7 +47,7 @@ export default async function handler(req,res){
         const p=cgMap[sym]?.price||N(t.lastPrice);
         if(p<=0||p>1e10) continue;
         const v=N(t.quoteVolume)||cgMap[sym]?.vol||0;
-        if(v<100000) continue;
+        if(v<50000) continue;
         const ch24=cgMap[sym]?.ch24||N(t.priceChangePercent);
         const hi=N(t.highPrice||p*1.02),lo=N(t.lowPrice||p*0.98);
         const pip=hi>lo?cl((p-lo)/(hi-lo)*100,0,100):50;
@@ -67,7 +67,7 @@ export default async function handler(req,res){
     const signal=avgCh24>3?'BULLISH':avgCh24>1?'MILD BULL':avgCh24<-3?'BEARISH':avgCh24<-1?'MILD BEAR':'NEUTRAL';
     // Lists
     const gainers=[...coins].filter(c=>c.ch24>0).sort((a,b)=>b.ch24-a.ch24).slice(0,25).map(c=>({symbol:c.symbol,price:c.price,priceUsd:c.price,ch24:c.ch24,vol:c.vol}));
-    const volBreakouts=[...coins].filter(c=>c.vol>20e6).sort((a,b)=>b.vol-a.vol).slice(0,20).map(c=>({symbol:c.symbol,price:c.price,ch24:c.ch24,vol:c.vol,bType:c.bType}));
+    const volBreakouts=[...coins].filter(c=>c.vol>5e6).sort((a,b)=>b.vol-a.vol).slice(0,20).map(c=>({symbol:c.symbol,price:c.price,ch24:c.ch24,vol:c.vol,bType:c.bType}));
     const rsiList=[...coins].filter(c=>c.rsi<38||c.rsi>68).sort((a,b)=>a.rsi-b.rsi).slice(0,25).map(c=>({sym:c.symbol,symbol:c.symbol,price:c.price,ch24:c.ch24,rsi:+c.rsi.toFixed(1),vol:c.vol,zone:c.rsi<25?'EXTREME OVERSOLD 🎯':c.rsi<35?'Oversold 🟢':c.rsi>78?'EXTREME OVERBOUGHT':c.rsi>68?'Overbought 🔴':'Bearish zone'}));
     const out={ok:true,version:'v5',ts:Date.now(),elapsed:Date.now()-t0,fg,totalCoins:coins.length,realRSICount:0,market:{signal,avg24h:avgCh24,pos,neg,totalVol,bullPct:Math.round(pos/Math.max(1,coins.length)*100)},gainers,volBreakouts,volumeBreakouts:volBreakouts,rsiList,rsiExtremes:rsiList};
     CACHE.d=out;CACHE.t=Date.now();
