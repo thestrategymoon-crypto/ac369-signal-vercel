@@ -21,13 +21,10 @@ const isBad = s => BAD.some(b => s.endsWith(b) || s.startsWith(b)) || STAB.has(s
 
 // Coins we fetch real 4H klines for (most liquid/important)
 const KLINE_COINS = [
+  // Top 30 by OI/liquidity on Bybit — reduce parallel requests
   'BTC','ETH','SOL','BNB','XRP','ADA','AVAX','DOGE','LINK','DOT',
   'NEAR','SUI','APT','ARB','OP','PEPE','INJ','TIA','RENDER','WIF',
-  'BONK','HYPE','JUP','PENDLE','ONDO','ENA','NOT','TON','TRX','XLM',
-  'AAVE','UNI','CRV','GMX','DYDX','LDO','SNX','BLUR','IMX','STRK',
-  'FET','AGIX','WLD','IO','VIRTUAL','OLAS','GOAT','NEIRO','PNUT',
-  'FLOKI','SHIB','MEME','PEOPLE','TURBO','ACT','BOME','MOODENG',
-  'SEI','EIGEN','ZK','PYTH','W','RON','BAND','API3','JTO',
+  'BONK','HYPE','ENA','TON','AAVE','WLD','FET','ONDO','JTO','PYTH',
 ];
 
 const SECTORS = {
@@ -289,12 +286,12 @@ function generateSignal(coin) {
     sig='SHORT SQUEEZE SETUP ??'; sc='#fb7185'; dir='LONG'; prob=83;
     desc=`${100-retailLong}% retail short = squeeze target. Trigger kecil → pompa besar`;
     tags=['SQUEEZE','RETAIL_SHORT'];
-  } else if (rsi < 28 && (frPct < 0 || isCoiling) && vol > 100000) {
+  } else if (rsi < 28 && vol > 50000) {
     sig='DEEP OVERSOLD ⬇️'; sc='#f87171'; dir='LONG'; prob=78;
     desc=`RSI ${rsi.toFixed(0)} = tekanan jual berlebihan, mean reversion akan terjadi`;
     tags=['OVERSOLD'];
   } else if (Math.abs(c24) < 1.5 && rsi > 40 && rsi < 60 && vol > 2e6 && frPct <= 0) {
-    sig='SMART ACCUMULATION ??'; sc='#a78bfa'; dir='LONG'; prob=82;
+    sig='SMART ACCUMULATION 🤐'; sc='#a78bfa'; dir='LONG'; prob=82;
     desc=`Volume besar + harga flat + FR neg = SM kumpul sebelum breakout`;
     tags=['ACCUM','STEALTH'];
   } else if (isCoiling && atrPct > 0 && atrPct < 1.5 && frPct < 0.002 && vol > 200000) {
@@ -313,7 +310,7 @@ function generateSignal(coin) {
     sig='MOMENTUM BREAKOUT ??'; sc='#22c55e'; dir='LONG'; prob=78;
     desc=`+${c24.toFixed(1)}% + RSI sehat + vol $${(vol/1e6).toFixed(0)}M = trend aktif`;
     tags=['MOMENTUM'];
-  } else if (rsi >= 42 && rsi <= 62 && c24 > 0.5 && frPct < 0.001) {
+  } else if (rsi >= 42 && rsi <= 62 && c24 > 0.2 && frPct <= 0.001) {
     sig='MILD BULL ??'; sc='#6ee7b7'; dir='LONG'; prob=65;
     desc=`Mild bullish RSI ${rsi.toFixed(0)} +${c24.toFixed(1)}%`;
     tags=['MILD'];
@@ -377,8 +374,10 @@ function calcConvScore(coin) {
 }
 
 // ─── TRADE LEVELS (ATR-based) ─────────────────────────────────────────
-function buildLevels(price, dir, atrPct, prob) {
-  const atr = Math.max(0.02, atrPct || 2.5);
+function buildLevels(price, dir, atrPct, prob, c24) {
+  // If no real ATR, estimate from 24h move (minimum realistic range)
+  const estAtr = c24!=null ? Math.max(1.5, Math.abs(c24||0)*0.6+1.5) : 2.5;
+  const atr = Math.max(0.02, atrPct || estAtr);
   let slPct, tp1Pct, tp2Pct, tp3Pct;
   if (atrPct > 0) {
     slPct  = +(atr * 1.4).toFixed(2);
@@ -505,7 +504,7 @@ export default async function handler(req, res) {
     const klineCoinsFiltered = KLINE_COINS.filter(s => cm[s]);
     const klineResults = await Promise.allSettled(
       klineCoinsFiltered.map(s =>
-        sf(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${s}USDT&interval=240&limit=60`, 3500)
+        sf(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${s}USDT&interval=240&limit=60`, 5000)
       )
     );
 
@@ -558,6 +557,50 @@ export default async function handler(req, res) {
 
     // BTC 1D RSI
     let btcD1rsi = null;
+    // ── CryptoCompare RSI backup: fills gaps when Bybit klines fail ──
+    const CC_TOP = ['BTC','ETH','SOL','BNB','XRP','ADA','AVAX','DOGE','LINK','DOT','NEAR','SUI','APT','ARB','OP','PEPE','INJ','TIA','RENDER','WLD'];
+    const missingFromKmap = CC_TOP.filter(s => !kMap[s]);
+    if (missingFromKmap.length > 0) {
+      try {
+        const ccResults = await Promise.allSettled(
+          missingFromKmap.map(s =>
+            sf(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${s}&tsym=USD&limit=60&aggregate=4&e=CCCAGG`, 5000)
+          )
+        );
+        for (let i=0; i<missingFromKmap.length; i++) {
+          const sym = missingFromKmap[i];
+          try {
+            const r = ccResults[i];
+            if (r?.status!=='fulfilled') continue;
+            const ccRows = A(r.value?.Data?.Data).filter(d=>N(d.close)>0&&N(d.close)<1e12);
+            if (ccRows.length<16) continue;
+            const K = ccRows.map(d=>({t:N(d.time),o:N(d.open),h:N(d.high),l:N(d.low),c:N(d.close),v:N(d.volumeto)}));
+            const cls = K.map(k=>k.c);
+            const rsiV = rsi14(cls);
+            if (rsiV===null) continue;
+            const e9=emaCalc(cls,9), e21=emaCalc(cls,21);
+            const macd = macdCalc(cls);
+            const atr = atrCalc(K);
+            const lp = cls[cls.length-1];
+            let obvUp=0,obvDn=0;
+            for(let j=Math.max(1,K.length-20);j<K.length;j++){
+              if(N(K[j].c)>N(K[j-1].c)) obvUp+=N(K[j].v); else obvDn+=N(K[j].v);
+            }
+            const atr5=atrCalc(K.slice(-5),5),atr20=atrCalc(K.slice(-20),14);
+            const isCoiling=atr5>0&&atr20>0&&atr5<atr20*0.65;
+            kMap[sym]={
+              rsi:+rsiV.toFixed(2),e9,e21,macd,K,cls,atr:+atr.toFixed(8),
+              atrPct:lp>0?+(atr/lp*100).toFixed(3):0,
+              obvBull:obvUp>obvDn*1.2,isCoiling,
+              aboveE200:lp>emaCalc(cls,Math.min(200,cls.length)),
+              rsiDir:'flat',ok:true,fromCC:true,
+            };
+          } catch {}
+        }
+      } catch {}
+    }
+
+
     try {
       const raw = A(btcD1R?.result?.list);
       if (raw.length>=16) {
@@ -617,7 +660,7 @@ export default async function handler(req, res) {
         const whaleResult = detectWhaleAccumulation(coin);
         const futuresResult = analyzeFutures(coin);
         const levels = sigResult.direction !== 'WAIT'
-          ? buildLevels(raw.p, sigResult.direction, atrPct, sigResult.probability)
+          ? buildLevels(raw.p, sigResult.direction, atrPct, sigResult.probability, raw.c24)
           : null;
 
         // Conviction stars (1-5)
@@ -688,7 +731,10 @@ export default async function handler(req, res) {
     }
 
     // ── STEP 7: CONVERGENCE SETUPS ─────────────────────────────────────
-    const longs   = coins.filter(c=>c.direction==='LONG' && c.conv.score>=65).slice(0,50);
+    const realRSIC = Object.keys(kMap).length;
+    // Adaptive threshold: lower when Bybit klines fail (no real RSI)
+    const longThresh = realRSIC>=10 ? 65 : realRSIC>=3 ? 60 : 55;
+    const longs   = coins.filter(c=>c.direction==='LONG' && c.conv.score>=longThresh).slice(0,50);
     const shorts  = coins.filter(c=>c.direction==='SHORT' && c.conv.score>=65).slice(0,10);
     const flys    = coins.filter(c=>c.signal&&(
       c.signal.includes('FLY')||c.signal.includes('CAPITULATION')||
@@ -817,9 +863,9 @@ export default async function handler(req, res) {
     const gamePlan = {
       btcLevels:{ resistance:btcRes, support:btcSup, current:btcP },
       scenarios:{
-        bull:{ condition:`BTC tembus $${btcRes} close di atas`, action:'Long conv 65+ RR 1:3 RS+FR filter', setups:top3 },
+        bull:{ condition:`BTC tembus ${btcRes||Math.round(btcP*1.02).toLocaleString('en-US')} close di atas`, action:'Long conv 65+ RR 1:3 RS+FR filter', setups:top3 },
         sideways:{ condition:'BTC konsolidasi ±1.5%', action:'Scalp COILING+WHALE ACCUM saja' },
-        bear:{ condition:`BTC breakdown ke $${btcSup}`, action:'Cash 80%. SHORT RSI 72+ FR overheated' },
+        bear:{ condition:`BTC breakdown ke ${btcSup||Math.round(btcP*0.97).toLocaleString('en-US')}`, action:'Cash 80%. SHORT RSI 72+ FR overheated' },
       },
       scalpSetups: flys.slice(0,5).map(c=>({
         sym:c.sym, price:c.price, signal:c.signal, rsi:c.rsi,
