@@ -257,35 +257,35 @@ function elliottWave(K4h,K1d){
     daily=p>e50?(r1d>55?'Daily trend UP':'Daily above EMA50'):(r1d<45?'Daily trend DOWN':'Daily below EMA50');
   }
 
-  let wave='',waveNum='',prob=0,target=null,sl=null,desc='',dir='',fibLvl='';
+  let wave='',waveNum='',waveLabel='',prob=0,target=null,sl=null,desc='',dir='',fibLvl='';
   const fromHi=(maxP-p)/range*100;
   const fromLo=(p-minP)/range*100;
 
   if(maxI>minI){ // Last major move = UP, currently correcting
     if(fromHi<18){
-      wave='⑤ WAVE 5';waveNum='5';prob=65;dir='BULL';fibLvl='>0%';
+      wave='⑤ WAVE 5';waveNum='5';waveLabel='Final Impulse';prob=65;dir='BULL';fibLvl='>0%';
       desc='Final impulse wave. RSI sering divergence di Wave 5. Hati-hati distribusi.';
       target=+(maxP*1.038).toFixed(8);sl=+(p*(1-range/minP*0.3)).toFixed(8);
     }else if(fromHi>=18&&fromHi<50){
-      wave='④ WAVE 4';waveNum='4';prob=78;dir='BULL';fibLvl='23.6-38.2%';
+      wave='④ WAVE 4';waveNum='4';waveLabel='Correction Zone';prob=78;dir='BULL';fibLvl='23.6-38.2%';
       desc='Koreksi Wave 4. Entry optimal sebelum Wave 5. BUY di zona retracement fib.';
       target=+(maxP*1.08).toFixed(8);sl=+(minP+(range*0.236)).toFixed(8);
     }else{
-      wave='Ⓑ WAVE B';waveNum='B';prob=60;dir='BEAR';fibLvl='50-61.8%';
+      wave='Ⓑ WAVE B';waveNum='B';waveLabel='Counter-rally';prob=60;dir='BEAR';fibLvl='50-61.8%';
       desc='Wave B counter-rally dalam koreksi ABC. Wave C akan turun setelah ini.';
       target=+(minP*(0.97)).toFixed(8);sl=+(maxP*1.015).toFixed(8);
     }
   }else{ // Last major move = DOWN, currently recovering
     if(fromLo>72){
-      wave='③ WAVE 3';waveNum='3';prob=90;dir='BULL';fibLvl='161.8%+';
+      wave='③ WAVE 3';waveNum='3';waveLabel='Extension Active 🚀';prob=90;dir='BULL';fibLvl='161.8%+';
       desc='TERKUAT! Wave 3 extension aktif. 1.618-2.618x wave 1. ENTRY dengan momentum sekarang!';
       target=+(minP+(range*2.618)).toFixed(8);sl=+(minP+(range*0.5)).toFixed(8);
     }else if(fromLo>=38&&fromLo<=72){
-      wave='② WAVE 2';waveNum='2';prob=84;dir='BULL';fibLvl='50-61.8%';
+      wave='② WAVE 2';waveNum='2';waveLabel='Optimal Buy Zone';prob=84;dir='BULL';fibLvl='50-61.8%';
       desc='Wave 2 deep retracement. ENTRY OPTIMAL. Stop di bawah Wave 1 low. Wave 3 dimulai segera.';
       target=+(minP+(range*2.618)).toFixed(8);sl=+(minP*(0.988)).toFixed(8);
     }else{
-      wave='① WAVE 1';waveNum='1';prob=70;dir='BULL';fibLvl='0-38.2%';
+      wave='① WAVE 1';waveNum='1';waveLabel='Impulse Starting';prob=70;dir='BULL';fibLvl='0-38.2%';
       desc='Awal impulse baru. Konfirmasi BOS sebelum entry. Target: 0.618x range sebagai Wave 1.';
       target=+(minP+(range*0.618)).toFixed(8);sl=+(minP*(0.985)).toFixed(8);
     }
@@ -295,7 +295,7 @@ function elliottWave(K4h,K1d){
   const prevRsi=cls.length>10?rsi14(cls.slice(0,-8)):null;
   const divBear=waveNum==='5'&&rsiV&&prevRsi&&p>maxP*0.97&&rsiV<prevRsi-5;
 
-  return{wave,waveNum,prob,target,sl,desc,dir,daily,fibLvl,
+  return{wave,waveNum,waveLabel,prob,target,sl,desc,dir,daily,fibLvl,
     hasDivergence:divBear,
     priceRange:{hi:+maxP.toFixed(8),lo:+minP.toFixed(8),cur:+p.toFixed(8)},
     retracePct:+fromLo.toFixed(1),fromHighPct:+fromHi.toFixed(1)};
@@ -423,12 +423,15 @@ function buildSetup(p,dir,atr4h,ob,fvg,ew,prob){
     tp2=belowOB?belowOB.mid:p-a*3.5;
     tp3=ew?.target||p-a*5.5;
   }
-  const rr=dir==='LONG'?(tp2-entry)/(entry-sl):(entry-tp2)/(sl-entry);
+  const rrRaw=dir==='LONG'?(tp2-entry)/(entry-sl):(entry-tp2)/(sl-entry);
+  const rr=isFinite(rrRaw)&&rrRaw>0?+rrRaw.toFixed(2):2.5; // guard div/0
   const slP=dir==='LONG'?pct(sl,entry):pct(entry,sl);
   const tp1P=dir==='LONG'?pct(tp1,entry):pct(entry,tp1);
   const tp2P=dir==='LONG'?pct(tp2,entry):pct(entry,tp2);
   const tp3P=dir==='LONG'?pct(tp3,entry):pct(entry,tp3);
-  const w=cl(prob/100,.1,.95),kelly=+(Math.max(.5,Math.min(8,(w*rr-(1-w))/rr/2*100)).toFixed(1));
+  const w=cl(prob/100,.1,.95);
+  const kellyRaw=(w*rr-(1-w))/rr/2*100;
+  const kelly=+Math.max(.5,Math.min(8,isFinite(kellyRaw)?kellyRaw:2)).toFixed(1);
   return{dir,entry:+entry.toFixed(8),sl:+sl.toFixed(8),tp1:+tp1.toFixed(8),tp2:+tp2.toFixed(8),tp3:+tp3.toFixed(8),slPct:+slP.toFixed(2),tp1Pct:+tp1P.toFixed(2),tp2Pct:+tp2P.toFixed(2),tp3Pct:+tp3P.toFixed(2),rr:+rr.toFixed(2),kelly,entryType};
 }
 
@@ -474,20 +477,38 @@ export default async function handler(req,res){
       }
     }
     // ── CryptoCompare fallback — store in ccK4h (used when building K4h below) ──
-    let ccK4h=[], ccVol=0;
+    let ccK4h=[], ccK1h=[], ccK1d=[], ccVol=0;
     if(price<=0){
       try{
-        const [ccPR,ccK4R]=await Promise.allSettled([
+        // Fetch price + 3 timeframes in parallel from CryptoCompare
+        const [ccPR,ccK4R,ccK1R,ccK1dR]=await Promise.allSettled([
           sf('https://min-api.cryptocompare.com/data/price?fsym='+sym+'&tsyms=USD',4500),
           sf('https://min-api.cryptocompare.com/data/v2/histohour?fsym='+sym+'&tsym=USD&limit=42&aggregate=4&e=CCCAGG',5500),
+          sf('https://min-api.cryptocompare.com/data/v2/histohour?fsym='+sym+'&tsym=USD&limit=120&aggregate=1&e=CCCAGG',5500),
+          sf('https://min-api.cryptocompare.com/data/histoday?fsym='+sym+'&tsym=USD&limit=60&e=CCCAGG',5500),
         ]);
         const ccP=N(ccPR.value?.USD);
         if(ccP>0){
           price=ccP; src='CryptoCompare (Full Analysis)';
-          const ccRows=A(ccK4R.value?.Data?.Data).filter(d=>N(d.close)>0&&N(d.close)<1e10);
-          if(ccRows.length>=16){
-            ccK4h=ccRows.map(d=>({t:N(d.time),o:N(d.open),h:N(d.high),l:N(d.low),c:N(d.close),v:N(d.volumeto),q:N(d.volumeto)}));
-            ccVol=ccRows.slice(-7).reduce((s,d)=>s+N(d.volumeto),0)/7;
+          // Parse 4H klines
+          const ccRows4=A(ccK4R.value?.Data?.Data).filter(d=>N(d.close)>0&&N(d.close)<1e10);
+          if(ccRows4.length>=16){
+            ccK4h=ccRows4.map(d=>({t:N(d.time),o:N(d.open),h:N(d.high),l:N(d.low),c:N(d.close),v:N(d.volumeto),q:N(d.volumeto)}));
+            ccVol=ccRows4.slice(-7).reduce((s,d)=>s+N(d.volumeto),0)/7;
+          }
+          // Parse 1H klines
+          const ccRows1=A(ccK1R.value?.Data?.Data).filter(d=>N(d.close)>0&&N(d.close)<1e10);
+          if(ccRows1.length>=16){
+            ccK1h=ccRows1.map(d=>({t:N(d.time),o:N(d.open),h:N(d.high),l:N(d.low),c:N(d.close),v:N(d.volumeto),q:N(d.volumeto)}));
+          }
+          // Parse 1D klines
+          // CC histoday returns flat Data array (not Data.Data like histohour)
+          const ccRawD=ccK1dR.value;
+          const ccRowsD=A(
+            ccRawD?.Response==='Success'?(Array.isArray(ccRawD?.Data)?ccRawD.Data:A(ccRawD?.Data?.Data)):[]
+          ).filter(d=>N(d.close)>0&&N(d.close)<1e10);
+          if(ccRowsD.length>=16){
+            ccK1d=ccRowsD.map(d=>({t:N(d.time),o:N(d.open),h:N(d.high),l:N(d.low),c:N(d.close),v:N(d.volumeto),q:N(d.volumeto)}));
           }
         }
       }catch{}
@@ -500,7 +521,7 @@ export default async function handler(req,res){
       const d=r.value;if(d.retCode!==undefined&&d.retCode!==0) return [];
       return parseK(A(d?.result?.list));
     };
-    const K1h=getK(k1hR),K4h=ccK4h.length>=16?ccK4h:getK(k4hR),K1d=getK(k1dR);if(ccVol>0)vol=ccVol;
+    const K1h=ccK1h.length>=16?ccK1h:getK(k1hR),K4h=ccK4h.length>=16?ccK4h:getK(k4hR),K1d=ccK1d.length>=16?ccK1d:getK(k1dR);if(ccVol>0)vol=ccVol;
     const has=K4h.length>=16;
 
     // ── Indicators ────────────────────────────────────────────────
