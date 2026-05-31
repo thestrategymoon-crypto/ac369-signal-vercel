@@ -473,7 +473,8 @@ export default async function handler(req,res){
         const prev=N(spT.prevPrice24h||price);c24=prev>0?pct(price,prev):0;src='Bybit Spot';
       }
     }
-    // ── CryptoCompare fallback (fixes "tidak ditemukan" for MEME, spot-only coins) ──
+    // ── CryptoCompare fallback — store in ccK4h (used when building K4h below) ──
+    let ccK4h=[], ccVol=0;
     if(price<=0){
       try{
         const [ccPR,ccK4R]=await Promise.allSettled([
@@ -483,12 +484,10 @@ export default async function handler(req,res){
         const ccP=N(ccPR.value?.USD);
         if(ccP>0){
           price=ccP; src='CryptoCompare (Full Analysis)';
-          // Parse CC 4H candles
           const ccRows=A(ccK4R.value?.Data?.Data).filter(d=>N(d.close)>0&&N(d.close)<1e10);
           if(ccRows.length>=16){
-            const ccK=ccRows.map(d=>({t:N(d.time),o:N(d.open),h:N(d.high),l:N(d.low),c:N(d.close),v:N(d.volumeto),q:N(d.volumeto)}));
-            K4h.push(...ccK);
-            vol=ccRows.slice(-7).reduce((s,d)=>s+N(d.volumeto),0)/7;
+            ccK4h=ccRows.map(d=>({t:N(d.time),o:N(d.open),h:N(d.high),l:N(d.low),c:N(d.close),v:N(d.volumeto),q:N(d.volumeto)}));
+            ccVol=ccRows.slice(-7).reduce((s,d)=>s+N(d.volumeto),0)/7;
           }
         }
       }catch{}
@@ -501,7 +500,7 @@ export default async function handler(req,res){
       const d=r.value;if(d.retCode!==undefined&&d.retCode!==0) return [];
       return parseK(A(d?.result?.list));
     };
-    const K1h=getK(k1hR),K4h=getK(k4hR),K1d=getK(k1dR);
+    const K1h=getK(k1hR),K4h=ccK4h.length>=16?ccK4h:getK(k4hR),K1d=getK(k1dR);if(ccVol>0)vol=ccVol;
     const has=K4h.length>=16;
 
     // ── Indicators ────────────────────────────────────────────────
