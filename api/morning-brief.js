@@ -640,7 +640,7 @@ export default async function handler(req, res) {
     // ── ASSEMBLE OUTPUT ───────────────────────────────────────────
     const out={
       ok:true,version:'v21.0',brand:'369 GLOBAL CRYPTO',ts:Date.now(),elapsed:Date.now()-t0,
-      dataQuality:{coins:total,realRSI:realRSIC,bybitLinear:Object.values(cm).filter(c=>c.src==='bybit').length,cgCoins:Object.values(cm).filter(c=>c.src==='cg').length,mexcCoins:Object.values(cm).filter(c=>c.src==='mx').length,whaleSignals:whaleC,squeezeSignals:sqC,longCoins:longC,shortCoins,signalCoins:coins.filter(c=>c.signal&&c.signal.length>0).length},
+      dataQuality:{coins:total,realRSI:realRSIC,bybitLinear:Object.values(cm).filter(c=>c.src==='bybit').length,cgCoins:Object.values(cm).filter(c=>c.src==='cg').length,mexcCoins:Object.values(cm).filter(c=>c.src==='mx').length,whaleSignals:whaleC,squeezeSignals:sqC,longCoins:longC,shortCoins:shortC,signalCoins:coins.filter(c=>c.signal&&c.signal.length>0).length},
       fg,fgLabel,
       marketCharacter:{type:mcType,color:mcColor,description:mcDesc,tradeStyle:mcStrat,riskLevel:mcRisk,positionSize:mcPos,marketPct:`${Math.round(bPct*100)}% bullish`,stats:{oversold:osC,overbought:obC,bullish:Math.round(bPct*100),whaleActive:whaleC,squeezeReady:sqC}},
       btcSnapshot:btcSnap,
