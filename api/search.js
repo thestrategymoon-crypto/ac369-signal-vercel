@@ -473,7 +473,27 @@ export default async function handler(req,res){
         const prev=N(spT.prevPrice24h||price);c24=prev>0?pct(price,prev):0;src='Bybit Spot';
       }
     }
-    if(price<=0) return res.status(200).json({ok:false,symbol:sym,error:`${sym} tidak ditemukan. Cek ejaan (contoh: BTC, ETH, PEPE).`,elapsed:Date.now()-t0});
+    // ── CryptoCompare fallback (fixes "tidak ditemukan" for MEME, spot-only coins) ──
+    if(price<=0){
+      try{
+        const [ccPR,ccK4R]=await Promise.allSettled([
+          sf('https://min-api.cryptocompare.com/data/price?fsym='+sym+'&tsyms=USD',4500),
+          sf('https://min-api.cryptocompare.com/data/v2/histohour?fsym='+sym+'&tsym=USD&limit=42&aggregate=4&e=CCCAGG',5500),
+        ]);
+        const ccP=N(ccPR.value?.USD);
+        if(ccP>0){
+          price=ccP; src='CryptoCompare (Full Analysis)';
+          // Parse CC 4H candles
+          const ccRows=A(ccK4R.value?.Data?.Data).filter(d=>N(d.close)>0&&N(d.close)<1e10);
+          if(ccRows.length>=16){
+            const ccK=ccRows.map(d=>({t:N(d.time),o:N(d.open),h:N(d.high),l:N(d.low),c:N(d.close),v:N(d.volumeto),q:N(d.volumeto)}));
+            K4h.push(...ccK);
+            vol=ccRows.slice(-7).reduce((s,d)=>s+N(d.volumeto),0)/7;
+          }
+        }
+      }catch{}
+    }
+    if(price<=0) return res.status(200).json({ok:false,symbol:sym,error:sym+' tidak ditemukan di Bybit atau CryptoCompare. Cek ejaan.',elapsed:Date.now()-t0});
 
     // ── Parse klines ──────────────────────────────────────────────
     const getK=r=>{
