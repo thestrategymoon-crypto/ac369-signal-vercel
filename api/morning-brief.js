@@ -394,8 +394,20 @@ export default async function handler(req,res){
     let nxt=null;if(np.length>0){const ns=np[0];nxt={name:ns.name,time:ns.time,inHours:ns.start>wibH?ns.start-wibH:24-wibH+ns.start};}
     const focusToday=cso.q==='PRIME'?cso.name+' PRIME aktif!':cso.q==='GOOD'?cso.name+' kondisi bagus':cso.q==='BUILDING'?cso.name+' bangun posisi':'Next PRIME: '+(nxt?nxt.name+' ~'+nxt.inHours+'h':'-');
 
-    const btcRes=btcK&&btcK.e9?+(btcK.e9*1.005).toFixed(0):btcP?+(btcP*1.02).toFixed(0):null;
-    const btcSup=btcK&&btcK.e200?+(btcK.e200*0.995).toFixed(0):btcP?+(btcP*0.97).toFixed(0):null;
+    // Resistance: nearest level ABOVE btcP
+    const e9v=btcK&&btcK.e9?btcK.e9:0;
+    const e200v=btcK&&btcK.e200?btcK.e200:0;
+    // Use EMA levels properly: if EMA > btcP = resistance, if EMA < btcP = support
+    let btcRes,btcSup;
+    if(e9v>btcP){btcRes=+(e9v*1.002).toFixed(0);}// e9 above = nearest resistance
+    else if(e200v>btcP){btcRes=+(e200v*1.002).toFixed(0);}// e200 above = resistance
+    else{btcRes=btcP?+(btcP*1.025).toFixed(0):null;}// fallback: +2.5% from current
+    if(e200v>0&&e200v<btcP){btcSup=+(e200v*0.995).toFixed(0);}// e200 below = support
+    else if(e9v>0&&e9v<btcP){btcSup=+(e9v*0.995).toFixed(0);}// e9 below = support
+    else{btcSup=btcP?+(btcP*0.97).toFixed(0):null;}// fallback: -3% from current
+    // Safety check: ensure resistance > current > support
+    if(btcRes&&btcP&&btcRes<=btcP)btcRes=+(btcP*1.02).toFixed(0);
+    if(btcSup&&btcP&&btcSup>=btcP)btcSup=+(btcP*0.97).toFixed(0);
     const top3=longs.slice(0,3).map(x=>x.sym);
 
     // Spot accumulation
@@ -499,7 +511,39 @@ export default async function handler(req,res){
       marketCharacter:{type:mcType,color:mcColor,description:mcDesc,tradeStyle:mcStrat,riskLevel:mcRisk,positionSize:mcPos,marketPct:Math.round(bPct*100)+'% bullish',stats:{oversold:osCount,overbought:obCount,bullish:Math.round(bPct*100),bearish:Math.round((1-bPct)*100),coiling:coins.filter(x=>x.isCoiling).length,mtfBull:coins.filter(x=>x.mtfAligned==='BULL').length,whaleLong:coins.filter(x=>x.oiPattern==='WHALE_LONG').length}},
       btcSnapshot:{price:btcP,ch24:btcC,rsi:btcK?btcK.rsi||null:null,rsiSlope:btcK?btcK.slopeTxt||'-':'-',rsiDir:btcK?btcK.slopeDir||'flat':'flat',rsi1h:km1h.BTC||null,rsi1d:btcD1rsi,volTrend:btcK?btcK.volTrend||'-':'-',atrPct:btcATRpct,atr:btcATRusd,d1rsi:btcD1rsi,d1trend:btcD1rsi&&btcK&&btcK.rsi?(btcD1rsi<btcK.rsi?'DOWN':'UP'):'-',fg,fgLabel,macd:btcK?btcK.macd||null:null,resistance:btcRes,support:btcSup,current:btcP,aboveEma200:!!(btcK&&btcK.aboveE200),btcLS:!!btcLS,btcLongPct:btcL,btcShortPct:btcS,oiPattern:cm.BTC?cm.BTC.oiPattern:'NEUTRAL',oiDelta:cm.BTC?cm.BTC.oiDelta:0},
       convergence:{leaders:longs.slice(0,12),longSetups:longs,shortSetups:shorts,flySetups:flys,accumSetups:accums,summary:longs.length+' LONG - '+shorts.length+' SHORT - '+flys.length+' FLY',eliteCount:ec,primeCount:pc,validCount:vc,shortCount:shorts.length},
-      gamePlan:{btcLevels:{resistance:btcRes,support:btcSup,current:btcP},scenarios:{bull:{condition:'BTC tembus $'+btcRes+' close di atas',action:'Long conv 65+ RR 1:3 RS+FR+OI filter',setups:top3},sideways:{condition:'BTC konsolidasi +-1.5%',action:'Scalp COILING+ACCUM saja.'},bear:{condition:'BTC breakdown ke $'+btcSup,action:'Cash 80%. SHORT RSI 72+.'}},scalpSetups:flys.slice(0,5).map(x=>({sym:x.sym,price:x.price,signal:x.signal,rsi:x.rsi,sl:x.levels?x.levels.sl:0,tp1:x.levels?x.levels.tp1:0,rr:x.rr})),swingSetups:longs.filter(x=>((x.conv&&x.conv.score)||0)>=70).slice(0,5).map(x=>({sym:x.sym,price:x.price,signal:x.signal,rsi:x.rsi,sl:x.levels?x.levels.sl:0,tp2:x.levels?x.levels.tp2:0,tp3:x.levels?x.levels.tp3:0,rr:x.rr})),activeShorts:shorts.slice(0,5).map(x=>({sym:x.sym,price:x.price,signal:x.signal,rsi:x.rsi})),spotAccum,avoidList},
+      gamePlan:{btcLevels:{resistance:btcRes,support:btcSup,current:btcP},scenarios:{bull:{condition:'BTC tembus $'+btcRes+' close di atas',action:'Long conv 65+ RR 1:3 RS+FR+OI filter',setups:top3},sideways:{condition:'BTC konsolidasi +-1.5%',action:'Scalp COILING+ACCUM saja.'},bear:{condition:'BTC breakdown ke $'+btcSup,action:'Cash 80%. SHORT RSI 72+.'}},scalpSetups:flys.slice(0,5).map(x=>({
+          sym:x.sym,sector:x.sector||'',price:x.price,signal:x.signal,
+          rsi:x.rsi,rsiReal:x.rsiReal||false,fr:x.fr||null,atrPct:x.atrPct||0,
+          conv:(x.conv&&x.conv.score)||0,
+          entry:x.price,
+          sl:x.levels?x.levels.sl:0,slPct:x.levels?x.levels.slPct:2.5,
+          tp1:x.levels?x.levels.tp1:0,tp1Pct:x.levels?x.levels.tp1Pct:4.0,
+          tp2:x.levels?x.levels.tp2:0,tp2Pct:x.levels?x.levels.tp2Pct:7.0,
+          rr:x.rr,reasons:[x.signal||'',x.signalDesc||''].filter(Boolean)
+        })),swingSetups:longs.filter(x=>((x.conv&&x.conv.score)||0)>=70).slice(0,5).map(x=>{
+          const reasons=[];
+          if(x.rsiReal&&x.rsi<40)reasons.push('RSI '+x.rsi+' real oversold');
+          if((x.fr||0)<-0.0003)reasons.push('FR '+((x.fr||0)*100).toFixed(3)+'%');
+          if(x.divergence==='BULLISH')reasons.push('Bullish divergence');
+          if(x.oiPattern==='WHALE_LONG')reasons.push('OI whale entry');
+          if(x.mtfAligned==='BULL')reasons.push('MTF confluence');
+          return{
+            sym:x.sym,sector:x.sector||'',price:x.price,signal:x.signal,
+            rsi:x.rsi,rsiReal:x.rsiReal||false,fr:x.fr||null,
+            atrPct:x.atrPct||0,
+            conv:(x.conv&&x.conv.score)||0,
+            entry:x.price,
+            sl:x.levels?x.levels.sl:0,
+            slPct:x.levels?x.levels.slPct:2.5,
+            tp1:x.levels?x.levels.tp1:0,
+            tp1Pct:x.levels?x.levels.tp1Pct:4.0,
+            tp2:x.levels?x.levels.tp2:0,
+            tp2Pct:x.levels?x.levels.tp2Pct:7.0,
+            tp3:x.levels?x.levels.tp3:0,
+            rr:x.rr,
+            reasons:reasons
+          };
+        }),activeShorts:shorts.slice(0,5).map(x=>({sym:x.sym,price:x.price,signal:x.signal,rsi:x.rsi})),spotAccum,avoidList},
       sectorFlow:{sectors,sectorData},
       checklist:{marketChecks:mkChecks,coinChecks:[{label:'RSI koin < 72'},{label:'Conv Score 60+'},{label:'FR < +0.04%'},{label:'RR min 1:2'},{label:'No entry 30min sebelum news'},{label:'Vol 5M+ USD'},{label:'Size 2% equity max'},{label:'SL ATR-based'},{label:'Volume konfirmasi'},{label:'Sesuai skenario Game Plan'}],marketPassCount:pass,marketTotal:8,overallGreenLight:pass>=6,verdict:pass>=6?'KONDISI LAYAK TRADING':'HATI-HATI - '+(8-pass)+' kondisi belum terpenuhi'},
       tradingSchedule:{wibHour:wibH,dayName:days[now2.getUTCDay()],sessions:sess,currentSession:cs,currentSessionObj:cso,focusToday,nextPrimeSession:nxt,nextPrime:nxt},
