@@ -257,7 +257,7 @@ export default async function handler(req, res) {
   const t0=Date.now();
 
   // Cache valid hanya jika ada real RSI
-  if (CACHE.d&&(t0-CACHE.t)<90000&&(CACHE.d.dataQuality?.realRSI||0)>=15) {
+  if (CACHE.d&&(t0-CACHE.t)<90000&&(CACHE.d.dataQuality?.realRSI||0)>=3&&(CACHE.d.dataQuality?.coins||0)>=300) {
     return res.status(200).json({...CACHE.d,cached:true,elapsed:Date.now()-t0});
   }
 
@@ -268,13 +268,14 @@ export default async function handler(req, res) {
       sf(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${s}&tsym=USD&limit=42&aggregate=4&e=CCCAGG`,4500)
     );
 
-    const [cgR1,cgR2,mxR,byLinR,fgR,btcLSR,...ccRSIRes] = await Promise.allSettled([
+    const [cgR1,cgR2,mxR,byLinR,fgR,btcLSR,btcD1R,...ccRSIRes] = await Promise.allSettled([
       sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h',5500),
       sf('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=250&page=2&sparkline=false&price_change_percentage=24h',5500),
       sf('https://api.mexc.com/api/v3/ticker/24hr',5000),
       sf('https://api.bybit.com/v5/market/tickers?category=linear',5000),
       sf('https://alternative.me/crypto/fear-and-greed-index/?format=json&limit=1',4000),
       sf('https://api.bybit.com/v5/market/account-ratio?category=linear&symbol=BTCUSDT&period=1h&limit=1',3500),
+      sf('https://min-api.cryptocompare.com/data/histoday?fsym=BTC&tsym=USD&limit=60&e=CCCAGG',4500),
       ...ccRSIFetches,
     ]);
 
@@ -418,9 +419,10 @@ export default async function handler(req, res) {
           rsi=kd.rsi;
         } else {
           const frEff=(raw.frPct-FR_NEUTRAL)*(-200);
-          const ch24E=raw.c24*2.8;
-          const pipE=(raw.pip-50)*0.45;
-          rsi=cl(Math.round(50+ch24E+pipE+frEff),10,90);
+          // Conservative: cap ch24 contribution at ±28, range 12-88
+          const ch24Cap=Math.sign(raw.c24)*Math.min(Math.abs(raw.c24)*1.6,28);
+          const pipE=(raw.pip-50)*0.3;
+          rsi=cl(Math.round(50+ch24Cap+pipE+frEff),12,88);
         }
 
         const atrPct=kd?.atrPct||0;
@@ -516,7 +518,7 @@ export default async function handler(req, res) {
       rsi:btcKd?.rsi||null,rsiDir:'flat',
       atr:btcKd?.atr||0,atrPct:btcKd?.atrPct||0,
       macd:btcKd?.macd||null,aboveEma200:btcKd?.aboveE200||false,
-      e200:btcKd?.e200||0,d1rsi:null,
+      e200:btcKd?.e200||0,d1rsi:(()=>{try{const d1raw=btcD1R?.value;const d1arr=Array.isArray(d1raw?.Data)?d1raw.Data:A(d1raw?.Data?.Data);const d1K=d1arr.filter(d=>N(d.close)>0).map(d=>({c:N(d.close)}));if(d1K.length>=16){const r=rsi14(d1K.map(k=>k.c));return r?+r.toFixed(1):null;}}catch{}return null;})(),
       btcLS,btcLongPct,btcShortPct,
       resistance:btcKd?.highR?+(btcKd.highR*1.002).toFixed(0):null,
       support:btcKd?.lowR?+(btcKd.lowR*0.998).toFixed(0):null,
@@ -530,15 +532,15 @@ export default async function handler(req, res) {
     const gamePlan={
       btcLevels:{resistance:btcSnap.resistance,support:btcSnap.support,current:btcP},
       scenarios:{
-        bull:{condition:`BTC tembus $${btcSnap.resistance||'?'} close di atas`,action:'Long conv 65+ RR 1:3',setups:longs.slice(0,3).map(c=>c.sym)},
+        bull:{condition:`BTC tembus ${btcSnap.resistance||Math.round(btcP*1.02)} close di atas`,action:'Long conv 65+ RR 1:3',setups:longs.slice(0,3).map(c=>c.sym)},
         sideways:{condition:'BTC konsolidasi ±1.5%',action:'Scalp COILING+WHALE ACCUM'},
-        bear:{condition:`BTC breakdown ke $${btcSnap.support||'?'}`,action:'Cash 80%. SHORT RSI 73+ FR overheated'},
+        bear:{condition:`BTC breakdown ke ${btcSnap.support||Math.round(btcP*0.97)}`,action:'Cash 80%. SHORT RSI 73+ FR overheated'},
       },
       scalpSetups:flys.slice(0,5).map(c=>({sym:c.sym,price:c.price,signal:c.signal,rsi:c.rsi,conv:c.conv.score,entry:c.price,rsiReal:c.rsiReal,...c.levels,fr:c.frPct,atrPct:c.atrPct,sector:c.sector,realATR:c.levels?.realATR||false})),
       swingSetups:longs.filter(c=>c.conv.score>=65).slice(0,5).map(c=>({sym:c.sym,price:c.price,signal:c.signal,rsi:c.rsi,conv:c.conv.score,entry:c.price,rsiReal:c.rsiReal,...c.levels,fr:c.frPct,atrPct:c.atrPct,sector:c.sector,realATR:c.levels?.realATR||false})),
       activeShorts:shorts.slice(0,5).map(c=>({sym:c.sym,price:c.price,signal:c.signal,rsi:c.rsi,fr:c.frPct,conv:c.conv.score,...c.levels})),
       spotAccum,
-      avoidList:coins.filter(c=>c.rsi>78||c.frPct>FR_HOT).sort((a,b)=>b.rsi-a.rsi).slice(0,8).map(c=>({sym:c.sym,price:c.price,rsi:c.rsi,fr:c.frPct,reason:c.rsi>78?`RSI ${c.rsi.toFixed(0)} overbought`:`FR +${c.frPct}% overheated`})),
+      avoidList:coins.filter(c=>(c.rsiReal?c.rsi>78:c.rsi>82)||c.frPct>FR_HOT).sort((a,b)=>b.rsi-a.rsi).slice(0,8).map(c=>({sym:c.sym,price:c.price,rsi:c.rsi,fr:c.frPct,reason:c.rsi>78?`RSI ${c.rsi.toFixed(0)} overbought`:`FR +${c.frPct}% overheated`})),
     };
 
     // ── SECTOR FLOW ───────────────────────────────────────────────
@@ -668,7 +670,7 @@ export default async function handler(req, res) {
       whaleFingerprint,squeezeRadar,
     };
 
-    if (realRSIC>=10) { CACHE.d=out;CACHE.t=Date.now();CACHE.prevOI=currentOI; }
+    if (realRSIC>=3||total>=300) { CACHE.d=out;CACHE.t=Date.now();CACHE.prevOI=currentOI; }
     else { CACHE.prevOI=currentOI; }
     return res.status(200).json(out);
 
