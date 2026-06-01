@@ -630,9 +630,21 @@ async function doSearch(){
   if(!q){H('s-res','');return;}
   H('s-res','<div style="color:var(--muted);font-size:11px;padding:12px;text-align:center"><span class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>Menganalisis '+q+'...</div>');
   try{
-    const d = await apiFetch('/api/search?symbol='+encodeURIComponent(q),28000,1);
+    const d=await apiFetch('/api/search?symbol='+encodeURIComponent(q),28000,1);
     if(d.error&&!d.price){H('s-res','<div style="color:var(--red);font-size:11px;padding:12px;background:rgba(255,68,100,.05);border-radius:8px">❌ '+d.error+'</div>');return;}
     H('s-res',buildSearchCard(d));
+    // Load AI analysis in background after search card shows
+    var aiEl=document.getElementById('ai-'+q);
+    if(aiEl){
+      setTimeout(async function(){
+        try{
+          const ai=await apiFetch('/api/analysis?symbol='+encodeURIComponent(q),30000,1);
+          if(ai&&ai.narrative&&document.getElementById('ai-'+q)){
+            document.getElementById('ai-'+q).innerHTML=buildAICard(ai);
+          }
+        }catch(e2){if(document.getElementById('ai-'+q))document.getElementById('ai-'+q).innerHTML='<div style="color:var(--dim);font-size:9px;padding:8px">AI analysis tidak tersedia saat ini</div>';}
+      },200);
+    }
   }catch(e){H('s-res','<div style="color:var(--red);font-size:11px;padding:12px">❌ '+e.message+'</div>');}
 }
 
@@ -686,6 +698,8 @@ function buildSearchCard(d){
   if(stoch){var sK=stoch.k,sD=stoch.d;var skC=sK<20?'var(--g)':sK>80?'var(--red)':'var(--muted)';h+='<div style="background:rgba(255,255,255,.02);border-radius:6px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><div style="font-size:10px;font-weight:700;color:var(--muted)">Stochastic RSI (4H)</div><div style="font-size:10px;font-weight:700;color:'+skC+'">'+stoch.zone+'</div></div><div style="display:flex;gap:10px;font-size:10px"><span style="color:var(--dim)">K: <span style="font-family:var(--m);font-weight:700;color:'+skC+'">'+sK.toFixed(1)+'</span></span><span style="color:var(--dim)">D: <span style="font-family:var(--m);font-weight:700;color:var(--muted)">'+sD.toFixed(1)+'</span></span>'+(stoch.crossUp?'<span style="background:rgba(0,255,136,.1);color:var(--g);padding:1px 6px;border-radius:3px;font-size:9px">⬆️ Cross Up</span>':'')+(stoch.crossDown?'<span style="background:rgba(255,68,100,.1);color:var(--red);padding:1px 6px;border-radius:3px;font-size:9px">⬇️ Cross Down</span>':'')+'</div></div>';}
   h+='</div>';
   if(astro.moonPhase){h+='<div style="background:rgba(168,85,247,.04);border:1px solid rgba(168,85,247,.12);border-radius:9px;padding:9px 11px"><div style="font-size:10px;font-weight:700;color:var(--purple);margin-bottom:4px">🌙 ASTROLOGY</div><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:12px;font-weight:700">'+(astro.moonEmoji||'🌙')+' '+(astro.moonPhase||'—')+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px">'+(astro.halvingPhase||'')+'</div></div>'+(astro.chaotic?'<span style="font-size:9px;background:rgba(255,68,100,.1);color:var(--red);padding:2px 7px;border-radius:4px">⚠️ Volatile period</span>':'')+'</div></div>';}
+  // AI Analysis section placeholder
+  if(d.symbol){h+='<div id="ai-'+d.symbol+'" style="margin-top:8px"><div style="background:rgba(0,150,255,.04);border:1px solid rgba(0,150,255,.15);border-radius:9px;padding:10px 12px"><div style="font-size:9px;font-weight:700;color:#4af0ff;letter-spacing:1px;margin-bottom:4px">🤖 AI SMART ANALYSIS</div><div style="display:flex;align-items:center;gap:6px;color:var(--dim);font-size:9px"><span class="spin" style="width:10px;height:10px;border-width:2px;display:inline-block"></span>Memuat analisis SMC+Elliott+Pattern...</div></div></div>';}
   h+='</div>';
   return h;
 }
@@ -1133,6 +1147,61 @@ function tisMod3Plan(d){
     h+='</div></div>';
   }
   el.innerHTML=h;
+}
+
+function buildAICard(ai){
+  if(!ai||!ai.narrative)return'<div style="color:var(--dim);font-size:9px;padding:8px">Analisis tidak tersedia</div>';
+  var h='<div style="background:rgba(0,150,255,.04);border:1px solid rgba(0,150,255,.15);border-radius:9px;padding:10px 12px">';
+  h+='<div style="font-size:9px;font-weight:700;color:#4af0ff;letter-spacing:1px;margin-bottom:8px">🤖 AI SMART ANALYSIS</div>';
+  // Main narrative
+  h+='<div style="font-size:10px;color:var(--txt);line-height:1.6;margin-bottom:8px">'+ai.narrative+'</div>';
+  // SMC Setup
+  if(ai.smcSetup){
+    var sc=ai.smcSetup.bias==='BULLISH'?'var(--g)':ai.smcSetup.bias==='BEARISH'?'var(--red)':'var(--amber)';
+    h+='<div style="background:rgba(255,255,255,.03);border-radius:7px;padding:8px;margin-bottom:6px">';
+    h+='<div style="font-size:9px;font-weight:700;color:'+sc+';margin-bottom:4px">📐 SMC SETUP: '+ai.smcSetup.name+'</div>';
+    h+='<div style="font-size:9px;color:var(--dim)">'+ai.smcSetup.description+'</div>';
+    if(ai.smcSetup.confirmation)h+='<div style="font-size:8px;color:var(--amber);margin-top:3px">⚡ Konfirmasi: '+ai.smcSetup.confirmation+'</div>';
+    h+='</div>';
+  }
+  // Elliott Wave plan
+  if(ai.elliottPlan){
+    h+='<div style="background:rgba(255,255,255,.03);border-radius:7px;padding:8px;margin-bottom:6px">';
+    h+='<div style="font-size:9px;font-weight:700;color:var(--purple);margin-bottom:4px">🌊 ELLIOTT PLAN</div>';
+    h+='<div style="font-size:9px;color:var(--dim)">'+ai.elliottPlan+'</div>';
+    h+='</div>';
+  }
+  // Trade plan
+  if(ai.tradePlan){
+    var tp=ai.tradePlan;
+    h+='<div style="background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.15);border-radius:7px;padding:8px;margin-bottom:6px">';
+    h+='<div style="font-size:9px;font-weight:700;color:var(--g);margin-bottom:5px">🎯 TRADE PLAN ('+tp.probability+'% prob)</div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:8.5px">';
+    h+='<div style="text-align:center"><div style="color:var(--dim)">Entry</div><div style="font-family:var(--m);font-weight:700;color:var(--txt)">$'+fP(tp.entry)+'</div></div>';
+    h+='<div style="text-align:center"><div style="color:var(--red)">SL</div><div style="font-family:var(--m);font-weight:700;color:var(--red)">$'+fP(tp.sl)+'</div></div>';
+    h+='<div style="text-align:center"><div style="color:var(--g)">TP2</div><div style="font-family:var(--m);font-weight:700;color:var(--g)">$'+fP(tp.tp2)+'</div></div>';
+    h+='</div>';
+    if(tp.invalidation)h+='<div style="font-size:8px;color:var(--red);margin-top:5px">❌ Invalidasi: '+tp.invalidation+'</div>';
+    if(tp.confirmation)h+='<div style="font-size:8px;color:var(--amber);margin-top:2px">⚡ Konfirmasi entry: '+tp.confirmation+'</div>';
+    h+='</div>';
+  }
+  // High prob conditions
+  if(ai.highProbConditions&&ai.highProbConditions.length){
+    h+='<div style="margin-top:6px;display:flex;flex-direction:column;gap:2px">';
+    ai.highProbConditions.forEach(function(cond){
+      h+='<div style="font-size:8px;color:var(--g)">✓ '+cond+'</div>';
+    });
+    h+='</div>';
+  }
+  if(ai.avoidConditions&&ai.avoidConditions.length){
+    h+='<div style="margin-top:4px;display:flex;flex-direction:column;gap:2px">';
+    ai.avoidConditions.forEach(function(cond){
+      h+='<div style="font-size:8px;color:var(--red)">✗ '+cond+'</div>';
+    });
+    h+='</div>';
+  }
+  h+='</div>';
+  return h;
 }
 
 function tisMkSetupRow(s,col){
