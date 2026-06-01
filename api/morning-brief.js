@@ -175,14 +175,46 @@ export default async function handler(req,res){
       const pip=by.pip||50;
       const volScore=vol>50e6?5:vol>20e6?4:vol>5e6?3:vol>1e6?2:vol>100000?1:0;
 
+
+      // WHALE LOADING SCORE - 7 factor detection
+      // Factor A: Volume Anomaly (25pts) - high vol relative to OI/position size
+      const volOI=oi>0?vol/oi:0;// vol/OI ratio = turnover relative to position
+      const fA_vol=volOI>0.5?25:volOI>0.3?18:volOI>0.15?12:vol>20e6?10:vol>5e6?5:0;
+      // Factor B: OI Rising + Price Flat (25pts) - KEY WHALE SIGNAL
+      const fB_oiFlat=oiDelta>3&&Math.abs(c24)<1.5?25:oiDelta>1.5&&Math.abs(c24)<2?18:oiDelta>0.5&&Math.abs(c24)<1?10:0;
+      // Factor C: RSI Accumulation Zone (20pts) - 33-57 sweet spot
+      const rsiZone=rsi>=33&&rsi<=57;
+      const fC_rsi=rsi>=38&&rsi<=52?20:rsi>=33&&rsi<=57?14:rsi>=28&&rsi<=62?6:0;
+      // Factor D: FR Neutral/Negative (15pts) - no retail FOMO
+      const fD_fr=fr<-0.0003?15:fr<-0.0001?12:fr<0?8:fr===0?5:fr<0.0001?2:0;
+      // Factor E: Price Range Tight (10pts) - (H-L)/price < 3%
+      const rangeWidth=by.h>by.l&&by.p>0?(by.h-by.l)/by.p*100:5;
+      const fE_range=rangeWidth<1.5?10:rangeWidth<2.5?7:rangeWidth<4?3:0;
+      // Factor F: Bid/Ask balanced (3pts) - whale not showing hand
+      const fF_ba=by.bidAsk&&by.bidAsk>=45&&by.bidAsk<=58?3:1;
+      // Factor G: RS vs BTC in loading range (2pts) - not extreme move
+      const fG_rs=Math.abs(rs)<3?2:Math.abs(rs)<5?1:0;
+      // Total Whale Loading Score
+      const whaleLoadScore=Math.min(100,fA_vol+fB_oiFlat+fC_rsi+fD_fr+fE_range+fF_ba+fG_rs);
+      const isWhaleLoading=whaleLoadScore>=65&&by.src==='by'&&oi>100e6;
+      const whaleLoadLabel=whaleLoadScore>=80?'CONFIRMED':whaleLoadScore>=65?'LIKELY':whaleLoadScore>=50?'WATCH':'';
+
       // MTF RSI alignment check
       const mtfOversold=rsi1h&&rsi1h<40&&rsi<42&&(rsi1d?rsi1d<52:true);
       const mtfOverbought=rsi1h&&rsi1h>65&&rsi>62&&(rsi1d?rsi1d>60:true);
       const mtfAligned=mtfOversold?'BULL':mtfOverbought?'BEAR':'NEUTRAL';
 
-      // 23 SIGNALS
+      // 24 SIGNALS (WHALE LOADING added)
       let sig='',sc='#4a5568',desc='',dir='WAIT',prob=50,tags=[];
-      if(mtfOversold&&rR&&(fr<-0.0002||(fr===0&&c24<-1))&&vol>300000){
+      if(isWhaleLoading&&whaleLoadScore>=80&&rsiZone){
+        sig='WHALE LOADING';sc='#00ffcc';dir='LONG';prob=87;
+        desc='OI +'+oiDelta.toFixed(1)+'% + harga flat + vol/OI '+volOI.toFixed(2)+' = WHALE AKUMULASI DIAM-DIAM (score '+whaleLoadScore+'/100)';
+        tags=['WHALE_LOAD','STEALTH','OI_DELTA','HIGH_PROB'];
+      }else if(isWhaleLoading&&whaleLoadScore>=65&&rsiZone){
+        sig='STEALTH ACCUM';sc='#00e5b0';dir='LONG';prob=79;
+        desc='Volume anomali + OI naik + harga stabil = kemungkinan whale loading (score '+whaleLoadScore+'/100)';
+        tags=['STEALTH','OI_RISING','WATCH'];
+      }else if(mtfOversold&&rR&&(fr<-0.0002||(fr===0&&c24<-1))&&vol>300000){
         sig='MTF CONFLUENCE BUY';sc='#00ff88';dir='LONG';prob=90;
         desc='1H RSI '+rsi1h+' + 4H RSI '+rsi.toFixed(0)+(rsi1d?' + 1D RSI '+rsi1d:'')+' SEMUA oversold = setup terkuat';
         tags=['MTF','CONFLUENCE','RARE'];
@@ -342,14 +374,15 @@ export default async function handler(req,res){
         kellySizing:kellySz,
         futuresRisk:{score:fRisk,label:fRiskLabel},
         levels:{sl,tp1,tp2,tp3,slPct:slP,tp1Pct:tp1P,tp2Pct:tp2P,tp3Pct:tp3P},
-        src:by.src||'by'
+        src:by.src||'by',
+        whaleLoadScore,whaleLoadLabel,volOI:+volOI.toFixed(3),rangeWidth:+rangeWidth.toFixed(2),isWhaleLoading
       });
     }catch(e){}}
     coins.sort((a,b)=>((b.conv&&b.conv.score)||0)-((a.conv&&a.conv.score)||0));
 
     const longs=coins.filter(x=>x.direction==='LONG'&&((x.conv&&x.conv.score)||0)>=60).slice(0,30);
     const shorts=coins.filter(x=>x.direction==='SHORT'&&((x.conv&&x.conv.score)||0)>=55).slice(0,10);
-    const flys=coins.filter(x=>x.signal&&(x.signal==='MTF CONFLUENCE BUY'||x.signal==='ABOUT TO FLY'||x.signal==='CAPITULATION BUY'||x.signal==='OI SQUEEZE LIVE'||x.signal==='OI WHALE ENTRY')).slice(0,8);
+    const flys=coins.filter(x=>x.signal&&(x.signal==='MTF CONFLUENCE BUY'||x.signal==='ABOUT TO FLY'||x.signal==='CAPITULATION BUY'||x.signal==='OI SQUEEZE LIVE'||x.signal==='OI WHALE ENTRY'||x.signal==='WHALE LOADING')).slice(0,8);
     const accums=coins.filter(x=>x.signal&&(x.signal==='SMART ACCUMULATION'||x.signal==='COIL ACCUMULATION'||x.signal==='WHALE FINGERPRINT'||x.signal==='PRE-BREAKOUT COIL'||x.signal==='NARRATIVE PLAY'||x.signal==='REVERSAL FORMING')).slice(0,8);
     const top25=longs.slice(0,25);
     const ec=top25.filter(x=>((x.conv&&x.conv.score)||0)>=80).length;
@@ -450,7 +483,34 @@ export default async function handler(req,res){
     }).sort((a,b)=>b.smScore-a.smScore);
 
     // Golden opportunities
-    const whaleFingerprint=(()=>{try{return coins.filter(c=>c.oi>500e6&&(c.fr||0)<-0.0001&&Math.abs(c.c24)<2&&(c.vol||0)>1e6&&c.rsi>30&&c.rsi<65).sort((a,b)=>(a.fr||0)-(b.fr||0)).slice(0,8).map(c=>({sym:c.sym,price:c.price,c24:c.c24,rsi:c.rsi,fr:+((c.fr||0)*100).toFixed(4),oi:+((c.oi||0)/1e9).toFixed(2),oiDelta:c.oiDelta,vol:c.vol,rating:Math.abs(c.fr||0)>0.0005?'STRONG':'GOOD'}));}catch(e){return[]}})();
+    // WHALE LOADING RADAR - dedicated section
+    const whaleLoadingRadar=(()=>{try{
+      return coins
+        .filter(c=>c.src==='by'&&c.isWhaleLoading&&(c.oi||0)>100e6)
+        .sort((a,b)=>(b.whaleLoadScore||0)-(a.whaleLoadScore||0))
+        .slice(0,12)
+        .map(c=>({
+          sym:c.sym,price:c.price,c24:c.c24,rsi:c.rsi,sector:c.sector,
+          oiDelta:c.oiDelta,oiPattern:c.oiPattern,
+          vol:c.vol,volOI:c.volOI||0,rangeWidth:c.rangeWidth||0,
+          fr:c.fr||null,oi:+((c.oi||0)/1e9).toFixed(2),
+          whaleLoadScore:c.whaleLoadScore||0,whaleLoadLabel:c.whaleLoadLabel||'',
+          signal:c.signal||null,
+          // Entry zone: current price to -1.5% (within loading range)
+          entryZone:'$'+c.price.toFixed(c.price>1?2:6)+' - $'+(c.price*0.985).toFixed(c.price>1?2:6),
+          // Invalidation: below range low
+          invalidation:'$'+(c.price*(1-Math.max(2.5,c.rangeWidth||3)/100)).toFixed(c.price>1?2:6),
+          reasoning:[
+            c.oiDelta>1.5?'OI naik +'+c.oiDelta.toFixed(1)+'% (fresh position)':'',
+            Math.abs(c.c24)<1.5?'Harga flat '+c.c24.toFixed(2)+'% (price contained)':'',
+            c.rsi>=33&&c.rsi<=57?'RSI '+c.rsi.toFixed(0)+' zona akumulasi':'',
+            (c.fr||0)<0?'FR '+((c.fr||0)*100).toFixed(3)+'% (shorts bayar)':'',
+            c.volOI>0.15?'Vol/OI ratio tinggi (whale turnover)':'',
+          ].filter(Boolean)
+        }));
+    }catch(e){return[]}})();
+
+        const whaleFingerprint=(()=>{try{return coins.filter(c=>c.oi>500e6&&(c.fr||0)<-0.0001&&Math.abs(c.c24)<2&&(c.vol||0)>1e6&&c.rsi>30&&c.rsi<65).sort((a,b)=>(a.fr||0)-(b.fr||0)).slice(0,8).map(c=>({sym:c.sym,price:c.price,c24:c.c24,rsi:c.rsi,fr:+((c.fr||0)*100).toFixed(4),oi:+((c.oi||0)/1e9).toFixed(2),oiDelta:c.oiDelta,vol:c.vol,rating:Math.abs(c.fr||0)>0.0005?'STRONG':'GOOD'}));}catch(e){return[]}})();
     const squeezeRadar=(()=>{try{return coins.filter(c=>(c.fr||0)<-0.0003&&(c.vol||0)>500000&&c.rsi<55).sort((a,b)=>(a.fr||0)-(b.fr||0)).slice(0,10).map(c=>({sym:c.sym,price:c.price,c24:c.c24,rsi:c.rsi,fr:+((c.fr||0)*100).toFixed(4),retailLong:c.retailLong,retailShort:c.retailShort,oiPattern:c.oiPattern,strength:Math.abs(c.fr||0)>0.001?'EXTREME':Math.abs(c.fr||0)>0.0005?'STRONG':'HIGH'}));}catch(e){return[]}})();
     const stealthVolume=(()=>{try{return coins.filter(c=>(c.vol||0)>10e6&&Math.abs(c.c24)<0.8&&c.rsi<65&&(c.oi||0)>500e6).sort((a,b)=>(b.vol||0)-(a.vol||0)).slice(0,8).map(c=>({sym:c.sym,price:c.price,c24:c.c24,vol:c.vol,rsi:c.rsi,oi:+((c.oi||0)/1e9).toFixed(2),oiDelta:c.oiDelta}));}catch(e){return[]}})();
     const hiddenGems=(()=>{try{return coins.filter(c=>c.rsi<32&&(c.fr||0)<=-0.0001&&(c.vol||0)>300000&&(c.vol||0)<50e6&&!['BTC','ETH','BNB','SOL','XRP','ADA','DOGE'].includes(c.sym)&&((c.conv&&c.conv.score)||0)>=60).sort((a,b)=>a.rsi-b.rsi).slice(0,12).map(c=>({sym:c.sym,price:c.price,c24:c.c24,rsi:c.rsi,fr:+((c.fr||0)*100).toFixed(4),vol:c.vol,conv:(c.conv&&c.conv.score)||0,oiPattern:c.oiPattern}));}catch(e){return[]}})();
@@ -547,7 +607,7 @@ export default async function handler(req,res){
       sectorFlow:{sectors,sectorData},
       checklist:{marketChecks:mkChecks,coinChecks:[{label:'RSI koin < 72'},{label:'Conv Score 60+'},{label:'FR < +0.04%'},{label:'RR min 1:2'},{label:'No entry 30min sebelum news'},{label:'Vol 5M+ USD'},{label:'Size 2% equity max'},{label:'SL ATR-based'},{label:'Volume konfirmasi'},{label:'Sesuai skenario Game Plan'}],marketPassCount:pass,marketTotal:8,overallGreenLight:pass>=6,verdict:pass>=6?'KONDISI LAYAK TRADING':'HATI-HATI - '+(8-pass)+' kondisi belum terpenuhi'},
       tradingSchedule:{wibHour:wibH,dayName:days[now2.getUTCDay()],sessions:sess,currentSession:cs,currentSessionObj:cso,focusToday,nextPrimeSession:nxt,nextPrime:nxt},
-      whaleFingerprint,squeezeRadar,stealthVolume,hiddenGems,momentumShift,oiDeltaLeaders,retailTrapList,retailSqueezeList,
+      whaleLoadingRadar,whaleFingerprint,squeezeRadar,stealthVolume,hiddenGems,momentumShift,oiDeltaLeaders,retailTrapList,retailSqueezeList,
       dailyOpportunityScore,marketRegime,todaysBestTrade
     };
     const json=JSON.stringify(out);
