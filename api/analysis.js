@@ -47,16 +47,29 @@ export default async function handler(req,res){
     var fp2=price>1?2:price>0.01?4:price>0.0001?6:8;
     // Determine overall market direction
     var bullishCount=0,bearishCount=0;
-    if(rsi4h<38)bullishCount+=2;else if(rsi4h>68)bearishCount+=2;
-    if(macd.bull)bullishCount++;else bearishCount++;
-    if(bosD&&bosD.type.includes('Bullish'))bullishCount+=2;else if(bosD&&bosD.type.includes('Bearish'))bearishCount+=2;
-    if(chochD&&chochD.type.includes('Bullish'))bullishCount++;else if(chochD&&chochD.type.includes('Bearish'))bearishCount++;
-    if(divR&&divR.bullish)bullishCount+=2;else if(divR&&!divR.bullish&&divR.type)bearishCount+=2;
-    if(fr<-0.0003)bullishCount++;else if(fr>0.0005)bearishCount++;
+    // RSI scoring - consider context (CHoCH Bullish + RSI 60-70 = momentum, not bearish)
+    var hasChochBull=chochD&&chochD.type&&chochD.type.includes('Bullish');
+    var hasBossBull=bosD&&bosD.type&&bosD.type.includes('Bullish');
+    if(rsi4h<38)bullishCount+=2;else if(rsi4h<48)bullishCount+=1;
+    else if(rsi4h>75){bearishCount+=2;}// Only extreme overbought is bearish
+    else if(rsi4h>68&&!hasChochBull&&!hasBossBull)bearishCount+=1;// Moderately OB only if no bullish structure
+    // MACD
+    if(macd.bull)bullishCount++;else if(macd.cross==='CROSS_DOWN')bearishCount++;
+    // ICT Structure - most important signal
+    if(hasBossBull)bullishCount+=3;else if(bosD&&bosD.type&&bosD.type.includes('Bearish'))bearishCount+=3;
+    if(hasChochBull)bullishCount+=2;else if(chochD&&chochD.type&&chochD.type.includes('Bearish'))bearishCount+=2;
+    // Divergence
+    if(divR&&divR.bullish)bullishCount+=2;else if(divR&&divR.type&&!divR.bullish)bearishCount+=2;
+    // FR
+    if(fr<-0.0003)bullishCount+=1;else if(fr>0.0005)bearishCount+=1;
+    // Stochastic
     if(stoch.zone==='OVERSOLD'&&stoch.crossUp)bullishCount+=2;
-    if(stoch.zone==='OVERBOUGHT'&&stoch.crossDown)bearishCount+=2;
+    else if(stoch.zone==='OVERBOUGHT'&&stoch.crossDown)bearishCount+=1;// less weight
+    // OB zone
     if(obs.bullish&&obs.bullish.length&&obs.bullish[0].inZone)bullishCount+=2;
-    if(tf4h.aboveE200)bullishCount++;else if(!tf4h.aboveE200)bearishCount++;
+    // 200 EMA - weight less when CHoCH Bullish (structure overrides trend)
+    if(tf4h.aboveE200)bullishCount++;
+    else if(!tf4h.aboveE200&&!hasChochBull)bearishCount++;// Only bearish if NO bullish structure
     var netBias=bullishCount-bearishCount;
     var mainBias=netBias>=4?'STRONG BULLISH':netBias>=2?'BULLISH':netBias>=1?'MILD BULLISH':netBias<=-4?'STRONG BEARISH':netBias<=-2?'BEARISH':netBias<=-1?'MILD BEARISH':'NEUTRAL';
     var isBullish=netBias>0;
@@ -90,6 +103,13 @@ export default async function handler(req,res){
         description:'BOS Bearish di $'+bosD.level.toFixed(fp2)+' dengan Bearish Order Block. Market structure rusak ke bawah. Short setup valid.',
         confirmation:'Tunggu retest ke Bearish OB zone lalu entry SHORT',
         entryZone:'$'+obs.bearish[0].L+' - $'+obs.bearish[0].H};
+    }
+    // Setup 4b: CHoCH Bullish without BOS yet = early reversal
+    else if(hasChochBull&&rsi4h<70){
+      smcSetup={name:'CHoCH BULLISH - TREND REVERSAL EARLY',bias:'BULLISH',probability:75,
+        description:'CHoCH Bullish di $'+(chochD?chochD.level.toFixed(fp2):'-')+' = market structure berubah ke bullish. Ini sinyal awal sebelum BOS. Entry agresif dengan SL di bawah CHoCH level.',
+        confirmation:'Tunggu close 4H di atas $'+(chochD?chochD.level.toFixed(fp2):'-')+' + volume konfirmasi',
+        entryZone:'$'+(price*0.99).toFixed(fp2)+' - $'+price.toFixed(fp2)};
     }
     // Setup 5: Default based on bias
     else{
@@ -165,11 +185,25 @@ export default async function handler(req,res){
     if(stoch.crossDown&&stoch.zone==='OVERBOUGHT')avoidConditions.push('Stoch RSI cross down dari overbought');
     // Main narrative generation
     var confBars=A(conf.bullishFactors).slice(0,4);
-    var narrative=mainBias+'. '+sym+' pada $'+price.toFixed(fp2)+' ('+( change24h>=0?'+':'')+change24h.toFixed(2)+'%). ';
-    if(smcSetup)narrative+=smcSetup.description+' ';
-    if(confBars.length>0)narrative+='Faktor utama: '+confBars.join(', ')+'. ';
-    if(highProbConditions.length>0)narrative+=highProbConditions.length+' kondisi high probability terpenuhi.';
-    if(avoidConditions.length>0&&!isBullish)narrative+=' Hindari entry sebelum '+avoidConditions[0].toLowerCase()+'.';
+    // Build detailed narrative
+    var narrativeParts=[];
+    narrativeParts.push(mainBias+'. '+sym+' $'+price.toFixed(fp2)+(change24h>=0?' +':' ')+change24h.toFixed(2)+'%.');
+    // Structure analysis
+    if(hasBossBull)narrativeParts.push('BOS Bullish confirmed = trend structure naik.');
+    else if(hasChochBull)narrativeParts.push('CHoCH Bullish di $'+(chochD?chochD.level.toFixed(fp2):'-')+' = awal perubahan trend ke bullish.');
+    else if(bosD&&bosD.type.includes('Bearish'))narrativeParts.push('BOS Bearish = trend structure turun.');
+    // RSI multi-TF
+    var rsiParts=[];
+    if(rsi4h<35)rsiParts.push('4H RSI '+rsi4h.toFixed(0)+' oversold');
+    else if(rsi4h>70)rsiParts.push('4H RSI '+rsi4h.toFixed(0)+' overbought');
+    else rsiParts.push('4H RSI '+rsi4h.toFixed(0));
+    if(rsi1d<38)rsiParts.push('1D RSI '+rsi1d.toFixed(0)+' (daily oversold = demand kuat)');
+    if(rsi1h<35)rsiParts.push('1H RSI '+rsi1h.toFixed(0)+' (oversold hourly)');
+    narrativeParts.push(rsiParts.join(' | ')+'.');
+    // Key setups
+    if(highProbConditions.length>0)narrativeParts.push(highProbConditions.slice(0,3).join('. ')+'.');
+    if(avoidConditions.length>0)narrativeParts.push('Perhatian: '+avoidConditions[0]+'.');
+    var narrative=narrativeParts.join(' ');
     var out={
       ok:true,symbol:sym,price:price,ts:Date.now(),elapsed:Date.now()-t0,
       mainBias,netBias,isBullish,
