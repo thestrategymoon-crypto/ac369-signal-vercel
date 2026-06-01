@@ -139,6 +139,69 @@ export default async function handler(req,res){
     let btcD1rsi=null;
     try{const raw=Array.isArray(R12.value)?R12.value:[];if(raw.length>=16){const cls=raw.map(d=>N(d[4])).filter(v=>v>0);btcD1rsi=rsi14(cls)?+rsi14(cls).toFixed(1):null;}}catch(e){}
 
+
+    // ---------------------------------------
+    // PHASE 2: DYNAMIC REAL KLINES TOP 50 ALTCOINS
+    // Filter Bybit by OI > $100M, pick top 50
+    // Fetch 4H klines in parallel - real RSI/EMA/MACD
+    // ---------------------------------------
+    const TOP7=new Set(['BTC','ETH','SOL','BNB','XRP','LINK','AVAX']);
+    const phase2Coins=[];
+    try{
+      Object.entries(cm).forEach(([s,by])=>{
+        if(TOP7.has(s))return;
+        if(by.src!=='by')return;
+        if((by.oi||0)<100e6)return;
+        if((by.v||0)<2e6)return;
+        phase2Coins.push({sym:s,oi:by.oi||0});
+      });
+      phase2Coins.sort((a,b)=>b.oi-a.oi);
+      phase2Coins.splice(50);
+    }catch(e){}
+
+    if(phase2Coins.length>0){
+      try{
+        const p2Results=await Promise.allSettled(
+          phase2Coins.map(c=>get('https://api.mexc.com/api/v3/klines?symbol='+c.sym+'USDT&interval=4h&limit=52',2800))
+        );
+        p2Results.forEach((res,i)=>{
+          try{
+            const sym=phase2Coins[i].sym;
+            const raw=Array.isArray(res.value)?res.value:[];
+            if(raw.length<16)return;
+            const K=raw.map(d=>({o:N(d[1]),h:N(d[2]),l:N(d[3]),c:N(d[4]),v:N(d[5])}));
+            const cls=K.map(x=>x.c).filter(v=>v>0);
+            if(cls.length<16)return;
+            const rsiV=rsi14(cls);if(!rsiV)return;
+            const lp=cls[cls.length-1];
+            const e9=ema(cls.slice(-9),9),e200=ema(cls,200),e21=ema(cls.slice(-21),21);
+            let atrV=0;try{atrV=K.slice(-14).reduce((s,k,i)=>{const ph=i>0?K.slice(-14)[i-1].c:k.c;return s+Math.max(k.h-k.l,Math.abs(k.h-ph),Math.abs(k.l-ph));},0)/14;}catch(e2){}
+            const vBull=K.slice(-14).filter(k=>k.c>k.o).reduce((s,k)=>s+k.v,0);
+            const vBear=K.slice(-14).filter(k=>k.c<=k.o).reduce((s,k)=>s+k.v,0);
+            const k12=2/13,k26=2/27;let em12=cls[0],em26=cls[0];
+            cls.forEach(v=>{em12=em12*(1-k12)+v*k12;em26=em26*(1-k26)+v*k26;});
+            const macdLine=em12-em26,sigLine=macdLine*(2/10);
+            const rp1=rsi14(cls.slice(0,-1))||rsiV;
+            const sDir=rsiV>rp1+0.3?'up':rsiV<rp1-0.3?'down':'flat';
+            const sTxt=sDir==='up'?'rising':sDir==='down'?'falling':'flat';
+            const rv=K.slice(-5).map(k=>k.v);
+            const volTr=rv.length>=3?(rv[rv.length-1]>rv[rv.length-2]*1.2?'up':rv[rv.length-1]<rv[rv.length-2]*0.8?'down':'stable'):'stable';
+            // 5-day price range for coiling detection
+            const last5cls=cls.slice(-30);
+            const hi5=Math.max(...last5cls),lo5=Math.min(...last5cls);
+            const rangeW5=lp>0?(hi5-lo5)/lp*100:10;
+            let div=null,divStr=0;
+            try{const p4=cls[cls.length-5]||lp,p8=cls[cls.length-9]||lp;const r4=rsi14(cls.slice(0,-4)),r8=rsi14(cls.slice(0,-8));
+              if(r4&&r8){if(lp<p4&&p4<p8&&rsiV>r4&&r4>r8){div='BULLISH';divStr=Math.min(100,Math.round((rsiV-r4)*3+10));}
+              else if(lp>p4&&p4>p8&&rsiV<r4&&r4<r8){div='BEARISH';divStr=Math.min(100,Math.round((r4-rsiV)*3+10));}}
+            }catch(e2){}
+            km[sym]={rsi:+rsiV.toFixed(2),slopeDir:sDir,slopeTxt:sTxt,macd:{bull:macdLine>sigLine,xUp:macdLine>sigLine&&macdLine<0,xDown:macdLine<sigLine&&macdLine>0,val:+macdLine.toFixed(6)},e9,e21,e200,atr:+atrV.toFixed(8),price:lp,aboveE200:lp>e200,isCoiling:rangeW5<8,vB:vBull>vBear*1.2,volTrend:volTr,div,divStr,rsi1h:null,rsi1d:null,rangeW5:+rangeW5.toFixed(2),src:'p2'};
+            realRSI++;
+          }catch(e2){}
+        });
+      }catch(e){}
+    }
+
     // BTC snapshot
     const btcK=km.BTC||null,btcBy=cm.BTC||{};
     const btcP=N(btcK&&btcK.price?btcK.price:btcBy.p||0),btcC=N(btcBy.c24||0);
@@ -198,6 +261,31 @@ export default async function handler(req,res){
       const whaleLoadScore=Math.min(100,fA_vol+fB_oiFlat+fC_rsi+fD_fr+fE_range+fF_ba+fG_rs);
       const isWhaleLoading=whaleLoadScore>=65&&by.src==='by'&&oi>100e6;
       const whaleLoadLabel=whaleLoadScore>=80?'CONFIRMED':whaleLoadScore>=65?'LIKELY':whaleLoadScore>=50?'WATCH':'';
+
+
+      // PRE-PUMP SCORE - 6 factor pump hunter
+      // Requires real klines (km2) for accuracy
+      const km2rng=km2?km2.rangeW5||10:((by.h>0&&by.l>0&&by.p>0)?(by.h-by.l)/by.p*100:10);
+      // Factor P1: Price Coiling (5d range) - tight = energy stored
+      const fP1=km2rng<5?25:km2rng<8?18:km2rng<12?10:km2rng<18?4:0;
+      // Factor P2: OI Accumulation + price flat
+      const fP2=oiDelta>2&&Math.abs(c24)<1.5?25:oiDelta>1&&Math.abs(c24)<2?18:oiDelta>0.3&&Math.abs(c24)<1.5?10:oiDelta>0?5:0;
+      // Factor P3: RSI sweet spot - real data gets full points, estimated partial
+      const rsiReal2=!!(km2&&km2.rsi>0);
+      const rsiForPump=rsiReal2?km2.rsi:rsi;
+      const fP3=rsiReal2?(rsiForPump>=38&&rsiForPump<=52?20:rsiForPump>=28&&rsiForPump<=58?13:rsiForPump>=22&&rsiForPump<=65?6:0):(rsiForPump>=38&&rsiForPump<=52?8:rsiForPump>=28&&rsiForPump<=58?5:0);
+      // Factor P4: FR setup (negative = retail short = squeeze fuel)
+      const fP4=fp<-0.02?15:fp<-0.005?12:fp<0?8:fp===0?5:fp<0.005?2:0;
+      // Factor P5: Volume building (ratio vs average)
+      const volAvgEst=by.v||0;
+      const fP5=rsiReal2&&km2.volTrend==='up'?10:rsiReal2&&km2.volTrend==='stable'?6:volScore>=3?7:volScore>=2?4:2;
+      // Factor P6: RS vs BTC positive or improving
+      const fP6=rs>2?5:rs>0?3:rs>-1?1:0;
+      // Bonus: MACD bullish crossup = momentum starting
+      const pumpBonus=km2&&km2.macd&&km2.macd.xUp?8:km2&&km2.macd&&km2.macd.bull&&km2.macd.val<0?4:0;
+      const prePumpScore=Math.min(100,fP1+fP2+fP3+fP4+fP5+fP6+pumpBonus);
+      const prePumpLabel=prePumpScore>=75?'READY':prePumpScore>=60?'BUILDING':prePumpScore>=45?'WATCH':'';
+      const isPumpCandidate=prePumpScore>=60&&by.src==='by'&&(by.oi||0)>50e6;
 
       // MTF RSI alignment check
       const mtfOversold=rsi1h&&rsi1h<40&&rsi<42&&(rsi1d?rsi1d<52:true);
@@ -375,7 +463,8 @@ export default async function handler(req,res){
         futuresRisk:{score:fRisk,label:fRiskLabel},
         levels:{sl,tp1,tp2,tp3,slPct:slP,tp1Pct:tp1P,tp2Pct:tp2P,tp3Pct:tp3P},
         src:by.src||'by',
-        whaleLoadScore,whaleLoadLabel,volOI:+volOI.toFixed(3),rangeWidth:+rangeWidth.toFixed(2),isWhaleLoading
+        whaleLoadScore,whaleLoadLabel,volOI:+volOI.toFixed(3),rangeWidth:+rangeWidth.toFixed(2),isWhaleLoading,
+        prePumpScore,prePumpLabel,isPumpCandidate
       });
     }catch(e){}}
     coins.sort((a,b)=>((b.conv&&b.conv.score)||0)-((a.conv&&a.conv.score)||0));
@@ -483,7 +572,49 @@ export default async function handler(req,res){
     }).sort((a,b)=>b.smScore-a.smScore);
 
     // Golden opportunities
-    // WHALE LOADING RADAR - dedicated section
+    // PUMP HUNTER RADAR - pre-pump signature detection
+    const pumpHunter=(()=>{try{
+      return coins
+        .filter(c=>c.isPumpCandidate&&(c.oi||0)>50e6)
+        .sort((a,b)=>(b.prePumpScore||0)-(a.prePumpScore||0))
+        .slice(0,10)
+        .map(c=>{
+          var reasons=[];
+          var km3=km[c.sym]||null;
+          if(km3&&km3.rangeW5<8)reasons.push('Coiling '+km3.rangeW5.toFixed(1)+'% (5d range sempit)');
+          if(c.oiDelta>1)reasons.push('OI +'+c.oiDelta.toFixed(1)+'% (fresh position)');
+          if(c.rsiReal&&c.rsi<52)reasons.push('RSI REAL '+c.rsi.toFixed(0)+' sweet spot');
+          if((c.fr||0)<-0.0001)reasons.push('FR '+((c.fr||0)*100).toFixed(3)+'% shorts bayar');
+          if(km3&&km3.macd&&km3.macd.xUp)reasons.push('MACD cross up (momentum start)');
+          if(km3&&km3.div==='BULLISH')reasons.push('Bullish divergence terdeteksi');
+          if(c.rs>0)reasons.push('RS vs BTC positif (+'+c.rs.toFixed(2)+'%)');
+          var atrV=km3?km3.atr||0:c.price*0.025;
+          var atrPct2=c.price>0&&atrV>0?+(atrV/c.price*100).toFixed(2):2.5;
+          return{
+            sym:c.sym,sector:c.sector,price:c.price,c24:c.c24,
+            rsi:c.rsi,rsiReal:c.rsiReal,
+            oiDelta:c.oiDelta,oiPattern:c.oiPattern,
+            fr:c.fr||null,oi:+((c.oi||0)/1e9).toFixed(2),
+            vol:c.vol,
+            rangeW5:km3?km3.rangeW5||10:10,
+            prePumpScore:c.prePumpScore||0,prePumpLabel:c.prePumpLabel||'',
+            signal:c.signal||null,
+            whaleLoadScore:c.whaleLoadScore||0,
+            // Entry zone: current price
+            entry:c.price,
+            sl:+(c.price*(1-Math.max(atrPct2*1.5,2)/100)).toFixed(c.price>1?2:6),
+            tp1:+(c.price*(1+atrPct2*2/100)).toFixed(c.price>1?2:6),
+            tp2:+(c.price*(1+atrPct2*3.5/100)).toFixed(c.price>1?2:6),
+            slPct:Math.max(atrPct2*1.5,2).toFixed(2),
+            tp2Pct:(atrPct2*3.5).toFixed(2),
+            rr:+(atrPct2*3.5/Math.max(atrPct2*1.5,2)).toFixed(1),
+            reasons:reasons,
+            windowHours:prePumpScore>=75?'1-12h':prePumpScore>=60?'12-48h':'48-72h'
+          };
+        });
+    }catch(e){return[]}})();
+
+        // WHALE LOADING RADAR - dedicated section
     const whaleLoadingRadar=(()=>{try{
       return coins
         .filter(c=>c.src==='by'&&c.isWhaleLoading&&(c.oi||0)>100e6)
@@ -566,7 +697,7 @@ export default async function handler(req,res){
 
     const out={
       ok:true,version:'v15',ts:Date.now(),elapsed:Date.now()-t0,
-      dataQuality:{coins:coins.length,realRSI,bybitCoins:Object.values(cm).filter(x=>x.src==='by').length,mexcCoins:Object.values(cm).filter(x=>x.src==='mx').length,btcLS:!!btcLS,btcRsi:!!(btcK&&btcK.rsi),src:'bybit+mexc',mtf1hCoins:Object.keys(km1h).length,oiDeltaTracked:Object.keys(OI_CACHE.prev).length},
+      dataQuality:{coins:coins.length,realRSI,bybitCoins:Object.values(cm).filter(x=>x.src==='by').length,mexcCoins:Object.values(cm).filter(x=>x.src==='mx').length,btcLS:!!btcLS,btcRsi:!!(btcK&&btcK.rsi),src:'bybit+mexc+phase2',mtf1hCoins:Object.keys(km1h).length,oiDeltaTracked:Object.keys(OI_CACHE.prev).length,phase2Coins:phase2Coins.length,pumpCandidates:coins.filter(x=>x.isPumpCandidate).length},
       fg,fgLabel,
       marketCharacter:{type:mcType,color:mcColor,description:mcDesc,tradeStyle:mcStrat,riskLevel:mcRisk,positionSize:mcPos,marketPct:Math.round(bPct*100)+'% bullish',stats:{oversold:osCount,overbought:obCount,bullish:Math.round(bPct*100),bearish:Math.round((1-bPct)*100),coiling:coins.filter(x=>x.isCoiling).length,mtfBull:coins.filter(x=>x.mtfAligned==='BULL').length,whaleLong:coins.filter(x=>x.oiPattern==='WHALE_LONG').length}},
       btcSnapshot:{price:btcP,ch24:btcC,rsi:btcK?btcK.rsi||null:null,rsiSlope:btcK?btcK.slopeTxt||'-':'-',rsiDir:btcK?btcK.slopeDir||'flat':'flat',rsi1h:km1h.BTC||null,rsi1d:btcD1rsi,volTrend:btcK?btcK.volTrend||'-':'-',atrPct:btcATRpct,atr:btcATRusd,d1rsi:btcD1rsi,d1trend:btcD1rsi&&btcK&&btcK.rsi?(btcD1rsi<btcK.rsi?'DOWN':'UP'):'-',fg,fgLabel,macd:btcK?btcK.macd||null:null,resistance:btcRes,support:btcSup,current:btcP,aboveEma200:!!(btcK&&btcK.aboveE200),btcLS:!!btcLS,btcLongPct:btcL,btcShortPct:btcS,oiPattern:cm.BTC?cm.BTC.oiPattern:'NEUTRAL',oiDelta:cm.BTC?cm.BTC.oiDelta:0},
@@ -607,7 +738,7 @@ export default async function handler(req,res){
       sectorFlow:{sectors,sectorData},
       checklist:{marketChecks:mkChecks,coinChecks:[{label:'RSI koin < 72'},{label:'Conv Score 60+'},{label:'FR < +0.04%'},{label:'RR min 1:2'},{label:'No entry 30min sebelum news'},{label:'Vol 5M+ USD'},{label:'Size 2% equity max'},{label:'SL ATR-based'},{label:'Volume konfirmasi'},{label:'Sesuai skenario Game Plan'}],marketPassCount:pass,marketTotal:8,overallGreenLight:pass>=6,verdict:pass>=6?'KONDISI LAYAK TRADING':'HATI-HATI - '+(8-pass)+' kondisi belum terpenuhi'},
       tradingSchedule:{wibHour:wibH,dayName:days[now2.getUTCDay()],sessions:sess,currentSession:cs,currentSessionObj:cso,focusToday,nextPrimeSession:nxt,nextPrime:nxt},
-      whaleLoadingRadar,whaleFingerprint,squeezeRadar,stealthVolume,hiddenGems,momentumShift,oiDeltaLeaders,retailTrapList,retailSqueezeList,
+      pumpHunter,whaleLoadingRadar,whaleFingerprint,squeezeRadar,stealthVolume,hiddenGems,momentumShift,oiDeltaLeaders,retailTrapList,retailSqueezeList,
       dailyOpportunityScore,marketRegime,todaysBestTrade
     };
     const json=JSON.stringify(out);
