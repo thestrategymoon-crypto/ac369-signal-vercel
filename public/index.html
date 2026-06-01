@@ -1533,6 +1533,67 @@ function tisMod8Golden(d){
   h+='<div style="font-size:10px;font-weight:900;color:#ffd700;letter-spacing:2px;margin-bottom:6px">🏆 GOLDEN OPPORTUNITY DETECTORS</div>';
   h+='<div style="font-size:8px;color:var(--dim);margin-bottom:8px">Peluang emas yang tidak terlihat di chart biasa — data institusional real-time</div>';
   
+  // PUMP HUNTER SECTION - highest priority display
+  var ph=A(d.pumpHunter);
+  if(ph.length>0){
+    h+='<div style="background:rgba(255,100,0,.05);border:1px solid rgba(255,100,0,.25);border-radius:9px;padding:10px;margin-bottom:10px">';
+    h+='<div style="font-size:10px;font-weight:900;color:#ff6400;letter-spacing:1px;margin-bottom:2px">🚀 PUMP HUNTER — PRE-PUMP CANDIDATES</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:8px">Real RSI 4H + OI Delta + Coiling Detection · '+ph.length+' kandidat terdeteksi</div>';
+    ph.slice(0,8).forEach(function(p){
+      var sclr=p.prePumpLabel==='READY'?'#ff6400':p.prePumpLabel==='BUILDING'?'#ffaa00':'var(--amber)';
+      var rsiClr=p.rsi<30?'#00ff88':p.rsi<42?'#4af0ff':p.rsi<58?'var(--amber)':'var(--red)';
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:8px;padding:8px;margin-bottom:6px;border-left:3px solid '+sclr+'">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">';
+      h+='<div style="display:flex;align-items:center;gap:6px">';
+      h+='<span style="font-family:var(--m);font-size:13px;font-weight:900">'+p.sym+'</span>';
+      if(p.rsiReal)h+='<span style="font-size:7px;background:rgba(0,255,136,.15);color:var(--g);padding:1px 4px;border-radius:3px">REAL</span>';
+      h+='<span style="font-size:8px;color:var(--dim)">'+( p.sector||'')+'</span>';
+      h+='</div>';
+      h+='<div style="text-align:right">';
+      h+='<span style="font-size:9px;font-weight:700;color:'+sclr+'">'+( p.prePumpLabel||'WATCH')+'</span>';
+      h+='<span style="font-size:9px;color:var(--dim)"> '+p.prePumpScore+'/100</span>';
+      h+='</div></div>';
+      // Price + RSI + OI row
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;margin-bottom:5px">';
+      h+='<div style="text-align:center;background:rgba(255,255,255,.02);border-radius:5px;padding:4px">';
+      h+='<div style="font-size:7px;color:var(--dim)">Price</div>';
+      h+='<div style="font-family:var(--m);font-size:9px;font-weight:700">$'+fP(p.price)+'</div>';
+      h+='<div style="font-size:7px;color:'+(p.c24>=0?'var(--g)':'var(--red)')+'">'+(p.c24>=0?'+':'')+p.c24.toFixed(2)+'%</div></div>';
+      h+='<div style="text-align:center;background:rgba(255,255,255,.02);border-radius:5px;padding:4px">';
+      h+='<div style="font-size:7px;color:var(--dim)">RSI 4H</div>';
+      h+='<div style="font-family:var(--m);font-size:9px;font-weight:700;color:'+rsiClr+'">'+p.rsi.toFixed(0)+'</div>';
+      h+='<div style="font-size:7px;color:var(--dim)">'+(p.rsiReal?'REAL':'est')+'</div></div>';
+      h+='<div style="text-align:center;background:rgba(255,255,255,.02);border-radius:5px;padding:4px">';
+      h+='<div style="font-size:7px;color:var(--dim)">OI Delta</div>';
+      h+='<div style="font-family:var(--m);font-size:9px;font-weight:700;color:'+(p.oiDelta>0?'var(--g)':'var(--red)')+'">'+(p.oiDelta>=0?'+':'')+p.oiDelta.toFixed(1)+'%</div>';
+      h+='<div style="font-size:7px;color:var(--dim)">'+( p.oiPattern||'')+'</div></div>';
+      h+='<div style="text-align:center;background:rgba(255,255,255,.02);border-radius:5px;padding:4px">';
+      h+='<div style="font-size:7px;color:var(--dim)">Window</div>';
+      h+='<div style="font-size:8px;font-weight:700;color:var(--amber)">'+( p.windowHours||'?')+'</div>';
+      h+='<div style="font-size:7px;color:var(--dim)">Range '+( p.rangeW5||'?').toFixed(0)+'%</div></div>';
+      h+='</div>';
+      // Entry/SL/TP
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:5px">';
+      h+='<div style="text-align:center;background:rgba(255,255,255,.03);border-radius:5px;padding:4px">';
+      h+='<div style="font-size:7px;color:var(--dim)">Entry</div>';
+      h+='<div style="font-family:var(--m);font-size:9px;font-weight:700">$'+fP(p.entry)+'</div></div>';
+      h+='<div style="text-align:center;background:rgba(255,68,100,.08);border-radius:5px;padding:4px">';
+      h+='<div style="font-size:7px;color:var(--red)">SL -'+p.slPct+'%</div>';
+      h+='<div style="font-family:var(--m);font-size:9px;font-weight:700;color:var(--red)">$'+fP(p.sl)+'</div></div>';
+      h+='<div style="text-align:center;background:rgba(0,255,136,.05);border-radius:5px;padding:4px">';
+      h+='<div style="font-size:7px;color:var(--g)">TP2 +'+p.tp2Pct+'%</div>';
+      h+='<div style="font-family:var(--m);font-size:9px;font-weight:700;color:var(--g)">$'+fP(p.tp2)+'</div></div>';
+      h+='</div>';
+      // Reasons
+      if(p.reasons&&p.reasons.length){
+        h+='<div style="display:flex;flex-wrap:wrap;gap:3px">';
+        p.reasons.slice(0,4).forEach(function(r){h+='<span style="font-size:7.5px;background:rgba(255,100,0,.1);color:#ff9640;padding:2px 6px;border-radius:4px">'+r+'</span>';});
+        h+='</div>';
+      }
+      h+='</div>';
+    });
+    h+='</div>';
+  }
   // OI Direction Reference Guide (always visible)
   h+='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:10px">';
   h+='<div style="background:rgba(0,255,136,.07);border:1px solid rgba(0,255,136,.2);border-radius:6px;padding:5px 8px"><div style="font-size:8px;font-weight:700;color:var(--g)">🟢 NEW LONGS</div><div style="font-size:7px;color:var(--dim)">OI↑ + Harga↑</div><div style="font-size:7px;color:var(--g)">→ Entry LONG — trend nyata</div></div>';
