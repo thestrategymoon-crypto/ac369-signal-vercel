@@ -658,7 +658,8 @@ function buildSearchCard(d){
   var fvgs=ict.fvg||{},liq=ict.liquidity||{},zones=ict.zones||{};
   var wyk=ict.wyckoff||{},hpz=ict.highProbZones||{};
   var pats=d.chartPatterns||[];
-  var stoch=d.stochRSI?.['4H']||null,adx=d.adx?.['4H']||null;
+  var stoch=d.stochRSI?.['4H']||null,adx4h=d.adx?.['4H']||null,adx=adx4h||null;
+  var vol4h=d.volume?.['4H']||d.volume||null,macd4h=d.macd?.['4H']||null;
   var atr=d.atr?.['4H']||null,fib=d.fibonacci||null;
   var vol=d.volume||null,emaA=d.emaAnalysis||null,rsiDiv=d.rsiDivergence||null;
   var macd4h=d.macd?.['4H']||null,bb4h=d.bb?.['4H']||null;
@@ -697,6 +698,59 @@ function buildSearchCard(d){
   if(rsiDiv){var dvC=rsiDiv.bullish?'var(--g)':'var(--red)';h+='<div style="background:'+(rsiDiv.bullish?'rgba(0,255,136,.06)':'rgba(255,68,100,.06)')+';border:1px solid '+(rsiDiv.bullish?'rgba(0,255,200,.25)':'rgba(255,68,100,.25)')+';border-radius:6px;padding:7px 9px;margin-bottom:7px"><div style="font-size:10px;font-weight:700;color:'+dvC+'">⚡ '+rsiDiv.type+'</div><div style="font-size:9px;color:var(--muted);margin-top:2px">'+rsiDiv.desc+'</div></div>';}
   if(stoch){var sK=stoch.k,sD=stoch.d;var skC=sK<20?'var(--g)':sK>80?'var(--red)':'var(--muted)';h+='<div style="background:rgba(255,255,255,.02);border-radius:6px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><div style="font-size:10px;font-weight:700;color:var(--muted)">Stochastic RSI (4H)</div><div style="font-size:10px;font-weight:700;color:'+skC+'">'+stoch.zone+'</div></div><div style="display:flex;gap:10px;font-size:10px"><span style="color:var(--dim)">K: <span style="font-family:var(--m);font-weight:700;color:'+skC+'">'+sK.toFixed(1)+'</span></span><span style="color:var(--dim)">D: <span style="font-family:var(--m);font-weight:700;color:var(--muted)">'+sD.toFixed(1)+'</span></span>'+(stoch.crossUp?'<span style="background:rgba(0,255,136,.1);color:var(--g);padding:1px 6px;border-radius:3px;font-size:9px">⬆️ Cross Up</span>':'')+(stoch.crossDown?'<span style="background:rgba(255,68,100,.1);color:var(--red);padding:1px 6px;border-radius:3px;font-size:9px">⬇️ Cross Down</span>':'')+'</div></div>';}
   h+='</div>';
+  // FIBONACCI + PIVOT POINTS
+  if(fib&&fib.f618&&fib.high){
+    var fibPct=fib.currentFib||0.5;
+    var fibZone=fibPct<=0.236?'Near Bottom (0-23.6%)':fibPct<=0.382?'Deep Discount (23.6-38.2%)':fibPct<=0.5?'Mid Zone (38.2-50%)':fibPct<=0.618?'Premium Zone (50-61.8%)':fibPct<=0.786?'Upper Premium (61.8-78.6%)':'Near Top (>78.6%)';
+    h+='<div style="background:rgba(255,255,255,.02);border-radius:9px;padding:10px;margin-bottom:8px">';
+    h+='<div style="font-size:9px;font-weight:700;color:var(--amber);letter-spacing:1px;margin-bottom:7px">📐 FIBONACCI RETRACEMENT</div>';
+    h+='<div style="font-size:9px;color:var(--dim);margin-bottom:5px">Posisi: <span style="color:var(--txt);font-weight:700">'+fibZone+'</span></div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">';
+    var fibLevels=[['23.6%',fib.f236,'var(--g2)'],['38.2%',fib.f382,'var(--g)'],['50%',fib.f500,'var(--amber)'],['61.8%',fib.f618,'var(--red)'],['78.6%',fib.f786,'var(--red)'],['High',fib.high,'var(--g)']];
+    fibLevels.forEach(function(fl){var isCur=Math.abs(p-fl[1])/p<0.02;h+='<div style="background:rgba(255,255,255,.'+(isCur?'06':'02')+');border-radius:5px;padding:5px;text-align:center'+(isCur?';border:1px solid rgba(255,215,0,.3)':'')+'">';h+='<div style="font-size:7.5px;color:var(--dim)">'+fl[0]+'</div>';h+='<div style="font-family:var(--m);font-size:9px;font-weight:700;color:'+fl[2]+'">$'+fP(fl[1])+'</div></div>';});
+    h+='</div></div>';
+    if(pivots&&pivots.pp){
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:9px;padding:10px;margin-bottom:8px">';
+      h+='<div style="font-size:9px;font-weight:700;color:var(--amber);letter-spacing:1px;margin-bottom:7px">📊 PIVOT POINTS (Classic)</div>';
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px">';
+      var pvLevels=[['S2',pivots.s2,'var(--g)'],['S1',pivots.s1,'var(--g2)'],['PP',pivots.pp,'var(--amber)'],['R1',pivots.r1,'var(--red)'],['R2',pivots.r2,'var(--red)'],['R3',pivots.r3,'#ff4466']];
+      pvLevels.forEach(function(pv){var isCur=Math.abs(p-pv[1])/p<0.015;h+='<div style="background:rgba(255,255,255,.'+(isCur?'06':'02')+');border-radius:5px;padding:4px;text-align:center"><div style="font-size:7.5px;color:var(--dim)">'+pv[0]+'</div><div style="font-family:var(--m);font-size:8.5px;font-weight:700;color:'+pv[2]+'">$'+fP(pv[1])+'</div></div>';});
+      h+='</div></div>';
+    }
+  }
+  // EMA + MACD + ADX + VOLUME
+  if(emaA&&(emaA.e21||emaA.e200)){
+    h+='<div style="background:rgba(255,255,255,.02);border-radius:9px;padding:10px;margin-bottom:8px">';
+    h+='<div style="font-size:9px;font-weight:700;color:var(--purple);letter-spacing:1px;margin-bottom:7px">📈 EMA + MOMENTUM</div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">';
+    var emas=[['EMA 9',emaA.e9],['EMA 21',emaA.e21],['EMA 50',emaA.e50],['EMA 200',emaA.e200]];
+    emas.forEach(function(em){if(!em[1])return;var above=p>em[1];h+='<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,.02);border-radius:5px;padding:4px 7px"><span style="font-size:8px;color:var(--dim)">'+em[0]+'</span><span style="font-family:var(--m);font-size:8.5px;font-weight:700;color:'+(above?'var(--g)':'var(--red)')+'">'+(above?'▲':'▼')+' $'+fP(em[1])+'</span></div>';});
+    h+='</div>';
+    if(macd4h){
+      var mCol=macd4h.bull?'var(--g)':'var(--red)';
+      h+='<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">';
+      h+='<span style="font-size:8.5px;color:var(--dim)">MACD 4H:</span>';
+      h+='<span style="font-size:9px;font-weight:700;color:'+mCol+'">'+(macd4h.bull?'BULLISH':'BEARISH')+'</span>';
+      if(macd4h.cross)h+='<span style="font-size:8px;background:rgba(0,255,136,.1);color:var(--g);padding:1px 5px;border-radius:3px">'+macd4h.cross+'</span>';
+      h+='<span style="font-size:8px;color:var(--dim)">Hist: '+(macd4h.hist>=0?'+':'')+( +macd4h.hist.toFixed(6))+'</span>';
+      h+='</div>';
+    }
+    if(adx4h){
+      var adxTrCol=adx4h.value>40?'var(--g)':adx4h.value>25?'var(--amber)':'var(--dim)';
+      h+='<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">';
+      h+='<span style="font-size:8.5px;color:var(--dim)">ADX 4H:</span>';
+      h+='<span style="font-size:9px;font-weight:700;color:'+adxTrCol+'">'+adx4h.value.toFixed(0)+' ('+adx4h.trend+')</span>';
+      h+='</div>';
+    }
+    if(vol4h){
+      var volCol=vol4h.trend==='SURGE'||vol4h.trend==='HIGH'?'var(--g)':vol4h.trend==='LOW'?'var(--red)':'var(--dim)';
+      h+='<div style="display:flex;gap:8px;align-items:center">';
+      h+='<span style="font-size:8.5px;color:var(--dim)">Volume 4H:</span>';
+      h+='<span style="font-size:9px;font-weight:700;color:'+volCol+'">'+vol4h.trend+' ('+vol4h.ratio+'x avg)</span>';
+      h+='</div>';
+    }
+    h+='</div>';
+  }
   if(astro.moonPhase){h+='<div style="background:rgba(168,85,247,.04);border:1px solid rgba(168,85,247,.12);border-radius:9px;padding:9px 11px"><div style="font-size:10px;font-weight:700;color:var(--purple);margin-bottom:4px">🌙 ASTROLOGY</div><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:12px;font-weight:700">'+(astro.moonEmoji||'🌙')+' '+(astro.moonPhase||'—')+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px">'+(astro.halvingPhase||'')+'</div></div>'+(astro.chaotic?'<span style="font-size:9px;background:rgba(255,68,100,.1);color:var(--red);padding:2px 7px;border-radius:4px">⚠️ Volatile period</span>':'')+'</div></div>';}
   // AI Analysis section placeholder
   if(d.symbol){h+='<div id="ai-'+d.symbol+'" style="margin-top:8px"><div style="background:rgba(0,150,255,.04);border:1px solid rgba(0,150,255,.15);border-radius:9px;padding:10px 12px"><div style="font-size:9px;font-weight:700;color:#4af0ff;letter-spacing:1px;margin-bottom:4px">🤖 AI SMART ANALYSIS</div><div style="display:flex;align-items:center;gap:6px;color:var(--dim);font-size:9px"><span class="spin" style="width:10px;height:10px;border-width:2px;display:inline-block"></span>Memuat analisis SMC+Elliott+Pattern...</div></div></div>';}
