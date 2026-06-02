@@ -151,8 +151,12 @@ export default async function handler(req,res){
       Object.entries(cm).forEach(([s,by])=>{
         if(TOP7.has(s))return;
         if(by.src!=='by')return;
-        if((by.oi||0)<100e6)return;
-        if((by.v||0)<2e6)return;
+        // Skip non-standard symbols (number prefix, USDC pairs, etc)
+        if(/^[0-9]/.test(s))return;// 1000PEPE, 10000LADYS etc
+        if(s.endsWith('USDC')||s.endsWith('USD')||s.endsWith('EUR'))return;
+        if(s.length>10)return;// skip very long symbols
+        if((by.oi||0)<30e6)return;// lower threshold $30M
+        if((by.v||0)<500000)return;// lower vol threshold $500K
         phase2Coins.push({sym:s,oi:by.oi||0});
       });
       phase2Coins.sort((a,b)=>b.oi-a.oi);
@@ -431,7 +435,7 @@ export default async function handler(req,res){
 
       const rr=+(tp2P/slP).toFixed(1);
       let kellySz=2;try{const pk=(prob/100*rr-(1-prob/100))/rr;kellySz=Math.max(0.5,Math.min(10,+(pk/2*100).toFixed(1)));}catch(e){}
-      const cStars=Math.min(5,+((rsi<30?1:rsi<38?0.5:0)+(fr<-0.02?1:fr<-0.01?0.5:0)+(ic?0.5:0)+(rs>3?0.5:rs>0?0.25:0)+(vb&&c24>0?0.5:0)+(rR?0.5:0)+(div==='BULLISH'?0.5:0)+(mtfAligned==='BULL'?0.5:0)+(oiPattern==='WHALE_LONG'?0.5:0)).toFixed(1));
+      const cStars=Math.min(5,+((rsi<25?2:rsi<30?1.5:rsi<38?0.8:rsi<45?0.3:0)+(fr<-0.0005?1.5:fr<-0.0002?1:fr<0?0.5:0)+(ic?0.8:0)+(rs>5?0.8:rs>2?0.5:rs>0?0.2:0)+(vb&&c24>0?0.5:0)+(rR?0.8:0)+(div==='BULLISH'?1:0)+(mtfAligned==='BULL'?1:0)+(oiPattern==='WHALE_LONG'?1:0)).toFixed(1));
       const rLong=by.rLong||50,rShort=by.rShort||50;
       const rBias=rLong>=65?'RETAIL TRAP':rLong>=58?'Long Heavy':rLong<=35?'SQUEEZE':rLong<=42?'Short Dom':'Balanced';
       let fRisk=50;if(fp>0.05)fRisk+=20;else if(fp>0.02)fRisk+=10;else if(fp<-0.05)fRisk-=10;if(dir==='LONG'){if(rsi>70)fRisk+=20;else if(rsi<30)fRisk-=15;}if(div==='BULLISH'&&dir==='LONG')fRisk-=10;if(oiPattern==='WHALE_LONG')fRisk-=8;
@@ -545,7 +549,7 @@ export default async function handler(req,res){
     // Safety check: ensure resistance > current > support
     if(btcRes&&btcP&&btcRes<=btcP)btcRes=+(btcP*1.02).toFixed(0);
     if(btcSup&&btcP&&btcSup>=btcP)btcSup=+(btcP*0.97).toFixed(0);
-    const top3=longs.slice(0,3).map(x=>x.sym);
+    const top3=longs.slice(0,3).map(x=>({sym:x.sym,price:x.price}));
 
     // Spot accumulation
     const spotAccum=coins.filter(x=>x.rsi<42&&x.direction!=='SHORT').sort((a,b)=>a.rsi-b.rsi).slice(0,10).map(x=>{
