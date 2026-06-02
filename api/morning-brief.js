@@ -464,7 +464,22 @@ export default async function handler(req,res){
         levels:{sl,tp1,tp2,tp3,slPct:slP,tp1Pct:tp1P,tp2Pct:tp2P,tp3Pct:tp3P},
         src:by.src||'by',
         whaleLoadScore,whaleLoadLabel,volOI:+volOI.toFixed(3),rangeWidth:+rangeWidth.toFixed(2),isWhaleLoading,
-        prePumpScore,prePumpLabel,isPumpCandidate
+        prePumpScore,prePumpLabel,isPumpCandidate,
+        // oiDirection as object (HTML expects .state/.stateColor/.oiChangePct)
+        oiDirection:{
+          state:oiPattern==='WHALE_LONG'?'NEW LONGS':oiPattern==='WHALE_SHORT'?'NEW SHORTS':oiPattern==='SHORT_SQUEEZE'?'SHORT SQUEEZE':oiPattern==='LONG_LIQ'?'LONG LIQ':oiPattern==='OI_RISING'?'OI RISING':oiPattern==='OI_FALLING'?'OI FALLING':'NEUTRAL',
+          stateColor:oiPattern==='WHALE_LONG'||oiPattern==='OI_RISING'?'green':oiPattern==='WHALE_SHORT'?'red':oiPattern==='SHORT_SQUEEZE'?'cyan':oiPattern==='LONG_LIQ'?'amber':'gray',
+          oiChangePct:+oiDelta.toFixed(2)
+        },
+        // liquidationZones with distTo fields (HTML expects .distToLongLiq/.distToShortLiq)
+        liquidationZones:{
+          longLiq10x:liqLong10,shortLiq10x:liqShort10,
+          distToLongLiq:10,distToShortLiq:10
+        },
+        // kellySizing as object (HTML expects .suggestedSizePct)
+        kellySizing:{suggestedSizePct:kellySz},
+        // futuresRisk keeps label
+        futuresRisk:{score:fRisk,label:fRiskLabel}
       });
     }catch(e){}}
     coins.sort((a,b)=>((b.conv&&b.conv.score)||0)-((a.conv&&a.conv.score)||0));
@@ -513,7 +528,7 @@ export default async function handler(req,res){
     const cs=wibH>=2&&wibH<6?'dead':wibH>=6&&wibH<9?'asia_open':wibH>=9&&wibH<12?'asia_peak':wibH>=12&&wibH<15?'lunch':wibH>=15&&wibH<18?'london':wibH>=18&&wibH<21?'ny_pre':wibH>=21&&wibH<23?'ny_open':'ny_late';
     const cso=sess.find(s=>s.id===cs)||sess[0];
     const np=sess.filter(s=>s.q==='PRIME'&&s.id!==cs);
-    let nxt=null;if(np.length>0){const ns=np[0];nxt={name:ns.name,time:ns.time,inHours:ns.start>wibH?ns.start-wibH:24-wibH+ns.start};}
+    let nxt=null;if(np.length>0){const ns=np[0];var inH=ns.start>wibH?ns.start-wibH:24-wibH+ns.start;nxt={name:ns.name,time:ns.time,inH:inH,inHours:inH};}
     const focusToday=cso.q==='PRIME'?cso.name+' PRIME aktif!':cso.q==='GOOD'?cso.name+' kondisi bagus':cso.q==='BUILDING'?cso.name+' bangun posisi':'Next PRIME: '+(nxt?nxt.name+' ~'+nxt.inHours+'h':'-');
 
     // Resistance: nearest level ABOVE btcP
@@ -692,15 +707,15 @@ export default async function handler(req,res){
       if(top.oiPattern==='WHALE_LONG')reasons.push('OI naik +'+top.oiDelta+'% + harga stabil = WHALE MASUK');
       if(top.oiPattern==='SHORT_SQUEEZE')reasons.push('OI turun + harga naik = SHORT COVER sedang berlangsung');
       if(((top.conv&&top.conv.score)||0)>=80)reasons.push('Convergence ELITE '+((top.conv&&top.conv.score)||0)+'/100 (9 faktor)');
-      return{sym:top.sym,price:top.price,signal:top.signal||'-',rsi:top.rsi,rsi1h:top.rsi1h,rsi1d:top.rsi1d,fr:top.fr,conv:(top.conv&&top.conv.score)||0,convLabel:(top.conv&&top.conv.label)||'',convStars:top.convStars||0,divergence:top.divergence||null,mtfConfirmed:!!(top.rsiReal&&top.rsi<35),mtfAligned:top.mtfAligned,oiPattern:top.oiPattern,oiDelta:top.oiDelta,retailLong:top.retailLong,retailShort:top.retailShort,retailBias:top.retailBias,futuresRisk:top.futuresRisk||null,reasoning:reasons,entry:top.price,sl:top.levels?top.levels.sl:0,tp1:top.levels?top.levels.tp1:0,tp2:top.levels?top.levels.tp2:0,tp3:top.levels?top.levels.tp3:0,slPct:top.levels?top.levels.slPct:0,tp1Pct:top.levels?top.levels.tp1Pct:0,tp2Pct:top.levels?top.levels.tp2Pct:0,tp3Pct:top.levels?top.levels.tp3Pct:0,rr:top.rr||2.3,probability:top.probability||70,kellySizing:top.kellySizing||2};
+      return{sym:top.sym,price:top.price,signal:top.signal||'-',rsi:top.rsi,rsi1h:top.rsi1h,rsi1d:top.rsi1d,fr:top.fr,conv:(top.conv&&top.conv.score)||0,convLabel:(top.conv&&top.conv.label)||'',convStars:top.convStars||0,divergence:top.divergence||null,mtfConfirmed:!!(top.rsiReal&&top.rsi<35),mtfAligned:top.mtfAligned,oiPattern:top.oiPattern,oiDelta:top.oiDelta,retailLong:top.retailLong,retailShort:top.retailShort,retailBias:top.retailBias,futuresRisk:top.futuresRisk||null,reasoning:reasons,entry:top.price,sl:top.levels?top.levels.sl:0,tp1:top.levels?top.levels.tp1:0,tp2:top.levels?top.levels.tp2:0,tp3:top.levels?top.levels.tp3:0,slPct:top.levels?top.levels.slPct:0,tp1Pct:top.levels?top.levels.tp1Pct:0,tp2Pct:top.levels?top.levels.tp2Pct:0,tp3Pct:top.levels?top.levels.tp3Pct:0,rr:top.rr||2.3,probability:top.probability||70,kellySizing:{suggestedSizePct:top.kellySizing&&top.kellySizing.suggestedSizePct?top.kellySizing.suggestedSizePct:typeof top.kellySizing==='number'?top.kellySizing:2}};
     }catch(e){return null}})();
 
     const out={
       ok:true,version:'v15',ts:Date.now(),elapsed:Date.now()-t0,
       dataQuality:{coins:coins.length,realRSI,bybitCoins:Object.values(cm).filter(x=>x.src==='by').length,mexcCoins:Object.values(cm).filter(x=>x.src==='mx').length,btcLS:!!btcLS,btcRsi:!!(btcK&&btcK.rsi),src:'bybit+mexc+phase2',mtf1hCoins:Object.keys(km1h).length,oiDeltaTracked:Object.keys(OI_CACHE.prev).length,phase2Coins:phase2Coins.length,pumpCandidates:coins.filter(x=>x.isPumpCandidate).length},
       fg,fgLabel,
-      marketCharacter:{type:mcType,color:mcColor,description:mcDesc,tradeStyle:mcStrat,riskLevel:mcRisk,positionSize:mcPos,marketPct:Math.round(bPct*100)+'% bullish',stats:{oversold:osCount,overbought:obCount,bullish:Math.round(bPct*100),bearish:Math.round((1-bPct)*100),coiling:coins.filter(x=>x.isCoiling).length,mtfBull:coins.filter(x=>x.mtfAligned==='BULL').length,whaleLong:coins.filter(x=>x.oiPattern==='WHALE_LONG').length}},
-      btcSnapshot:{price:btcP,ch24:btcC,rsi:btcK?btcK.rsi||null:null,rsiSlope:btcK?btcK.slopeTxt||'-':'-',rsiDir:btcK?btcK.slopeDir||'flat':'flat',rsi1h:km1h.BTC||null,rsi1d:btcD1rsi,volTrend:btcK?btcK.volTrend||'-':'-',atrPct:btcATRpct,atr:btcATRusd,d1rsi:btcD1rsi,d1trend:btcD1rsi&&btcK&&btcK.rsi?(btcD1rsi<btcK.rsi?'DOWN':'UP'):'-',fg,fgLabel,macd:btcK?btcK.macd||null:null,resistance:btcRes,support:btcSup,current:btcP,aboveEma200:!!(btcK&&btcK.aboveE200),btcLS:!!btcLS,btcLongPct:btcL,btcShortPct:btcS,oiPattern:cm.BTC?cm.BTC.oiPattern:'NEUTRAL',oiDelta:cm.BTC?cm.BTC.oiDelta:0},
+      marketCharacter:{type:mcType,color:mcColor,description:mcDesc,tradeStyle:mcStrat,riskLevel:mcRisk,positionSize:mcPos,marketPct:Math.round(bPct*100)+'% bullish',stats:{oversold:osCount,overbought:obCount,bullish:Math.round(bPct*100),bullPct:Math.round(bPct*100),bearish:Math.round((1-bPct)*100),coiling:coins.filter(x=>x.isCoiling).length,mtfBull:coins.filter(x=>x.mtfAligned==='BULL').length,whaleLong:coins.filter(x=>x.oiPattern==='WHALE_LONG').length}},
+      btcSnapshot:{price:btcP,ch24:btcC,rsi:btcK?btcK.rsi||null:null,rsiSlope:btcK?btcK.slopeTxt||'-':'-',rsiDir:btcK?btcK.slopeDir||'flat':'flat',rsi1h:km1h.BTC||null,rsi1d:btcD1rsi,volTrend:btcK?btcK.volTrend||'-':'-',atrPct:btcATRpct,atr:btcATRusd,d1rsi:btcD1rsi,d1trend:btcD1rsi&&btcK&&btcK.rsi?(btcD1rsi<btcK.rsi?'DOWN':'UP'):'-',fg,fgLabel,macd:btcK?btcK.macd||null:null,resistance:btcRes,support:btcSup,current:btcP,aboveEma200:!!(btcK&&btcK.aboveE200),btcLS:btcLS||null,btcLongPct:btcL||null,btcShortPct:btcS||null,oiPattern:cm.BTC?cm.BTC.oiPattern:'NEUTRAL',oiDelta:cm.BTC?cm.BTC.oiDelta:0},
       convergence:{leaders:longs.slice(0,12),longSetups:longs,shortSetups:shorts,flySetups:flys,accumSetups:accums,summary:longs.length+' LONG - '+shorts.length+' SHORT - '+flys.length+' FLY',eliteCount:ec,primeCount:pc,validCount:vc,shortCount:shorts.length},
       gamePlan:{btcLevels:{resistance:btcRes,support:btcSup,current:btcP},scenarios:{bull:{condition:'BTC tembus $'+btcRes+' close di atas',action:'Long conv 65+ RR 1:3 RS+FR+OI filter',setups:top3},sideways:{condition:'BTC konsolidasi +-1.5%',action:'Scalp COILING+ACCUM saja.'},bear:{condition:'BTC breakdown ke $'+btcSup,action:'Cash 80%. SHORT RSI 72+.'}},scalpSetups:flys.slice(0,5).map(x=>({
           sym:x.sym,sector:x.sector||'',price:x.price,signal:x.signal,
@@ -736,7 +751,7 @@ export default async function handler(req,res){
           };
         }),activeShorts:shorts.slice(0,5).map(x=>({sym:x.sym,price:x.price,signal:x.signal,rsi:x.rsi})),spotAccum,avoidList},
       sectorFlow:{sectors,sectorData},
-      checklist:{marketChecks:mkChecks,coinChecks:[{label:'RSI koin < 72'},{label:'Conv Score 60+'},{label:'FR < +0.04%'},{label:'RR min 1:2'},{label:'No entry 30min sebelum news'},{label:'Vol 5M+ USD'},{label:'Size 2% equity max'},{label:'SL ATR-based'},{label:'Volume konfirmasi'},{label:'Sesuai skenario Game Plan'}],marketPassCount:pass,marketTotal:8,overallGreenLight:pass>=6,verdict:pass>=6?'KONDISI LAYAK TRADING':'HATI-HATI - '+(8-pass)+' kondisi belum terpenuhi'},
+      checklist:{marketChecks:mkChecks,coinChecks:['RSI koin < 72','Conv Score 60+','FR < +0.04%','RR min 1:2','No entry 30min sebelum news','Vol 5M+ USD','Size 2% equity max','SL ATR-based','Volume konfirmasi','Sesuai skenario Game Plan'],marketPassCount:pass,marketTotal:8,overallGreenLight:pass>=6,verdict:pass>=6?'KONDISI LAYAK TRADING':'HATI-HATI - '+(8-pass)+' kondisi belum terpenuhi'},
       tradingSchedule:{wibHour:wibH,dayName:days[now2.getUTCDay()],sessions:sess,currentSession:cs,currentSessionObj:cso,focusToday,nextPrimeSession:nxt,nextPrime:nxt},
       pumpHunter,whaleLoadingRadar,whaleFingerprint,squeezeRadar,stealthVolume,hiddenGems,momentumShift,oiDeltaLeaders,retailTrapList,retailSqueezeList,
       dailyOpportunityScore,marketRegime,todaysBestTrade
