@@ -958,10 +958,11 @@ async function runTIS(){
       var mcType=d.marketCharacter?.type||'';
       var mcShort=mcType.includes('CAPITULATION')?'🔥CAPBOT':mcType.includes('OVERSOLD')?'💎OVERSOLD':mcType.includes('BULL')?'📈BULL':mcType.includes('BEAR')?'📉BEAR':'⚖️NEUTRAL';
       var dos=d.dailyOpportunityScore;
+  var smRCount=A(d.smRadar).length;
       var dosStr=dos?(' · 🎯'+dos.score):'';
       var sessionQ=d.tradingSchedule&&d.tradingSchedule.position||'-';
       var refreshMin=sessionQ==='PRIME'?3:5;
-      st.textContent='✅ v'+d.version+' · '+dq.coins+' koin · '+dq.realRSI+' real RSI · '+mcShort+' · '+deepOS+' OS'+dosStr+' · '+d.elapsed+'ms · auto '+refreshMin+'min';
+      var smStr=smRCount>0?' · 🎯'+smRCount+' SM':'';st.textContent='✅ v'+d.version+' · '+dq.coins+' koin · '+dq.realRSI+' real RSI · '+mcShort+' · '+deepOS+' OS'+dosStr+smStr+' · '+d.elapsed+'ms · auto '+refreshMin+'min';
     }
     btn.textContent='🔄 Refresh';btn.disabled=false;
   }catch(e){
@@ -1036,7 +1037,7 @@ function tisMod2BTC(d){
     +(gp.support?'<div style="display:flex;justify-content:space-between;padding:2px 4px;background:rgba(0,255,136,.06);border-radius:3px"><span style="color:var(--g)">Support</span><span style="font-family:var(--m);color:var(--g)">$'+fP(gp.support)+'</span></div>':'')
     +'</div>'
     +'<div style="margin-top:5px;font-size:9px"><span style="color:var(--dim)">MACD: </span><span style="color:'+(macd.xUp?'var(--g)':macd.xDown?'var(--red)':macd.bull?'var(--g2)':'var(--red)')+'">'+(macd.xUp?'⬆️ Golden Cross':macd.xDown?'⬇️ Death Cross':macd.bull?'🟢 Bullish':'🔴 Bearish')+'</span></div>';
-  h+='<div style="display:flex;gap:8px;margin-top:3px;font-size:8px;padding:0 6px">'
+  el.innerHTML+='<div style="display:flex;gap:8px;margin-top:3px;font-size:8px;padding:0 6px">'
     +(btc.rsiDir==='up'?'<span style="color:var(--g)">▲ RSI naik</span>':btc.rsiDir==='down'?'<span style="color:var(--red)">▼ RSI turun</span>':'<span style="color:var(--dim)">● RSI flat</span>')
     +(btc.volTrend&&btc.volTrend!=='—'?'<span style="color:'+(btc.volTrend.includes('naik')?'var(--g)':btc.volTrend.includes('turun')?'var(--amber)':'var(--dim)')+'"> · '+btc.volTrend+'</span>':'')
     +'</div>';
@@ -1096,10 +1097,14 @@ function mkConvCard(c,forceCol,forceBg){
   var sc=c.conv?.score||c.conv||0;
   var dir=c.direction||'WAIT';
   var sig=String(c.signal||'');
-  var sCol=c.signalColor||(sc>=80?'var(--g)':sc>=70?'#00ffa3':sc>=60?'var(--amber)':'var(--muted)');
+  // Special colors for new bear market signals
+  var sigStr=String(c.signal||'');
+  var specialCol=sigStr.includes('DCA ZONE')?'#ff8844':sigStr.includes('STEALTH LOAD')?'#a78bfa':sigStr.includes('OVERSOLD WATCH')?'#888888':null;
+  var sCol=specialCol||c.signalColor||(sc>=80?'var(--g)':sc>=70?'#00ffa3':sc>=60?'var(--amber)':'var(--muted)');
   if(forceCol)sCol=forceCol;
   var sBg=forceBg||(sc>=80?'rgba(0,255,136,.08)':sc>=70?'rgba(0,255,136,.05)':sc>=60?'rgba(255,179,0,.04)':'rgba(255,255,255,.02)');
-  var dirBadge=dir==='LONG'?'<span style="font-size:7px;background:rgba(0,255,136,.15);color:var(--g);padding:1px 4px;border-radius:2px;margin-left:3px">LONG</span>':dir==='SHORT'?'<span style="font-size:7px;background:rgba(255,68,102,.15);color:var(--red);padding:1px 4px;border-radius:2px;margin-left:3px">SHORT</span>':'';
+  var isSpotOnly=sigStr.includes('DCA ZONE')||sigStr.includes('STEALTH LOAD');
+  var dirBadge=isSpotOnly?'<span style="font-size:7px;background:rgba(255,136,68,.2);color:#ff8844;padding:1px 4px;border-radius:2px;margin-left:3px">SPOT</span>':dir==='LONG'?'<span style="font-size:7px;background:rgba(0,255,136,.15);color:var(--g);padding:1px 4px;border-radius:2px;margin-left:3px">LONG</span>':dir==='SHORT'?'<span style="font-size:7px;background:rgba(255,68,102,.15);color:var(--red);padding:1px 4px;border-radius:2px;margin-left:3px">SHORT</span>':'';
 
   var mtfBadge=c.mtfBadge||'';
   var mtfHtml=mtfBadge?('<span style="font-size:7px;background:'+(mtfBadge.includes('MTF')?'rgba(255,215,0,.2)':mtfBadge.includes('UP')?'rgba(0,255,136,.1)':'rgba(255,100,0,.1)')+';color:'+(mtfBadge.includes('MTF')?'#ffd700':mtfBadge.includes('UP')?'var(--g)':'var(--amber)')+';padding:1px 4px;border-radius:2px;margin-left:2px">'+mtfBadge+'</span>'):'';
@@ -1189,7 +1194,7 @@ function tisMod3Plan(d){
         +'<div style="font-size:7.5px;color:var(--dim)">RSI '+s.rsi+(s.rsiReal?' 🟢 REAL':'~EST')+(s.atrPct?' · ATR '+s.atrPct+'%':'')+'</div>'
         +(s.divergence?'<div style="font-size:7px;color:var(--g);margin-top:1px">'+s.divergence+'</div>':'')
         +(s.retailLong&&s.retailLong<=42?'<div style="font-size:7px;color:var(--g);margin-top:1px">'+s.retailShort+'% SHORT = squeeze ready</div>':'')
-        +'<div style="font-size:7.5px;color:var(--g);margin-top:2px">'+s.signal+'</div>'
+        +'<div style="font-size:7.5px;color:'+(String(s.signal||'').includes('DCA ZONE')?'#ff8844':String(s.signal||'').includes('STEALTH')?'#a78bfa':'var(--g)')+';margin-top:2px">'+s.signal+'</div>'
         +'</div>';
     });
     h+='</div></div>';
@@ -1533,6 +1538,53 @@ function tisMod8Golden(d){
   h+='<div style="font-size:10px;font-weight:900;color:#ffd700;letter-spacing:2px;margin-bottom:6px">🏆 GOLDEN OPPORTUNITY DETECTORS</div>';
   h+='<div style="font-size:8px;color:var(--dim);margin-bottom:8px">Peluang emas yang tidak terlihat di chart biasa — data institusional real-time</div>';
   
+  // SM RADAR — ALTCOIN ACCUMULATION (highest priority)
+  var smR=A(d.smRadar);
+  if(smR.length>0){
+    h+='<div style="background:rgba(0,200,255,.04);border:1px solid rgba(0,200,255,.25);border-radius:10px;padding:10px;margin-bottom:10px">';
+    h+='<div style="font-size:10px;font-weight:900;color:#00c8ff;letter-spacing:1px;margin-bottom:2px">🎯 ALTCOIN SM ACCUMULATION RADAR</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:8px">Real Volume + FR negatif + OI Delta + Harga stabil = SM loading diam-diam · '+smR.length+' kandidat</div>';
+    smR.slice(0,12).forEach(function(s){
+      var sclr=s.confirmed?'#00ffd0':s.layer==='bybit'?'#4af0ff':'#a0e040';
+      var rsiC=s.rsi<30?'var(--g)':s.rsi<45?'#4af0ff':s.rsi<60?'var(--amber)':'var(--red)';
+      var frC=s.fr!=null?(s.fr<-0.01?'var(--g)':s.fr<0?'#88ffcc':'var(--dim)'):'var(--dim)';
+      h+='<div style="background:rgba(0,200,255,.02);border-radius:8px;padding:8px 9px;margin-bottom:6px;border-left:3px solid '+sclr+'">';
+      // Header row
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">';
+      h+='<div style="display:flex;align-items:center;gap:5px">';
+      h+='<span style="font-family:var(--m);font-size:13px;font-weight:900">'+s.sym+'</span>';
+      if(s.confirmed)h+='<span style="font-size:7px;background:rgba(0,255,208,.2);color:#00ffd0;padding:1px 5px;border-radius:3px;font-weight:700">CONFIRMED</span>';
+      else if(s.layer==="bybit")h+='<span style="font-size:7px;background:rgba(74,240,255,.15);color:#4af0ff;padding:1px 5px;border-radius:3px">OI+FR</span>';
+      else h+='<span style="font-size:7px;background:rgba(160,224,64,.15);color:#a0e040;padding:1px 5px;border-radius:3px">VOL</span>';
+      h+='<span style="font-size:8px;color:var(--dim)">'+( s.sector||'')+'</span>';
+      h+='</div>';
+      h+='<div style="text-align:right">';
+      h+='<span style="font-size:10px;font-weight:900;color:'+sclr+'">'+s.smScore+'/100</span>';
+      h+='</div></div>';
+      // Stats grid
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:3px;margin-bottom:5px;font-size:7.5px">';
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:4px;padding:3px;text-align:center"><div style="color:var(--dim)">Price</div><div style="font-family:var(--m);font-weight:700">$'+fP(s.price)+'</div><div style="color:'+(s.c24>=0?'var(--g)':'var(--red)')+'">'+(s.c24>=0?'+':'')+s.c24+'%</div></div>';
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:4px;padding:3px;text-align:center"><div style="color:var(--dim)">Volume</div><div style="font-weight:700;color:var(--blue)">'+fV(s.vol)+'</div>'+(s.volMCpct?'<div style="color:var(--blue)">MC '+s.volMCpct+'%</div>':'<div style="color:var(--dim)">OI '+fV(s.oi)+'</div>')+'</div>';
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:4px;padding:3px;text-align:center"><div style="color:var(--dim)">FR/RSI</div>'+(s.fr!=null?'<div style="font-weight:700;color:'+frC+'">'+s.fr+'%</div>':'<div style="color:var(--dim)">—</div>')+'<div style="color:'+rsiC+'">RSI ~'+( +s.rsi).toFixed(0)+'</div></div>';
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:4px;padding:3px;text-align:center"><div style="color:var(--dim)">Range/OI</div><div style="font-weight:700;color:var(--amber)">'+s.range24+'%</div>'+(s.oiDelta?'<div style="color:'+(s.oiDelta>0?'var(--g)':'var(--red)')+'">'+(s.oiDelta>=0?'+':'')+s.oiDelta+'%</div>':'<div style="color:var(--dim)">—</div>')+'</div>';
+      h+='</div>';
+      // Entry/SL/TP
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-bottom:5px">';
+      h+='<div style="text-align:center;background:rgba(255,255,255,.02);border-radius:4px;padding:3px"><div style="font-size:7px;color:var(--dim)">Entry</div><div style="font-family:var(--m);font-size:8.5px;font-weight:700">$'+fP(s.entry||s.price)+'</div></div>';
+      h+='<div style="text-align:center;background:rgba(255,68,100,.07);border-radius:4px;padding:3px"><div style="font-size:7px;color:var(--red)">SL -'+s.slPct+'%</div><div style="font-family:var(--m);font-size:8px;font-weight:700;color:var(--red)">$'+fP(s.sl)+'</div></div>';
+      h+='<div style="text-align:center;background:rgba(0,255,136,.05);border-radius:4px;padding:3px"><div style="font-size:7px;color:var(--g)">TP2 +'+s.tp2Pct+'%</div><div style="font-family:var(--m);font-size:8px;font-weight:700;color:var(--g)">$'+fP(s.tp2)+'</div></div>';
+      h+='</div>';
+      // Evidence tags
+      if(s.reasons&&s.reasons.length){
+        h+='<div style="display:flex;flex-wrap:wrap;gap:3px">';
+        s.reasons.slice(0,3).forEach(function(r){h+='<span style="font-size:7px;background:rgba(0,200,255,.1);color:#00c8ff;padding:1px 5px;border-radius:3px">'+r+'</span>';});
+        h+='</div>';
+      }
+      h+='</div>';
+    });
+    h+='</div>';
+  }
+
   // PUMP HUNTER SECTION - highest priority display
   var ph=A(d.pumpHunter);
   if(ph.length>0){
@@ -1744,10 +1796,13 @@ function tisMod2DailyPower(d){
   h+='<div style="font-size:8px;color:var(--dim)">'+dos.action+'</div>';
   h+='</div>';
   h+='<div style="background:rgba(255,255,255,.02);border:1px solid '+regCol+'30;border-radius:10px;padding:10px">';
+  var regLbl=regime.regime||'—';
+  var isCapit=regLbl.includes('CAPITULATION')||regLbl.includes('ACCUMULATE');
   h+='<div style="font-size:9px;font-weight:700;color:#ffd700;margin-bottom:4px">📊 MARKET REGIME</div>';
   h+='<div style="font-size:16px;font-weight:900;color:'+regCol+'">'+regime.regime+'</div>';
   h+='<div style="font-size:8px;color:var(--dim);margin:4px 0">'+regime.regimeDesc+'</div>';
   h+='<div style="font-size:8px;font-weight:700;color:'+regCol+'">'+regime.sizingGuidance+'</div>';
+  if(isCapit)h+='<div style="margin-top:4px;font-size:7.5px;background:rgba(0,212,170,.1);color:#00ffd0;padding:3px 6px;border-radius:4px">💎 RSI ekstrem langka. DCA spot bertahap.</div>';
   h+='</div>';
   h+='</div>';
 
@@ -1784,6 +1839,7 @@ function tisMod2DailyPower(d){
     h+='<span style="color:var(--amber)">P: '+best.probability+'%</span>';
     h+='</div>';
     if(best.kellySizing)h+='<div style="font-size:8px;margin-top:3px;color:var(--purple)">Kelly: '+best.kellySizing.suggestedSizePct+'% portfolio</div>';
+    if(best.regimeWarning)h+='<div style="margin-top:5px;padding:5px 7px;background:rgba(255,100,0,.1);border:1px solid rgba(255,100,0,.3);border-radius:5px;font-size:8px;color:#ff8844">⚠️ '+best.regimeWarning+'</div>';
     if(best.retailLong!=null)h+='<div style="font-size:7.5px;margin-top:2px;color:'+(best.retailLong<=42?'var(--g)':'var(--dim)')+'">👥 Retail: '+best.retailLong+'% Long '+best.retailShort+'% Short</div>';
     if(best.futuresRisk)h+='<div style="font-size:7.5px;margin-top:2px;color:var(--g)">'+best.futuresRisk.label+'</div>';
     h+='</div>';
