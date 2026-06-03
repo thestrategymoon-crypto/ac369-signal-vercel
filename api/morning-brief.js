@@ -30,22 +30,22 @@ export default async function handler(req,res){
     const [R0,R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,R13,R14,R15,R16,R17]=await Promise.allSettled([
       get('https://api.bybit.com/v5/market/tickers?category=linear',2500),          // R0: Bybit all futures
       get('https://api.mexc.com/api/v3/ticker/24hr',2200),                          // R1: MEXC all spot
-      get('https://api.mexc.com/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=52',2500),  // R2: BTC 4H
-      get('https://api.mexc.com/api/v3/klines?symbol=ETHUSDT&interval=4h&limit=52',2500),  // R3: ETH 4H
-      get('https://api.mexc.com/api/v3/klines?symbol=SOLUSDT&interval=4h&limit=52',2500),  // R4: SOL 4H
-      get('https://api.bybit.com/v5/market/account-ratio?category=linear&symbol=BTCUSDT&period=1h&limit=1',2000), // R5: BTC L/S
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=240&limit=52',2500),  // R2: BTC 4H Bybit
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=ETHUSDT&interval=240&limit=52',2500),  // R3: ETH 4H Bybit
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=SOLUSDT&interval=240&limit=52',2500),  // R4: SOL 4H Bybit
+      get('https://api.bybit.com/v5/market/account-ratio?category=linear&symbol=BTCUSDT&period=1h&limit=1',4500), // R5: BTC L/S
       get('https://alternative.me/crypto/fear-and-greed-index/?format=json&limit=1',2000),  // R6: F&G
-      get('https://api.mexc.com/api/v3/klines?symbol=BNBUSDT&interval=4h&limit=52',2200),  // R7: BNB 4H
-      get('https://api.mexc.com/api/v3/klines?symbol=XRPUSDT&interval=4h&limit=52',2200),  // R8: XRP 4H
-      get('https://api.mexc.com/api/v3/klines?symbol=LINKUSDT&interval=4h&limit=52',2200), // R9: LINK 4H
-      get('https://api.mexc.com/api/v3/klines?symbol=AVAXUSDT&interval=4h&limit=52',2200), // R10: AVAX 4H
-      get('https://api.mexc.com/api/v3/klines?symbol=SOLUSDT&interval=1d&limit=20',2000),  // R11: SOL 1D
-      get('https://api.mexc.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=20',2000),  // R12: BTC 1D
-      get('https://api.mexc.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=20',2000),  // R13: BTC 1H NEW
-      get('https://api.mexc.com/api/v3/klines?symbol=ETHUSDT&interval=1h&limit=20',2000),  // R14: ETH 1H NEW
-      get('https://api.mexc.com/api/v3/klines?symbol=SOLUSDT&interval=1h&limit=20',2000),  // R15: SOL 1H NEW
-      get('https://api.mexc.com/api/v3/klines?symbol=BNBUSDT&interval=1h&limit=20',2000),  // R16: BNB 1H NEW
-      get('https://api.mexc.com/api/v3/klines?symbol=XRPUSDT&interval=1h&limit=20',2000),  // R17: XRP 1H NEW
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=BNBUSDT&interval=240&limit=52',2500),  // R7: BNB 4H Bybit
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=XRPUSDT&interval=240&limit=52',2500),  // R8: XRP 4H Bybit
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=LINKUSDT&interval=240&limit=52',2500), // R9: LINK 4H Bybit
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=AVAXUSDT&interval=240&limit=52',2500), // R10: AVAX 4H Bybit
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=SOLUSDT&interval=D&limit=20',2000),  // R11: SOL 1D Bybit
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=D&limit=20',2000),  // R12: BTC 1D Bybit
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=60&limit=20',2000),  // R13: BTC 1H Bybit
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=ETHUSDT&interval=60&limit=20',2000),  // R14: ETH 1H Bybit
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=SOLUSDT&interval=60&limit=20',2000),  // R15: SOL 1H Bybit
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=BNBUSDT&interval=60&limit=20',2000),  // R16: BNB 1H Bybit
+      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=XRPUSDT&interval=60&limit=20',2000),  // R17: XRP 1H Bybit
     ]);
 
     // Build coin map from Bybit
@@ -96,7 +96,11 @@ export default async function handler(req,res){
     const km1h={};
     for(const[sym,kR]of[['BTC',R13],['ETH',R14],['SOL',R15],['BNB',R16],['XRP',R17]]){
       try{
-        const raw=Array.isArray(kR.value)?kR.value:[];
+        // Handle both MEXC (direct array) and Bybit (result.list) format
+        let raw=[];
+        const kv=kR.value;
+        if(Array.isArray(kv))raw=kv;
+        else if(kv&&kv.result&&Array.isArray(kv.result.list))raw=[...kv.result.list].reverse();
         if(raw.length<16)continue;
         const cls=raw.map(d=>N(d[4])).filter(v=>v>0);
         const r=rsi14(cls);
@@ -108,7 +112,11 @@ export default async function handler(req,res){
     const km={};let realRSI=0;
     for(const[sym,kR,kR1d]of[['BTC',R2,R12],['ETH',R3,null],['SOL',R4,R11],['BNB',R7,null],['XRP',R8,null],['LINK',R9,null],['AVAX',R10,null]]){
       try{
-        const raw=Array.isArray(kR.value)?kR.value:[];
+        // Handle both MEXC (direct array) and Bybit (result.list) format
+        let raw=[];
+        const kv=kR.value;
+        if(Array.isArray(kv))raw=kv;
+        else if(kv&&kv.result&&Array.isArray(kv.result.list))raw=[...kv.result.list].reverse();
         if(raw.length<16)continue;
         const K=raw.map(d=>({o:N(d[1]),h:N(d[2]),l:N(d[3]),c:N(d[4]),v:N(d[5])}));
         const cls=K.map(x=>x.c).filter(v=>v>0);if(cls.length<16)continue;
@@ -137,10 +145,34 @@ export default async function handler(req,res){
       }catch(e){}
     }
     let btcD1rsi=null;
-    try{const raw=Array.isArray(R12.value)?R12.value:[];if(raw.length>=16){const cls=raw.map(d=>N(d[4])).filter(v=>v>0);btcD1rsi=rsi14(cls)?+rsi14(cls).toFixed(1):null;}}catch(e){}
+    try{
+    let raw_d1=[];const kd1=R12.value;
+    if(Array.isArray(kd1))raw_d1=kd1;
+    else if(kd1&&kd1.result&&Array.isArray(kd1.result.list))raw_d1=[...kd1.result.list].reverse();
+    const raw=raw_d1;if(raw.length>=16){const cls=raw.map(d=>N(d[4])).filter(v=>v>0);btcD1rsi=rsi14(cls)?+rsi14(cls).toFixed(1):null;}}catch(e){}
 
 
     // ---------------------------------------
+    // OI DELTA: Fetch real 1H OI history for top 20 Bybit coins
+    // This gives accurate OI delta without relying on module cache
+    try{
+      const oiTopCoins=Object.entries(cm)
+        .filter(([s,v])=>v.src==='by'&&(v.oi||0)>100e6&&!/^[0-9]/.test(s)&&!s.endsWith('USDC'))
+        .sort((a,b)=>(b[1].oi||0)-(a[1].oi||0)).slice(0,20).map(([s])=>s);
+      const oiHist=await Promise.allSettled(
+        oiTopCoins.map(s=>get('https://api.bybit.com/v5/market/open-interest?category=linear&symbol='+s+'USDT&intervalTime=1h&limit=2',2500))
+      );
+      oiHist.forEach((res,i)=>{
+        try{
+          const sym=oiTopCoins[i];
+          const list=res&&res.value&&res.value.result&&res.value.result.list;
+          if(!list||list.length<2)return;
+          const c2=+(list[0].openInterest||0),p2=+(list[1].openInterest||0);
+          if(p2>0&&c2>0)OI_CACHE.prev[sym]=p2;
+        }catch(e2){}
+      });
+    }catch(e){}
+
     // PHASE 2: DYNAMIC REAL KLINES TOP 50 ALTCOINS
     // Filter Bybit by OI > $100M, pick top 50
     // Fetch 4H klines in parallel - real RSI/EMA/MACD
@@ -166,12 +198,15 @@ export default async function handler(req,res){
     if(phase2Coins.length>0){
       try{
         const p2Results=await Promise.allSettled(
-          phase2Coins.map(c=>get('https://api.mexc.com/api/v3/klines?symbol='+c.sym+'USDT&interval=4h&limit=52',2800))
+          phase2Coins.map(c=>get('https://api.bybit.com/v5/market/kline?category=linear&symbol='+c.sym+'USDT&interval=240&limit=52',3000))
         );
         p2Results.forEach((res,i)=>{
           try{
             const sym=phase2Coins[i].sym;
-            const raw=Array.isArray(res.value)?res.value:[];
+            let raw=[];
+            const pv=res.value;
+            if(Array.isArray(pv))raw=pv;
+            else if(pv&&pv.result&&Array.isArray(pv.result.list))raw=[...pv.result.list].reverse();
             if(raw.length<16)return;
             const K=raw.map(d=>({o:N(d[1]),h:N(d[2]),l:N(d[3]),c:N(d[4]),v:N(d[5])}));
             const cls=K.map(x=>x.c).filter(v=>v>0);
@@ -669,7 +704,80 @@ export default async function handler(req,res){
         });
     }catch(e){return[]}})();
 
-        // WHALE LOADING RADAR - dedicated section
+
+    // ALTCOIN SMART MONEY RADAR
+    // 3-Layer: Bybit OI/FR + MEXC Volume + Cross-confirm
+    const TOP7S=new Set(['BTC','ETH','SOL','BNB','XRP','LINK','AVAX','BTCUSDC','ETHUSDC']);
+    const smRadar=(()=>{try{
+      const candidates=[];
+      const bybitSet=new Set();
+      // LAYER 1: Bybit futures - OI/FR based SM
+      Object.entries(cm).forEach(([s,by])=>{
+        if(TOP7S.has(s)||by.src!=='by')return;
+        if(/^[0-9]/.test(s)||s.endsWith('USDC')||s.length>10)return;
+        const oi=by.oi||0,vol=by.v||0,fp=by.fr||0;
+        const p=by.p||0,h=by.h||p,l=by.l||p,c24=by.c24||0;
+        if(oi<5e6||vol<500000||p<=0)return;
+        const range24=p>0&&h>l?(h-l)/p*100:10;
+        const volOIr=oi>0?vol/oi:0;
+        let smS=0,smR=[];
+        // FR: negative = shorts paying = SM long
+        if(fp<-0.0003){smS+=30;smR.push('FR '+(fp*100).toFixed(3)+'%');}
+        else if(fp<-0.0001){smS+=20;smR.push('FR '+(fp*100).toFixed(3)+'%');}
+        else if(fp<0){smS+=10;}else if(fp===0){smS+=5;}
+        // OI delta: rising = fresh money
+        const prevO=OI_CACHE.prev[s]||oi;
+        const oiD=prevO>0?(oi-prevO)/prevO*100:0;
+        if(oiD>3){smS+=25;smR.push('OI +'+oiD.toFixed(1)+'%');}
+        else if(oiD>1){smS+=15;smR.push('OI +'+oiD.toFixed(1)+'%');}
+        else if(oiD>0){smS+=8;}
+        // Price stability: tight range = SM absorb supply
+        if(range24<2){smS+=25;smR.push('Range '+range24.toFixed(1)+'% tight');}
+        else if(range24<4){smS+=15;smR.push('Konsolidasi '+range24.toFixed(1)+'%');}
+        else if(range24<6){smS+=8;}
+        // Vol/OI activity ratio
+        if(volOIr>0.3){smS+=20;smR.push('Vol/OI '+volOIr.toFixed(2)+'x');}
+        else if(volOIr>0.15){smS+=12;}else if(volOIr>0.05){smS+=6;}
+        if(vol>10e6)smS+=5;
+        if(smS>=35){
+          bybitSet.add(s);
+          const slPct=Math.max(range24*0.6,2);
+          candidates.push({sym:s,price:p,c24:+c24.toFixed(2),vol:vol,oi:+oi,fr:+(fp*100).toFixed(4),oiDelta:+oiD.toFixed(2),range24:+range24.toFixed(2),smScore:Math.min(100,smS),reasons:smR,layer:'bybit',rsi:by.rsi||50,sl:+(p*(1-slPct/100)).toFixed(p>1?2:8),tp1:+(p*(1+range24*0.8/100)).toFixed(p>1?2:8),tp2:+(p*(1+range24*1.5/100)).toFixed(p>1?2:8),slPct:+slPct.toFixed(2),tp2Pct:+(range24*1.5).toFixed(2),sector:by.sec||'ALT',confirmed:false});
+        }
+      });
+      // LAYER 2: MEXC spot - volume-based
+      const bybitSyms=new Set(Object.entries(cm).filter(([,v])=>v.src==='by').map(([k])=>k));
+      Object.entries(cm).forEach(([s,mx])=>{
+        if(TOP7S.has(s)||mx.src!=='mx')return;
+        if(/^[0-9]/.test(s)||s.length>12)return;
+        const vol=mx.v||0,p=mx.p||0,c24=mx.c24||0;
+        const h=mx.h||p,l=mx.l||p;
+        if(vol<1e6||p<=0)return;
+        const range24=p>0&&h>l?(h-l)/p*100:10;
+        const volMC=mx.mc>0?vol/mx.mc*100:0;
+        let mxS=0,mxR=[];
+        if(vol>20e6){mxS+=35;mxR.push('Vol $'+(vol/1e6).toFixed(0)+'M institusional');}
+        else if(vol>5e6){mxS+=25;mxR.push('Vol $'+(vol/1e6).toFixed(0)+'M');}
+        else if(vol>2e6){mxS+=15;}
+        if(volMC>30){mxS+=35;mxR.push('V/MC '+volMC.toFixed(0)+'% EXTREME');}
+        else if(volMC>15){mxS+=25;mxR.push('V/MC '+volMC.toFixed(0)+'% tinggi');}
+        else if(volMC>5){mxS+=15;mxR.push('V/MC '+volMC.toFixed(0)+'%');}
+        if(range24<2&&vol>2e6){mxS+=30;mxR.push('Vol+harga stabil=akumulasi');}
+        else if(range24<4){mxS+=15;}
+        if(Math.abs(c24)>15)mxS=Math.max(0,mxS-20);
+        if(mxS>=40){
+          const ex=candidates.find(c2=>c2.sym===s);
+          if(ex){ex.smScore=Math.min(100,ex.smScore+15);ex.confirmed=true;ex.reasons=[...ex.reasons,...mxR.slice(0,2)];}
+          else{
+            const slPct2=Math.max(range24*0.6,2.5);
+            candidates.push({sym:s,price:p,c24:+c24.toFixed(2),vol:vol,oi:0,fr:null,oiDelta:0,range24:+range24.toFixed(2),smScore:Math.min(100,mxS),reasons:mxR,layer:'mexc',rsi:mx.rsi||50,sl:+(p*(1-slPct2/100)).toFixed(p>1?2:8),tp1:+(p*(1+range24*0.8/100)).toFixed(p>1?2:8),tp2:+(p*(1+range24*2/100)).toFixed(p>1?2:8),slPct:+slPct2.toFixed(2),tp2Pct:+(range24*2).toFixed(2),sector:mx.sec||'ALT',volMCpct:+volMC.toFixed(1),confirmed:false});
+          }
+        }
+      });
+      return candidates.filter(c=>c.smScore>=40).sort((a,b)=>{if(a.confirmed&&!b.confirmed)return -1;if(!a.confirmed&&b.confirmed)return 1;return b.smScore-a.smScore;}).slice(0,20);
+    }catch(e){return[]}})();
+
+            // WHALE LOADING RADAR - dedicated section
     const whaleLoadingRadar=(()=>{try{
       return coins
         .filter(c=>c.src==='by'&&c.isWhaleLoading&&(c.oi||0)>100e6)
@@ -722,8 +830,14 @@ export default async function handler(req,res){
     const marketRegime=(()=>{try{
       const btcE2=btcK&&btcK.e200?btcK.e200:0,mvrvR=btcK&&btcK.price&&btcE2>0?+(btcK.price/btcE2).toFixed(2):1.3;
       let regime,regimeColor,regimeDesc,sizingGuidance;
-      if(fg<30&&mvrvR<1.1&&osCount/totC>0.05){regime='ACCUMULATE';regimeColor='cyan';regimeDesc='Extreme Fear + MVRV rendah = zona akumulasi historis terbaik.';sizingGuidance='DCA bertahap 25-50%.';}
-      else if(fg>=30&&fg<=65&&obCount/totC<0.15&&(cso.q==='PRIME'||cso.q==='GOOD')){regime='TRADE';regimeColor='green';regimeDesc='Market seimbang + session bagus = kondisi ideal trading.';sizingGuidance='Full sizing. Patuhi SL.';}
+      const btcRsiNow=btcK&&btcK.rsi?btcK.rsi:50;
+      const isExtremeBear=btcRsiNow<20||(btcRsiNow<30&&fg<30);
+      const isCapitulation=btcRsiNow<15&&fg<25;
+      if(isCapitulation){regime='ACCUMULATE';regimeColor='cyan';regimeDesc='CAPITULATION: RSI 4H '+btcRsiNow.toFixed(0)+' + F&G '+fg+'. Zona akumulasi historis terbaik. Beli spot bertahap.';sizingGuidance='Spot DCA 10-20% per entry. NO LEVERAGE.';}
+      else if(isExtremeBear){regime='ACCUMULATE';regimeColor='cyan';regimeDesc='Extreme oversold: RSI '+btcRsiNow.toFixed(0)+' + Fear '+fg+'. DCA spot, hindari futures leverage.';sizingGuidance='DCA bertahap 25-50%. Spot only.';}
+      else if(fg<35&&mvrvR<1.1&&osCount/totC>0.04){regime='ACCUMULATE';regimeColor='cyan';regimeDesc='Extreme Fear + MVRV rendah = zona akumulasi historis terbaik.';sizingGuidance='DCA bertahap 25-50%.';}
+      else if(fg>=35&&fg<=65&&btcRsiNow>40&&obCount/totC<0.15&&(cso.q==='PRIME'||cso.q==='GOOD')){regime='TRADE';regimeColor='green';regimeDesc='Market seimbang + session bagus = kondisi ideal trading.';sizingGuidance='Full sizing. Patuhi SL.';}
+      else if(fg>=35&&fg<=65&&btcRsiNow>40&&obCount/totC<0.15){regime='TRADE';regimeColor='green';regimeDesc='Market dalam range. Entry selektif, tunggu PRIME session.';sizingGuidance='50-75% sizing. Ketat SL.';}
       else if(fg>65||mvrvR>1.8){regime='CAUTION';regimeColor='amber';regimeDesc='Market greedy atau MVRV tinggi.';sizingGuidance='Max 0.5-1% risk/trade.';}
       else{regime='AVOID';regimeColor='red';regimeDesc='Kondisi tidak ideal untuk trading aktif.';sizingGuidance='Jangan entry baru.';}
       return{regime,regimeColor,regimeDesc,sizingGuidance,fg,mvrv:mvrvR,osCoins:osCount};
@@ -794,7 +908,7 @@ export default async function handler(req,res){
       sectorFlow:{sectors,sectorData},
       checklist:{marketChecks:mkChecks,coinChecks:['RSI koin < 72','Conv Score 60+','FR < +0.04%','RR min 1:2','No entry 30min sebelum news','Vol 5M+ USD','Size 2% equity max','SL ATR-based','Volume konfirmasi','Sesuai skenario Game Plan'],marketPassCount:pass,marketTotal:8,overallGreenLight:pass>=6,verdict:pass>=6?'KONDISI LAYAK TRADING':'HATI-HATI - '+(8-pass)+' kondisi belum terpenuhi'},
       tradingSchedule:{wibHour:wibH,dayName:days[now2.getUTCDay()],sessions:sess,currentSession:cs,currentSessionObj:cso,focusToday,nextPrimeSession:nxt,nextPrime:nxt},
-      pumpHunter,whaleLoadingRadar,whaleFingerprint,squeezeRadar,stealthVolume,hiddenGems,momentumShift,oiDeltaLeaders,retailTrapList,retailSqueezeList,
+      smRadar,pumpHunter,whaleLoadingRadar,whaleFingerprint,squeezeRadar,stealthVolume,hiddenGems,momentumShift,oiDeltaLeaders,retailTrapList,retailSqueezeList,
       dailyOpportunityScore,marketRegime,todaysBestTrade
     };
     const json=JSON.stringify(out);
