@@ -216,6 +216,14 @@ export default async function handler(req,res){
     let btcLS=null,btcL=null,btcS=null;
     try{const row=A(R5.value&&R5.value.result?R5.value.result.list:[])[0];if(row){btcL=+N(row.buyRatio*100).toFixed(2);btcS=+N(row.sellRatio*100).toFixed(2);btcLS=btcS>0?+(btcL/btcS).toFixed(2):null;}}catch(e){}
 
+    // Pre-compute bear regime estimate (BEFORE coin loop)
+    // mcType not yet available - use BTC data as proxy
+    const btcRsiPre=btcK&&btcK.rsi?btcK.rsi:50;
+    const preBearEst=btcRsiPre<45&&btcC<-0.5;// BTC oversold + falling = bear regime
+    // We'll use this as regime estimate inside the loop
+    // True bear = BTC RSI < 35 OR (BTC RSI < 45 + BTC 24h negative + FG < 35)
+    const bearEstimate=btcRsiPre<35||(btcRsiPre<45&&btcC<-0.5&&fg<40);
+
     // Signal engine v3 - 23 signals
     const coins=[];
     for(const[sym,by]of Object.entries(cm)){try{
@@ -291,11 +299,10 @@ export default async function handler(req,res){
       const prePumpLabel=prePumpScore>=75?'READY':prePumpScore>=60?'BUILDING':prePumpScore>=45?'WATCH':'';
       const isPumpCandidate=prePumpScore>=60&&by.src==='by'&&(by.oi||0)>50e6;
 
-      // Market regime quality for signal filtering
-      const isBearRegime=mcType==='BEARISH'||mcType==='MASS OVERBOUGHT';
-      const isAvoidRegime=mcType==='BEARISH'&&(btcC<-1||rsi>65);
-      // Spot-only flag: in bear regime, downgrade futures signals to SPOT DCA
-      const spotOnlyMode=isBearRegime&&by.src==='by';
+      // Market regime quality for signal filtering (use pre-computed estimate)
+      const isBearRegime=bearEstimate;
+      // Spot-only: only for Bybit futures in strong bear (RSI < 35)
+      const spotOnlyMode=btcRsiPre<35&&by.src==='by'&&rsi<35;
 
       // MTF RSI alignment check
       const mtfOversold=rsi1h&&rsi1h<40&&rsi<42&&(rsi1d?rsi1d<52:true);
@@ -457,7 +464,7 @@ export default async function handler(req,res){
       // ATR-based SL/TP - wider in bear market to avoid premature stop out
       let sl=0,tp1=0,tp2=0,tp3=0,slP=2.5,tp1P=4.0,tp2P=7.0,tp3P=12.0;
       // Bear market = wider SL (2.5x ATR) to survive volatility
-      const slMult=mcType==='BEARISH'||mcType==='MASS OVERSOLD'?2.5:mcType==='BULLISH'?1.5:2.0;
+      const slMult=bearEstimate?2.0:btcRsiPre>55?1.5:1.8;// Bear=wider SL
       try{if(ap>0){slP=+(ap*slMult).toFixed(2);tp1P=+(ap*(slMult+0.5)).toFixed(2);tp2P=+(ap*(slMult*2)).toFixed(2);tp3P=+(ap*(slMult*3.5)).toFixed(2);}
         if(dir==='LONG'){sl=+(p*(1-slP/100)).toFixed(p>1?4:8);tp1=+(p*(1+tp1P/100)).toFixed(p>1?4:8);tp2=+(p*(1+tp2P/100)).toFixed(p>1?4:8);tp3=+(p*(1+tp3P/100)).toFixed(p>1?4:8);}
         else if(dir==='SHORT'){sl=+(p*(1+slP/100)).toFixed(p>1?4:8);tp1=+(p*(1-tp1P/100)).toFixed(p>1?4:8);tp2=+(p*(1-tp2P/100)).toFixed(p>1?4:8);tp3=+(p*(1-tp3P/100)).toFixed(p>1?4:8);}}catch(e){}
@@ -741,7 +748,7 @@ export default async function handler(req,res){
       if(top.oiPattern==='SHORT_SQUEEZE')reasons.push('OI turun + harga naik = SHORT COVER sedang berlangsung');
       if(((top.conv&&top.conv.score)||0)>=80)reasons.push('Convergence ELITE '+((top.conv&&top.conv.score)||0)+'/100 (9 faktor)');
       return{sym:top.sym,price:top.price,signal:top.signal||'-',rsi:top.rsi,rsi1h:top.rsi1h,rsi1d:top.rsi1d,fr:top.fr,conv:(top.conv&&top.conv.score)||0,convLabel:(top.conv&&top.conv.label)||'',convStars:top.convStars||0,divergence:top.divergence||null,mtfConfirmed:!!(top.rsiReal&&top.rsi<35),mtfAligned:top.mtfAligned,oiPattern:top.oiPattern,oiDelta:top.oiDelta,retailLong:top.retailLong,retailShort:top.retailShort,retailBias:top.retailBias,futuresRisk:top.futuresRisk||null,reasoning:reasons,entry:top.price,sl:top.levels?top.levels.sl:0,tp1:top.levels?top.levels.tp1:0,tp2:top.levels?top.levels.tp2:0,tp3:top.levels?top.levels.tp3:0,slPct:top.levels?top.levels.slPct:0,tp1Pct:top.levels?top.levels.tp1Pct:0,tp2Pct:top.levels?top.levels.tp2Pct:0,tp3Pct:top.levels?top.levels.tp3Pct:0,rr:top.rr||2.3,probability:top.probability||70,kellySizing:{suggestedSizePct:top.kellySizing&&top.kellySizing.suggestedSizePct?top.kellySizing.suggestedSizePct:typeof top.kellySizing==='number'?top.kellySizing:2},
-        regimeWarning:isBearRegime?'BEAR MARKET: Sizing 25-50%. Konfirmasi candle dulu.':null};
+        regimeWarning:bearEstimate?'BEAR MARKET: Sizing 25-50%. Konfirmasi candle dulu. Prioritas spot/DCA.':null};
     }catch(e){return null}})();
 
     const out={
