@@ -16,7 +16,7 @@ const macd14=a=>{try{if(!a||a.length<36)return null;const k12=2/13,k26=2/27;let 
 // OI Delta cache - persists between requests (module-level)
 const OI_CACHE={prev:{},prevTs:0};
 
-const SAFE={ok:false,version:'v15',ts:0,elapsed:0,dataQuality:{coins:0,realRSI:0},fg:50,fgLabel:'Neutral',marketCharacter:{type:'TRANSITIONAL',color:'amber',description:'Data tidak tersedia',tradeStyle:'Cautious',riskLevel:'REDUCED',positionSize:'Minimal (25%)',marketPct:'50% bullish',stats:{oversold:0,overbought:0,bullish:0,bearish:0,coiling:0}},btcSnapshot:{price:0,ch24:0,rsi:null,rsiSlope:'-',rsiDir:'flat',rsi1h:null,rsi1d:null,volTrend:'-',atrPct:0,atr:0,fg:50,fgLabel:'Neutral',macd:null,resistance:null,support:null,current:0,aboveEma200:false,btcLS:false,btcLongPct:null,btcShortPct:null,d1rsi:null,d1trend:'-'},convergence:{leaders:[],longSetups:[],shortSetups:[],flySetups:[],accumSetups:[],summary:'-',eliteCount:0,primeCount:0,validCount:0,shortCount:0},gamePlan:{btcLevels:{},scenarios:{bull:{condition:'-',action:'-',setups:[]},sideways:{condition:'-',action:'-'},bear:{condition:'-',action:'-'}},scalpSetups:[],swingSetups:[],activeShorts:[],spotAccum:[],avoidList:[]},sectorFlow:{sectors:[],sectorData:{}},tradingSchedule:{wibHour:0,dayName:'-',sessions:[],currentSession:'-',currentSessionObj:{id:'dead',name:'Dead Zone',time:'02:00-06:00',q:'POOR',activity:'-'},focusToday:'-',nextPrimeSession:null},checklist:{marketChecks:[],coinChecks:[],marketPassCount:0,marketTotal:8,overallGreenLight:false,verdict:'Data tidak tersedia'},whaleFingerprint:[],squeezeRadar:[],stealthVolume:[],hiddenGems:[],momentumShift:[],oiDeltaLeaders:[],retailTrapList:[],retailSqueezeList:[],dailyOpportunityScore:{score:50,label:'NORMAL',action:'-'},marketRegime:{regime:'NORMAL',regimeColor:'gray',regimeDesc:'-',sizingGuidance:'-'},todaysBestTrade:null};
+const SAFE={ok:false,version:'v15.8',ts:0,elapsed:0,dataQuality:{coins:0,realRSI:0},fg:50,fgLabel:'Neutral',marketCharacter:{type:'TRANSITIONAL',color:'amber',description:'Data tidak tersedia',tradeStyle:'Cautious',riskLevel:'REDUCED',positionSize:'Minimal (25%)',marketPct:'50% bullish',stats:{oversold:0,overbought:0,bullish:0,bearish:0,coiling:0}},btcSnapshot:{price:0,ch24:0,rsi:null,rsiSlope:'-',rsiDir:'flat',rsi1h:null,rsi1d:null,volTrend:'-',atrPct:0,atr:0,fg:50,fgLabel:'Neutral',macd:null,resistance:null,support:null,current:0,aboveEma200:false,btcLS:false,btcLongPct:null,btcShortPct:null,d1rsi:null,d1trend:'-'},convergence:{leaders:[],longSetups:[],shortSetups:[],flySetups:[],accumSetups:[],summary:'-',eliteCount:0,primeCount:0,validCount:0,shortCount:0},gamePlan:{btcLevels:{},scenarios:{bull:{condition:'-',action:'-',setups:[]},sideways:{condition:'-',action:'-'},bear:{condition:'-',action:'-'}},scalpSetups:[],swingSetups:[],activeShorts:[],spotAccum:[],avoidList:[]},sectorFlow:{sectors:[],sectorData:{}},tradingSchedule:{wibHour:0,dayName:'-',sessions:[],currentSession:'-',currentSessionObj:{id:'dead',name:'Dead Zone',time:'02:00-06:00',q:'POOR',activity:'-'},focusToday:'-',nextPrimeSession:null},checklist:{marketChecks:[],coinChecks:[],marketPassCount:0,marketTotal:8,overallGreenLight:false,verdict:'Data tidak tersedia'},whaleFingerprint:[],squeezeRadar:[],stealthVolume:[],hiddenGems:[],momentumShift:[],oiDeltaLeaders:[],retailTrapList:[],retailSqueezeList:[],dailyOpportunityScore:{score:50,label:'NORMAL',action:'-'},marketRegime:{regime:'NORMAL',regimeColor:'gray',regimeDesc:'-',sizingGuidance:'-'},todaysBestTrade:null};
 const CACHE={d:null,t:0};
 
 export default async function handler(req,res){
@@ -603,17 +603,23 @@ export default async function handler(req,res){
     }catch(e){}}
     coins.sort((a,b)=>((b.conv&&b.conv.score)||0)-((a.conv&&a.conv.score)||0));
 
-    // In bear market: only show LONG if it has REAL RSI or DECOUPLING
+    // LONG filter: quality over quantity
+    // Bear market = only real data or anomaly decoupling allowed
     const longs=coins.filter(x=>{
       if(x.direction!=='LONG')return false;
       const cv2=(x.conv&&x.conv.score)||0;if(cv2<60)return false;
-      // Bear market filter: require real RSI or high conviction
       if(bearEstimate){
-        // Allow if: real RSI + actual oversold, OR decoupling breakout, OR whale loading
-        const isQual=x.rsiReal||(x.decouplingScore||0)>=65||x.signal==='WHALE LOADING'||x.signal==='CONFIRMED BREAKOUT'||x.signal==='DECOUPLING STRONG';
-        return isQual;
+        return x.rsiReal||(x.decouplingScore||0)>=65||
+               x.signal==='WHALE LOADING'||x.signal==='CONFIRMED BREAKOUT'||
+               x.signal==='DECOUPLING STRONG'||x.signal==='DECOUPLING';
       }
       return true;
+    }).sort((a,b)=>{
+      // Sort: decoupling first, then by conv score
+      const aD=(a.decouplingScore||0)>=65?1:0;
+      const bD=(b.decouplingScore||0)>=65?1:0;
+      if(aD!==bD)return bD-aD;
+      return((b.conv&&b.conv.score)||0)-((a.conv&&a.conv.score)||0);
     }).slice(0,30);
     const shorts=coins.filter(x=>x.direction==='SHORT'&&((x.conv&&x.conv.score)||0)>=55).slice(0,10);
     const decoupSet=new Set(['CONFIRMED BREAKOUT','DECOUPLING STRONG','DECOUPLING']);
@@ -947,7 +953,7 @@ export default async function handler(req,res){
     }catch(e){return[]}})();
 
     const out={
-      ok:true,version:'v15',ts:Date.now(),elapsed:Date.now()-t0,
+      ok:true,version:'v15.8',ts:Date.now(),elapsed:Date.now()-t0,
       dataQuality:{coins:coins.length,realRSI,bybitCoins:Object.values(cm).filter(x=>x.src==='by').length,mexcCoins:Object.values(cm).filter(x=>x.src==='mx').length,btcLS:!!btcLS,btcRsi:!!(btcK&&btcK.rsi),src:'bybit+mexc+phase2',mtf1hCoins:Object.keys(km1h).length,oiDeltaTracked:Object.keys(OI_CACHE.prev).length,phase2Coins:phase2Coins.length,pumpCandidates:coins.filter(x=>x.isPumpCandidate).length},
       fg,fgLabel,
       marketCharacter:{type:mcType,color:mcColor,description:mcDesc,tradeStyle:mcStrat,riskLevel:mcRisk,positionSize:mcPos,marketPct:Math.round(bPct*100)+'% bullish',stats:{oversold:osCount,overbought:obCount,bullish:Math.round(bPct*100),bullPct:Math.round(bPct*100),bearish:Math.round((1-bPct)*100),coiling:coins.filter(x=>x.isCoiling).length,mtfBull:coins.filter(x=>x.mtfAligned==='BULL').length,whaleLong:coins.filter(x=>x.oiPattern==='WHALE_LONG').length}},
