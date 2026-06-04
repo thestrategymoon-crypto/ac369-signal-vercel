@@ -235,9 +235,9 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <div>
         <div style="font-size:13px;font-weight:800;color:var(--g)">AC369 TIS v4.1 — Trade Intelligence System</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:3px">150+ Koin · LONG+SHORT+ACCUM · ATR SL/TP · L/S Ratio · Sector Flow Interaktif</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">150+ Koin · ANOMALY+DECOUPLING+LONG+SHORT · ATR SL/TP · Sector Flow · Koin Anomali</div>
       </div>
-      <button id="tis-btn" onclick="runTIS()" style="background:linear-gradient(135deg,#00d4aa,#4af0ff);color:#0a0e1a;border:none;padding:10px 22px;border-radius:10px;font-family:var(--m);font-size:13px;font-weight:900;cursor:pointer;letter-spacing:.5px">⚡ Run Analysis</button>
+      <div style="display:flex;gap:8px;align-items:center"><button id="tis-btn" onclick="runTIS()" style="background:linear-gradient(135deg,#00d4aa,#4af0ff);color:#0a0e1a;border:none;padding:10px 22px;border-radius:10px;font-family:var(--m);font-size:13px;font-weight:900;cursor:pointer;letter-spacing:.5px">⚡ Run Analysis</button><button onclick="showSignalHistory()" style="background:rgba(255,179,0,.1);border:1px solid rgba(255,179,0,.3);color:var(--amber);padding:8px 14px;border-radius:9px;font-size:11px;cursor:pointer;font-weight:700">📊 History</button></div>
     </div>
     <div id="tis-status" style="font-size:10px;color:var(--dim);margin-top:8px">⏳ Auto-loading dalam 8 detik setelah data utama siap...</div>
   </div>
@@ -246,6 +246,7 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
       <div class="card" id="tis-char" style="border-color:rgba(0,212,170,.2)"></div>
       <div class="card" id="tis-btc" style="border-color:rgba(74,240,255,.2)"></div>
   <div id="tis-daily-power"></div>
+    <div id="tis-top5"></div>
     </div>
     <div class="card" id="tis-conv" style="margin-bottom:8px;border-color:rgba(168,85,247,.2)"></div>
     <div class="card" id="tis-plan" style="margin-bottom:8px;border-color:rgba(0,255,136,.2)"></div>
@@ -926,6 +927,14 @@ async function runTIS(){
     _tisData=d;
     if(content)content.style.display='block';
     renderTIS(d);
+    // Fetch scanner top setups in background (non-blocking)
+    apiFetch('/api/scanner-full',20000,0).then(function(sc){
+      if(!sc||!sc.results)return;
+      // Merge top 5 into TIS data
+      d._scanTop5=(sc.topSetups&&sc.topSetups.institutional||sc.results||[]).filter(function(x){return x.probability>=70;}).slice(0,5);
+      d._scanTotal=sc.totalScanned||sc.results.length||0;
+      try{tisMod2DailyPower(d);}catch(e){}
+    }).catch(function(){});
     var dq=d.dataQuality||{};
     // AUTO-RETRY if 0 coins (temporary API issue)
     if(dq.coins===0&&!d._retried){
@@ -1056,6 +1065,41 @@ function tisMod2Conv(d){
   h+='<div style="font-size:9px;color:var(--dim);margin-bottom:5px">5 faktor · LONG + SHORT + ACCUMULATION · 🔥ELITE≥80 · 💎PRIME≥70 · ✅VALID≥60</div>';
   if(cv.summary)h+='<div style="font-size:11px;font-weight:700;color:var(--g);margin-bottom:8px">'+cv.summary+'</div>';
 
+  // 🚨 DECOUPLING BREAKOUT - Coin naik saat BTC turun = signal terkuat
+  var dc=A(cv.decouplingCoins);
+  if(dc.length>0){
+    h+='<div style="margin-bottom:10px;background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.3);border-radius:10px;padding:10px">';
+    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">';
+    h+='<div style="font-size:11px;font-weight:900;color:#00ff88">🚨 DECOUPLING BREAKOUT — BTC Dump, Koin Naik</div>';
+    h+='<span style="background:rgba(0,255,136,.2);color:var(--g);font-size:8px;padding:2px 7px;border-radius:10px">'+dc.length+' koin</span>';
+    h+='</div>';
+    h+='<div style="font-size:8px;color:var(--muted);margin-bottom:8px">BTC turun tapi koin ini naik = ada SM/catalyst aktif = sinyal terkuat di crypto. Entry selektif.</div>';
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:5px">';
+    dc.slice(0,12).forEach(function(x){
+      var sc2=x.isConfirmed?'var(--g)':x.decouplingScore>=80?'#00ffaa':'#88ffcc';
+      var badge=x.isConfirmed?'CONFIRMED':x.decouplingScore>=80?'STRONG':'MILD';
+      var bdgBg=x.isConfirmed?'rgba(0,255,136,.2)':x.decouplingScore>=80?'rgba(0,255,170,.15)':'rgba(136,255,204,.1)';
+      h+='<div onclick="clickCoin(\"'+x.sym+'\")" style="background:rgba(0,0,0,.2);border:1px solid '+sc2+'40;border-radius:8px;padding:8px;cursor:pointer">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">';
+      h+='<span style="font-family:var(--m);font-size:12px;font-weight:900">'+x.sym+'</span>';
+      h+='<span style="font-size:7px;background:'+bdgBg+';color:'+sc2+';padding:1px 5px;border-radius:3px;font-weight:700">'+badge+'</span>';
+      h+='</div>';
+      h+='<div style="font-size:9px;font-weight:700;color:'+sc2+';margin-bottom:3px">+'+(x.c24).toFixed(1)+'%</div>';
+      h+='<div style="display:flex;gap:5px;font-size:8px;margin-bottom:3px">';
+      h+='<span style="color:var(--g)">RS +'+(x.rs).toFixed(1)+'%</span>';
+      h+='<span style="color:var(--dim)">BTC '+(x.btcC).toFixed(1)+'%</span>';
+      h+='</div>';
+      h+='<div style="font-size:8px;color:var(--dim)">Score: '+x.decouplingScore+'</div>';
+      if(x.volMCpct>0)h+='<div style="font-size:7.5px;color:var(--blue)">V/MC '+x.volMCpct+'%</div>';
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-top:4px;font-size:7px">';
+      h+='<div style="background:rgba(255,68,100,.08);border-radius:3px;padding:2px;text-align:center"><span style="color:var(--red)">SL -'+x.slPct+'%</span></div>';
+      h+='<div style="background:rgba(0,255,136,.06);border-radius:3px;padding:2px;text-align:center"><span style="color:var(--g)">TP +'+x.tp2Pct+'%</span></div>';
+      h+='</div>';
+      h+='</div>';
+    });
+    h+='</div></div>';
+  }
+
   // 🚀 ABOUT TO FLY / CAPITULATION
   if(flys.length){
     h+='<div style="margin-bottom:8px"><div style="font-size:10px;font-weight:700;color:var(--g);margin-bottom:4px;display:flex;align-items:center;gap:6px">🚀 ABOUT TO FLY — Probabilitas ≥80% <span style="background:rgba(0,255,136,.1);color:var(--g);font-size:8px;padding:1px 6px;border-radius:4px">'+flys.length+' setup</span></div>';
@@ -1104,7 +1148,8 @@ function mkConvCard(c,forceCol,forceBg){
   if(forceCol)sCol=forceCol;
   var sBg=forceBg||(sc>=80?'rgba(0,255,136,.08)':sc>=70?'rgba(0,255,136,.05)':sc>=60?'rgba(255,179,0,.04)':'rgba(255,255,255,.02)');
   var isSpotOnly=sigStr.includes('DCA ZONE')||sigStr.includes('STEALTH LOAD');
-  var dirBadge=isSpotOnly?'<span style="font-size:7px;background:rgba(255,136,68,.2);color:#ff8844;padding:1px 4px;border-radius:2px;margin-left:3px">SPOT</span>':dir==='LONG'?'<span style="font-size:7px;background:rgba(0,255,136,.15);color:var(--g);padding:1px 4px;border-radius:2px;margin-left:3px">LONG</span>':dir==='SHORT'?'<span style="font-size:7px;background:rgba(255,68,102,.15);color:var(--red);padding:1px 4px;border-radius:2px;margin-left:3px">SHORT</span>':'';
+  var isDecoupleSig=sigStr.includes('DECOUPLING')||sigStr.includes('BREAKOUT');
+  var dirBadge=isDecoupleSig?'<span style="font-size:7px;background:rgba(0,255,136,.2);color:var(--g);padding:1px 4px;border-radius:2px;margin-left:3px">RS+</span>':isSpotOnly?'<span style="font-size:7px;background:rgba(255,136,68,.2);color:#ff8844;padding:1px 4px;border-radius:2px;margin-left:3px">SPOT</span>':dir==='LONG'?'<span style="font-size:7px;background:rgba(0,255,136,.15);color:var(--g);padding:1px 4px;border-radius:2px;margin-left:3px">LONG</span>':dir==='SHORT'?'<span style="font-size:7px;background:rgba(255,68,102,.15);color:var(--red);padding:1px 4px;border-radius:2px;margin-left:3px">SHORT</span>':'';
 
   var mtfBadge=c.mtfBadge||'';
   var mtfHtml=mtfBadge?('<span style="font-size:7px;background:'+(mtfBadge.includes('MTF')?'rgba(255,215,0,.2)':mtfBadge.includes('UP')?'rgba(0,255,136,.1)':'rgba(255,100,0,.1)')+';color:'+(mtfBadge.includes('MTF')?'#ffd700':mtfBadge.includes('UP')?'var(--g)':'var(--amber)')+';padding:1px 4px;border-radius:2px;margin-left:2px">'+mtfBadge+'</span>'):'';
@@ -1773,6 +1818,41 @@ function tisMod2DailyPower(d){
   var scoreCol=dos.score>=80?'#ffd700':dos.score>=65?'var(--g)':dos.score>=50?'var(--g2)':dos.score>=35?'var(--amber)':'var(--red)';
   var regCol=regime.regimeColor==='cyan'?'#00d4ff':regime.regimeColor==='green'?'var(--g)':regime.regimeColor==='amber'?'var(--amber)':'var(--red)';
 
+  // TOP 5 BEST SETUPS TODAY (from scanner)
+  var top5wrap=$('tis-top5');
+  if(top5wrap&&A(d._scanTop5).length>0){
+    var t5=A(d._scanTop5);
+    var t5h='<div style="background:linear-gradient(135deg,rgba(255,215,0,.06),rgba(168,85,247,.04));border:1.5px solid rgba(255,215,0,.3);border-radius:11px;padding:10px 12px;margin-bottom:8px">';
+    t5h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+    t5h+='<div style="font-size:10px;font-weight:900;color:#ffd700;letter-spacing:1px">⭐ TOP 5 SETUP TERBAIK HARI INI</div>';
+    t5h+='<span style="font-size:8px;color:var(--dim)">dari '+d._scanTotal+' discan</span>';
+    t5h+='</div>';
+    t5h+='<div style="display:flex;flex-direction:column;gap:5px">';
+    t5.slice(0,5).forEach(function(s,i){
+      var chg=+(s.change24h||0),up=chg>=0;
+      var prob=s.probability||50;var pC=prob>=80?'var(--g)':prob>=70?'var(--amber)':'var(--muted)';
+      var ta=s.trendAlignment||'';var taC=ta.includes('BULL')?'var(--g)':ta.includes('BEAR')?'var(--red)':'var(--amber)';
+      t5h+='<div onclick="clickCoin(\"'+s.symbol+'\")" style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.02);border-radius:7px;padding:7px 9px;cursor:pointer;border-left:3px solid '+(i===0?'#ffd700':i<3?'var(--g)':'var(--muted)')+'">';
+      t5h+='<span style="font-size:13px;color:'+(i===0?'#ffd700':i<3?'var(--g)':'var(--dim)')+';font-weight:900;min-width:16px">'+(i+1)+'.</span>';
+      t5h+='<div style="flex:1">';
+      t5h+='<div style="display:flex;align-items:center;gap:5px">';
+      t5h+='<span style="font-family:var(--m);font-size:12px;font-weight:900">'+s.symbol+'</span>';
+      t5h+='<span style="font-size:8px;color:var(--dim)">'+( s.sector||'')+'</span>';
+      if(s.hasRealData)t5h+='<span style="font-size:7px;background:rgba(0,255,136,.1);color:var(--g);padding:0 3px;border-radius:2px">REAL</span>';
+      t5h+='</div>';
+      t5h+='<div style="font-size:8px;color:var(--muted);margin-top:1px">'+( (s.signals||[]).slice(0,2).join(' · '))+'</div>';
+      t5h+='</div>';
+      t5h+='<div style="text-align:right">';
+      t5h+='<div style="font-family:var(--m);font-size:11px;font-weight:700;color:'+(up?'var(--g)':'var(--red)')+'">'+(up?'+':'')+chg.toFixed(2)+'%</div>';
+      t5h+='<div style="font-size:9px;font-weight:700;color:'+pC+'">'+prob+'% prob</div>';
+      t5h+='<div style="font-size:8px;color:'+taC+'">'+ta+'</div>';
+      t5h+='</div>';
+      t5h+='</div>';
+    });
+    t5h+='</div></div>';
+    top5wrap.innerHTML=t5h;
+  }
+
   // Signal summary strip
   if(d.convergence){
     var cv2=d.convergence;
@@ -1848,6 +1928,92 @@ function tisMod2DailyPower(d){
   }
   el.innerHTML=h;
 }
+
+// ══════════════════════════════════════
+// SIGNAL HISTORY TRACKER (localStorage)
+// Tracks signal accuracy for learning
+// ══════════════════════════════════════
+var SIG_HIST_KEY='ac369_signal_history_v2';
+function sigHistGet(){try{return JSON.parse(localStorage.getItem(SIG_HIST_KEY)||'[]');}catch(e){return[];}}
+function sigHistSave(h){try{localStorage.setItem(SIG_HIST_KEY,JSON.stringify(h.slice(-200)));}catch(e){}}
+function sigHistAdd(sym,signal,entry,sl,tp1,tp2,prob){
+  var h=sigHistGet();
+  h.push({sym:sym,signal:signal,entry:entry,sl:sl,tp1:tp1,tp2:tp2,prob:prob,ts:Date.now(),status:'OPEN',exitPrice:null,result:null,rrActual:null});
+  sigHistSave(h);
+}
+function sigHistUpdate(){
+  var h=sigHistGet();var changed=false;
+  h.forEach(function(s){
+    if(s.status!=='OPEN')return;
+    if(Date.now()-s.ts>7*24*3600000){s.status='EXPIRED';changed=true;return;}// 7d expiry
+    // Check price vs TP/SL
+    var cur=_tisData&&_tisData.btcSnapshot?null:null;// would need live price
+    // Price check via altcoin data
+    if(_altData){
+      var coin=(_altData.gainers||[]).concat(_altData.topGainers||[]).find(function(c){return c.symbol===s.sym;});
+      if(!coin)coin=(_altData.rsiList||[]).find(function(c){return c.symbol===s.sym;});
+      if(coin&&coin.price&&s.entry>0){
+        var pct=(coin.price-s.entry)/s.entry*100;
+        if(coin.price<=s.sl){s.status='SL_HIT';s.result='LOSS';s.exitPrice=s.sl;s.rrActual=-1;changed=true;}
+        else if(coin.price>=s.tp2){s.status='TP2_HIT';s.result='WIN';s.exitPrice=s.tp2;s.rrActual=2;changed=true;}
+        else if(coin.price>=s.tp1){s.status='TP1_HIT';s.result='WIN';s.exitPrice=s.tp1;s.rrActual=1;changed=true;}
+      }
+    }
+  });
+  if(changed)sigHistSave(h);
+  return h;
+}
+function sigHistStats(){
+  var h=sigHistGet().filter(function(s){return s.status!=='OPEN'&&s.status!=='EXPIRED';});
+  if(!h.length)return null;
+  var wins=h.filter(function(s){return s.result==='WIN';}).length;
+  var losses=h.filter(function(s){return s.result==='LOSS';}).length;
+  return{total:h.length,wins:wins,losses:losses,wr:+(wins/(h.length)*100).toFixed(1),recent:h.slice(-5)};
+}
+
+// Show signal history in a modal
+function resetSigHist(){if(window.confirm('Reset?')){localStorage.removeItem(SIG_HIST_KEY);var m=document.getElementById('sig-hist-modal');if(m)m.remove();}}
+function showSignalHistory(){
+  var h=sigHistUpdate();
+  var stats=sigHistStats();
+  var el=document.getElementById('sig-hist-modal');
+  if(!el){
+    el=document.createElement('div');el.id='sig-hist-modal';
+    el.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.85);z-index:9999;overflow-y:auto;padding:20px';
+    document.body.appendChild(el);
+  }
+  var html='<div style="max-width:500px;margin:0 auto;background:#0e0e1f;border-radius:12px;padding:16px">';
+  html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+  html+='<div style="font-size:14px;font-weight:900;color:var(--g)">📊 Signal History</div>';
+  html+='<button onclick="document.getElementById(\"sig-hist-modal\").remove()" style="background:rgba(255,255,255,.1);border:none;color:var(--txt);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px">✕ Close</button>';
+  html+='</div>';
+  if(stats){
+    var wrc=stats.wr>=60?'var(--g)':stats.wr>=50?'var(--amber)':'var(--red)';
+    html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">';
+    html+='<div style="background:rgba(0,255,136,.06);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--dim)">WIN RATE</div><div style="font-size:22px;font-weight:900;color:'+wrc+'">'+stats.wr+'%</div></div>';
+    html+='<div style="background:rgba(255,255,255,.03);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--dim)">WINS</div><div style="font-size:22px;font-weight:900;color:var(--g)">'+stats.wins+'</div></div>';
+    html+='<div style="background:rgba(255,68,102,.06);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--dim)">LOSSES</div><div style="font-size:22px;font-weight:900;color:var(--red)">'+stats.losses+'</div></div>';
+    html+='</div>';
+  }else{html+='<div style="color:var(--muted);font-size:11px;padding:10px">Belum ada history. Klik SAVE SIGNAL di setiap card untuk mulai tracking.</div>';}
+  h.slice().reverse().slice(0,20).forEach(function(s){
+    var stC=s.result==='WIN'?'var(--g)':s.result==='LOSS'?'var(--red)':'var(--muted)';
+    var stB=s.result==='WIN'?'rgba(0,255,136,.08)':s.result==='LOSS'?'rgba(255,68,102,.08)':'rgba(255,255,255,.03)';
+    var age=Math.floor((Date.now()-s.ts)/3600000);
+    html+='<div style="background:'+stB+';border-radius:7px;padding:8px 10px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center">';
+    html+='<div><div style="font-weight:700;font-family:var(--m)">'+s.sym+'</div><div style="font-size:8px;color:var(--dim)">'+s.signal+' · '+(age<24?age+'h ago':(age/24).toFixed(0)+'d ago')+'</div></div>';
+    html+='<div style="text-align:right"><div style="font-weight:700;color:'+stC+'">'+( s.status.replace('_',' '))+'</div>';
+    if(s.rrActual)html+='<div style="font-size:9px;color:var(--dim)">RR: '+s.rrActual+'R</div>';
+    html+='</div></div>';
+  });
+  html+='<button onclick="resetSigHist()" style="width:100%;margin-top:8px;padding:8px;background:rgba(255,68,102,.1);border:1px solid rgba(255,68,102,.2);color:var(--red);border-radius:7px;cursor:pointer;font-size:11px">Reset History</button>';
+  html+='</div>';
+  el.innerHTML=html;
+}
+
+// Auto-update signal history when altcoin data loads
+var _origRenderNarasi=renderNarasi;
+renderNarasi=function(d){_origRenderNarasi(d);sigHistUpdate();};
+
 </script>
 </body>
 </html>
