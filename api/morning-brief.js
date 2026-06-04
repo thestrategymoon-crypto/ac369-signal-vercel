@@ -346,7 +346,38 @@ export default async function handler(req,res){
 
       // 24 SIGNALS (WHALE LOADING added)
       let sig='',sc='#4a5568',desc='',dir='WAIT',prob=50,tags=[];
-      if(isWhaleLoading&&whaleLoadScore>=80&&rsiZone){
+      // DECOUPLING DETECTION - highest signal quality
+      // Coin goes UP while BTC goes DOWN = independent catalyst = smartest money
+      const isDecoupling=btcC<-1&&c24>3&&rs>5;
+      const isStrongDecoupling=btcC<-2&&c24>5&&rs>10;
+      const isConfirmedDecoupling=btcC<-2&&c24>8&&rs>15&&vol>5e6;
+      let decouplingScore=0;
+      if(isDecoupling){
+        decouplingScore=60+(rs>30?35:rs>20?30:rs>15?25:rs>10?18:rs>5?10:0);
+        // Vol backing
+        const vmcPct=by.mc>0?vol/by.mc*100:0;
+        if(vmcPct>50)decouplingScore+=10;else if(vmcPct>20)decouplingScore+=6;else if(vmcPct>10)decouplingScore+=3;
+        // BTC dump severity
+        if(btcC<-3)decouplingScore+=8;else if(btcC<-2)decouplingScore+=5;else if(btcC<-1)decouplingScore+=2;
+        // FR not overheated
+        if(fp<0.0003)decouplingScore+=5;
+        // Not overbought
+        if(rsi<70)decouplingScore+=3;
+        decouplingScore=Math.min(100,decouplingScore);
+      }
+      if(isConfirmedDecoupling&&decouplingScore>=80){
+        sig='CONFIRMED BREAKOUT';sc='#00ff88';dir='LONG';prob=88;
+        desc='DECOUPLING TERKONFIRMASI: BTC '+(btcC).toFixed(1)+'% tapi koin +'+(c24).toFixed(1)+'% (RS +'+(rs).toFixed(1)+'%). Catalyst nyata. HIGH PROBABILITY.';
+        tags=['DECOUPLING','BREAKOUT','CATALYST','HIGH_PROB'];
+      }else if(isStrongDecoupling&&decouplingScore>=75){
+        sig='DECOUPLING STRONG';sc='#00ffaa';dir='LONG';prob=82;
+        desc='BTC dump '+(btcC).toFixed(1)+'% tapi koin +'+(c24).toFixed(1)+'% (RS +'+(rs).toFixed(1)+'%). SM beli saat semua panik. Entry selektif.';
+        tags=['DECOUPLING','STRONG_RS','SM_BUY'];
+      }else if(isDecoupling&&decouplingScore>=65){
+        sig='DECOUPLING';sc='#88ffcc';dir='LONG';prob=76;
+        desc='Koin +'+(c24).toFixed(1)+'% vs BTC '+(btcC).toFixed(1)+'% (RS +'+(rs).toFixed(1)+'%). Pergerakan independen = ada buyer kuat.';
+        tags=['DECOUPLING','RS_POSITIVE'];
+      }else if(isWhaleLoading&&whaleLoadScore>=80&&rsiZone){
         sig='WHALE LOADING';sc='#00ffcc';dir='LONG';prob=87;
         desc='OI +'+oiDelta.toFixed(1)+'% + harga flat + vol/OI '+volOI.toFixed(2)+' = WHALE AKUMULASI DIAM-DIAM (score '+whaleLoadScore+'/100)';
         tags=['WHALE_LOAD','STEALTH','OI_DELTA','HIGH_PROB'];
@@ -388,7 +419,7 @@ export default async function handler(req,res){
         tags=['DIVERGENCE','REVERSAL'];
       }else if((by.src==='by'&&fr<-0.0001&&rsi>33&&rsi<56&&vol>500000&&Math.abs(c24)<2)||(by.src==='mx'&&vol>1e6&&Math.abs(c24)<1.5&&rsi>33&&rsi<56)){
         if(isBearRegime&&by.src==='by'){
-          sig='STEALTH LOAD';sc='#7c6bff';dir='LONG';prob=70;
+          sig='STEALTH LOAD';sc='#7c6bff';dir='WAIT';prob=70;
           desc='FR negatif + harga stabil di BEAR market = SM akumulasi diam-diam. Entry hanya bila market regime berubah ke TRADE.';
           tags=['ACCUM','STEALTH','WAIT_CONFIRM'];
         }else{
@@ -407,7 +438,7 @@ export default async function handler(req,res){
       }else if(rsi<30&&(fr<-0.0001||fr===0)&&c24<0&&vol>100000){
         // In bear regime, deep oversold = DCA spot only, not futures entry
         if(spotOnlyMode){
-          sig='DCA ZONE';sc='#ffaa44';dir='LONG';prob=65;
+          sig='DCA ZONE';sc='#ffaa44';dir='ACCUM';prob=65;
           desc='RSI '+rsi.toFixed(0)+' oversold di BEAR market = DCA spot bertahap. BUKAN entry futures. Tunggu konfirmasi reversal.';
           tags=['OVERSOLD','SPOT_ONLY','BEAR_CAUTION'];
         }else{
@@ -506,7 +537,18 @@ export default async function handler(req,res){
 
       const rr=+(tp2P/slP).toFixed(1);
       let kellySz=2;try{const pk=(prob/100*rr-(1-prob/100))/rr;kellySz=Math.max(0.5,Math.min(10,+(pk/2*100).toFixed(1)));}catch(e){}
-      const cStars=Math.min(5,+((rsi<25?2:rsi<30?1.5:rsi<38?0.8:rsi<45?0.3:0)+(fr<-0.0005?1.5:fr<-0.0002?1:fr<0?0.5:0)+(ic?0.8:0)+(rs>5?0.8:rs>2?0.5:rs>0?0.2:0)+(vb&&c24>0?0.5:0)+(rR?0.8:0)+(div==='BULLISH'?1:0)+(mtfAligned==='BULL'?1:0)+(oiPattern==='WHALE_LONG'?1:0)).toFixed(1));
+      // CONVICTION SCORING v2 - Tier-based on actual data quality
+      // TIER 1: RSI Quality (0-2 stars) - most important factor
+      const t1=rR?(rsi<15?2:rsi<20?1.8:rsi<25?1.6:rsi<30?1.3:rsi<38?1.0:rsi<45?0.6:0.3):(rsi<25?0.6:rsi<30?0.4:rsi<38?0.2:0);
+      // TIER 2: MTF Alignment (0-1.5 stars) - is signal confirmed across timeframes?
+      const t2=mtfAligned==='BULL'?1.5:km2&&km2.rsi&&km2.rsi<35?0.8:km2&&km2.rsi&&km2.rsi<45?0.5:0;
+      // TIER 3: Divergence (0-1 star) - price/RSI divergence = reversal confirmed
+      const t3=div==='BULLISH'?1:km2&&km2.div==='BULLISH'?0.8:0;
+      // TIER 4: Market Context (0-0.8 stars)
+      const t4=(fr<-0.0002?0.5:fr<0?0.3:0)+(oiDelta>3?0.3:oiDelta>1?0.2:0)+(decouplingScore>=80?0.5:decouplingScore>=65?0.3:0)+(rs>10?0.3:rs>5?0.2:rs>2?0.1:0);
+      // TIER 5: Signal type bonus
+      const t5=sig==='CONFIRMED BREAKOUT'?0.5:sig==='WHALE LOADING'?0.5:sig==='MTF CONFLUENCE BUY'?0.5:sig==='DECOUPLING STRONG'?0.3:0;
+      const cStars=Math.min(5,+(t1+t2+t3+t4+t5).toFixed(1));
       const rLong=by.rLong||50,rShort=by.rShort||50;
       const rBias=rLong>=65?'RETAIL TRAP':rLong>=58?'Long Heavy':rLong<=35?'SQUEEZE':rLong<=42?'Short Dom':'Balanced';
       let fRisk=50;if(fp>0.05)fRisk+=20;else if(fp>0.02)fRisk+=10;else if(fp<-0.05)fRisk-=10;if(dir==='LONG'){if(rsi>70)fRisk+=20;else if(rsi<30)fRisk-=15;}if(div==='BULLISH'&&dir==='LONG')fRisk-=10;if(oiPattern==='WHALE_LONG')fRisk-=8;
@@ -554,15 +596,30 @@ export default async function handler(req,res){
         // kellySizing as object (HTML expects .suggestedSizePct)
         kellySizing:{suggestedSizePct:kellySz},
         // futuresRisk keeps label
-        futuresRisk:{score:fRisk,label:fRiskLabel}
+        futuresRisk:{score:fRisk,label:fRiskLabel},
+        mc:by.mc||0,
+        decouplingScore:Math.round(decouplingScore||0)
       });
     }catch(e){}}
     coins.sort((a,b)=>((b.conv&&b.conv.score)||0)-((a.conv&&a.conv.score)||0));
 
-    const longs=coins.filter(x=>x.direction==='LONG'&&((x.conv&&x.conv.score)||0)>=60).slice(0,30);
+    // In bear market: only show LONG if it has REAL RSI or DECOUPLING
+    const longs=coins.filter(x=>{
+      if(x.direction!=='LONG')return false;
+      const cv2=(x.conv&&x.conv.score)||0;if(cv2<60)return false;
+      // Bear market filter: require real RSI or high conviction
+      if(bearEstimate){
+        // Allow if: real RSI + actual oversold, OR decoupling breakout, OR whale loading
+        const isQual=x.rsiReal||(x.decouplingScore||0)>=65||x.signal==='WHALE LOADING'||x.signal==='CONFIRMED BREAKOUT'||x.signal==='DECOUPLING STRONG';
+        return isQual;
+      }
+      return true;
+    }).slice(0,30);
     const shorts=coins.filter(x=>x.direction==='SHORT'&&((x.conv&&x.conv.score)||0)>=55).slice(0,10);
-    const flys=coins.filter(x=>x.signal&&(x.signal==='MTF CONFLUENCE BUY'||x.signal==='ABOUT TO FLY'||x.signal==='CAPITULATION BUY'||x.signal==='OI SQUEEZE LIVE'||x.signal==='OI WHALE ENTRY'||x.signal==='WHALE LOADING')).slice(0,8);
-    const accums=coins.filter(x=>x.signal&&(x.signal==='SMART ACCUMULATION'||x.signal==='COIL ACCUMULATION'||x.signal==='WHALE FINGERPRINT'||x.signal==='PRE-BREAKOUT COIL'||x.signal==='NARRATIVE PLAY'||x.signal==='REVERSAL FORMING')).slice(0,8);
+    const decoupSet=new Set(['CONFIRMED BREAKOUT','DECOUPLING STRONG','DECOUPLING']);
+    const decoupCoins=coins.filter(x=>x.decouplingScore>=65&&x.rs>5&&x.c24>3).sort((a,b)=>(b.decouplingScore||0)-(a.decouplingScore||0)).slice(0,15);
+    const flys=coins.filter(x=>x.signal&&(x.signal==='MTF CONFLUENCE BUY'||x.signal==='ABOUT TO FLY'||x.signal==='CAPITULATION BUY'||x.signal==='OI SQUEEZE LIVE'||x.signal==='OI WHALE ENTRY'||x.signal==='WHALE LOADING'||decoupSet.has(x.signal||''))).sort((a,b)=>(b.conv&&b.conv.score||0)-(a.conv&&a.conv.score||0)).slice(0,12);
+    const accums=coins.filter(x=>x.signal&&(x.signal==='DCA ZONE'||x.signal==='STEALTH LOAD'||x.signal==='SMART ACCUMULATION'||x.signal==='COIL ACCUMULATION'||x.signal==='WHALE FINGERPRINT'||x.signal==='PRE-BREAKOUT COIL'||x.signal==='NARRATIVE PLAY'||x.signal==='REVERSAL FORMING')).slice(0,8);
     const top25=longs.slice(0,25);
     const ec=top25.filter(x=>((x.conv&&x.conv.score)||0)>=80).length;
     const pc=top25.filter(x=>((x.conv&&x.conv.score)||0)>=70&&((x.conv&&x.conv.score)||0)<80).length;
@@ -865,13 +922,37 @@ export default async function handler(req,res){
         regimeWarning:bearEstimate?'BEAR MARKET: Sizing 25-50%. Konfirmasi candle dulu. Prioritas spot/DCA.':null};
     }catch(e){return null}})();
 
+
+    // DECOUPLING LEADERS - coins moving opposite to BTC dump
+    const decouplingLeaders=(()=>{try{
+      return coins
+        .filter(c=>(c.decouplingScore||0)>=65&&(c.rs||0)>5&&(c.c24||0)>3)
+        .sort((a,b)=>(b.decouplingScore||0)-(a.decouplingScore||0))
+        .slice(0,15)
+        .map(c=>{
+          const km3=km[c.sym]||null;
+          const atrP=km3&&km3.atr&&c.price>0?+(km3.atr/c.price*100).toFixed(2):+(Math.max(Math.abs(c.c24||0)*0.5,2.5)).toFixed(2);
+          const slP=+(Math.max(atrP*2,3)).toFixed(2);
+          const volMC=c.mc>0?+(c.vol/c.mc*100).toFixed(1):0;
+          return{sym:c.sym,sector:c.sector,price:c.price,c24:c.c24,rs:c.rs,btcC:btcC,vol:c.vol,
+            decouplingScore:c.decouplingScore||0,signal:c.signal,rsi:c.rsi,rsiReal:c.rsiReal,
+            fr:c.fr||null,oi:c.oi||0,volMCpct:volMC,
+            sl:+(c.price*(1-slP/100)).toFixed(c.price>1?2:8),
+            tp1:+(c.price*(1+atrP*2/100)).toFixed(c.price>1?2:8),
+            tp2:+(c.price*(1+atrP*4/100)).toFixed(c.price>1?2:8),
+            slPct:slP,tp2Pct:+(atrP*4).toFixed(2),
+            isConfirmed:(c.decouplingScore||0)>=85,
+            rr:+(atrP*4/slP).toFixed(1)};
+        });
+    }catch(e){return[]}})();
+
     const out={
       ok:true,version:'v15',ts:Date.now(),elapsed:Date.now()-t0,
       dataQuality:{coins:coins.length,realRSI,bybitCoins:Object.values(cm).filter(x=>x.src==='by').length,mexcCoins:Object.values(cm).filter(x=>x.src==='mx').length,btcLS:!!btcLS,btcRsi:!!(btcK&&btcK.rsi),src:'bybit+mexc+phase2',mtf1hCoins:Object.keys(km1h).length,oiDeltaTracked:Object.keys(OI_CACHE.prev).length,phase2Coins:phase2Coins.length,pumpCandidates:coins.filter(x=>x.isPumpCandidate).length},
       fg,fgLabel,
       marketCharacter:{type:mcType,color:mcColor,description:mcDesc,tradeStyle:mcStrat,riskLevel:mcRisk,positionSize:mcPos,marketPct:Math.round(bPct*100)+'% bullish',stats:{oversold:osCount,overbought:obCount,bullish:Math.round(bPct*100),bullPct:Math.round(bPct*100),bearish:Math.round((1-bPct)*100),coiling:coins.filter(x=>x.isCoiling).length,mtfBull:coins.filter(x=>x.mtfAligned==='BULL').length,whaleLong:coins.filter(x=>x.oiPattern==='WHALE_LONG').length}},
       btcSnapshot:{price:btcP,ch24:btcC,rsi:btcK?btcK.rsi||null:null,rsiSlope:btcK?btcK.slopeTxt||'-':'-',rsiDir:btcK?btcK.slopeDir||'flat':'flat',rsi1h:km1h.BTC||null,rsi1d:btcD1rsi,volTrend:btcK?btcK.volTrend||'-':'-',atrPct:btcATRpct,atr:btcATRusd,d1rsi:btcD1rsi,d1trend:btcD1rsi&&btcK&&btcK.rsi?(btcD1rsi<btcK.rsi?'DOWN':'UP'):'-',fg,fgLabel,macd:btcK?btcK.macd||null:null,resistance:btcRes,support:btcSup,current:btcP,aboveEma200:!!(btcK&&btcK.aboveE200),btcLS:btcLS||null,btcLongPct:btcL||null,btcShortPct:btcS||null,oiPattern:cm.BTC?cm.BTC.oiPattern:'NEUTRAL',oiDelta:cm.BTC?cm.BTC.oiDelta:0},
-      convergence:{leaders:longs.slice(0,12),longSetups:longs,shortSetups:shorts,flySetups:flys,accumSetups:accums,summary:longs.length+' LONG - '+shorts.length+' SHORT - '+flys.length+' FLY',eliteCount:ec,primeCount:pc,validCount:vc,shortCount:shorts.length},
+      convergence:{leaders:longs.slice(0,12),longSetups:longs,shortSetups:shorts,flySetups:flys,decouplingCoins:decoupCoins,accumSetups:accums,summary:longs.length+' LONG - '+shorts.length+' SHORT - '+flys.length+' FLY',eliteCount:ec,primeCount:pc,validCount:vc,shortCount:shorts.length},
       gamePlan:{btcLevels:{resistance:btcRes,support:btcSup,current:btcP},scenarios:{bull:{condition:'BTC tembus $'+btcRes+' close di atas',action:'Long conv 65+ RR 1:3 RS+FR+OI filter',setups:top3},sideways:{condition:'BTC konsolidasi +-1.5%',action:'Scalp COILING+ACCUM saja.'},bear:{condition:'BTC breakdown ke $'+btcSup,action:'Cash 80%. SHORT RSI 72+.'}},scalpSetups:flys.slice(0,5).map(x=>({
           sym:x.sym,sector:x.sector||'',price:x.price,signal:x.signal,
           rsi:x.rsi,rsiReal:x.rsiReal||false,fr:x.fr||null,atrPct:x.atrPct||0,
@@ -908,7 +989,7 @@ export default async function handler(req,res){
       sectorFlow:{sectors,sectorData},
       checklist:{marketChecks:mkChecks,coinChecks:['RSI koin < 72','Conv Score 60+','FR < +0.04%','RR min 1:2','No entry 30min sebelum news','Vol 5M+ USD','Size 2% equity max','SL ATR-based','Volume konfirmasi','Sesuai skenario Game Plan'],marketPassCount:pass,marketTotal:8,overallGreenLight:pass>=6,verdict:pass>=6?'KONDISI LAYAK TRADING':'HATI-HATI - '+(8-pass)+' kondisi belum terpenuhi'},
       tradingSchedule:{wibHour:wibH,dayName:days[now2.getUTCDay()],sessions:sess,currentSession:cs,currentSessionObj:cso,focusToday,nextPrimeSession:nxt,nextPrime:nxt},
-      smRadar,pumpHunter,whaleLoadingRadar,whaleFingerprint,squeezeRadar,stealthVolume,hiddenGems,momentumShift,oiDeltaLeaders,retailTrapList,retailSqueezeList,
+      decouplingLeaders,smRadar,pumpHunter,whaleLoadingRadar,whaleFingerprint,squeezeRadar,stealthVolume,hiddenGems,momentumShift,oiDeltaLeaders,retailTrapList,retailSqueezeList,
       dailyOpportunityScore,marketRegime,todaysBestTrade
     };
     const json=JSON.stringify(out);
