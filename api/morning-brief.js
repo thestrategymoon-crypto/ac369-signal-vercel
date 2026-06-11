@@ -152,27 +152,6 @@ export default async function handler(req,res){
     const raw=raw_d1;if(raw.length>=16){const cls=raw.map(d=>N(d[4])).filter(v=>v>0);btcD1rsi=rsi14(cls)?+rsi14(cls).toFixed(1):null;}}catch(e){}
 
 
-    // ---------------------------------------
-    // OI DELTA: Fetch real 1H OI history for top 20 Bybit coins
-    // This gives accurate OI delta without relying on module cache
-    try{
-      const oiTopCoins=Object.entries(cm)
-        .filter(([s,v])=>v.src==='by'&&(v.oi||0)>100e6&&!/^[0-9]/.test(s)&&!s.endsWith('USDC'))
-        .sort((a,b)=>(b[1].oi||0)-(a[1].oi||0)).slice(0,20).map(([s])=>s);
-      const oiHist=await Promise.allSettled(
-        oiTopCoins.map(s=>get('https://api.bybit.com/v5/market/open-interest?category=linear&symbol='+s+'USDT&intervalTime=1h&limit=2',2500))
-      );
-      oiHist.forEach((res,i)=>{
-        try{
-          const sym=oiTopCoins[i];
-          const list=res&&res.value&&res.value.result&&res.value.result.list;
-          if(!list||list.length<2)return;
-          const c2=+(list[0].openInterest||0),p2=+(list[1].openInterest||0);
-          if(p2>0&&c2>0)OI_CACHE.prev[sym]=p2;
-        }catch(e2){}
-      });
-    }catch(e){}
-
     // PHASE 2: DYNAMIC REAL KLINES TOP 50 ALTCOINS
     // Filter Bybit by OI > $100M, pick top 50
     // Fetch 4H klines in parallel - real RSI/EMA/MACD
@@ -938,10 +917,6 @@ export default async function handler(req,res){
           oiDelta:c.oiDelta,oiPattern:c.oiPattern,
           sector:c.sector,signal:c.signal}));
     }catch(e){return[]}})();
-
-    // Compute missing output variables
-    const fg=R6&&R6.value&&R6.value.data?+(R6.value.data[0]&&R6.value.data[0].value||50):50;
-    const fgLabel=fg<=25?'Extreme Fear':fg<=45?'Fear':fg<=55?'Neutral':fg<=75?'Greed':'Extreme Greed';
 
     // Daily Opportunity Score
     const dosBase=50;
