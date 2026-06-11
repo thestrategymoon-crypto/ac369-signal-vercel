@@ -16,7 +16,7 @@ const macd14=a=>{try{if(!a||a.length<36)return null;const k12=2/13,k26=2/27;let 
 // OI Delta cache - persists between requests (module-level)
 const OI_CACHE={prev:{},prevTs:0};
 
-const SAFE={ok:false,version:'v15.8',ts:0,elapsed:0,dataQuality:{coins:0,realRSI:0},fg:50,fgLabel:'Neutral',marketCharacter:{type:'TRANSITIONAL',color:'amber',description:'Data tidak tersedia',tradeStyle:'Cautious',riskLevel:'REDUCED',positionSize:'Minimal (25%)',marketPct:'50% bullish',stats:{oversold:0,overbought:0,bullish:0,bearish:0,coiling:0}},btcSnapshot:{price:0,ch24:0,rsi:null,rsiSlope:'-',rsiDir:'flat',rsi1h:null,rsi1d:null,volTrend:'-',atrPct:0,atr:0,fg:50,fgLabel:'Neutral',macd:null,resistance:null,support:null,current:0,aboveEma200:false,btcLS:false,btcLongPct:null,btcShortPct:null,d1rsi:null,d1trend:'-'},convergence:{leaders:[],longSetups:[],shortSetups:[],flySetups:[],accumSetups:[],summary:'-',eliteCount:0,primeCount:0,validCount:0,shortCount:0},gamePlan:{btcLevels:{},scenarios:{bull:{condition:'-',action:'-',setups:[]},sideways:{condition:'-',action:'-'},bear:{condition:'-',action:'-'}},scalpSetups:[],swingSetups:[],activeShorts:[],spotAccum:[],avoidList:[]},sectorFlow:{sectors:[],sectorData:{}},tradingSchedule:{wibHour:0,dayName:'-',sessions:[],currentSession:'-',currentSessionObj:{id:'dead',name:'Dead Zone',time:'02:00-06:00',q:'POOR',activity:'-'},focusToday:'-',nextPrimeSession:null},checklist:{marketChecks:[],coinChecks:[],marketPassCount:0,marketTotal:8,overallGreenLight:false,verdict:'Data tidak tersedia'},whaleFingerprint:[],squeezeRadar:[],stealthVolume:[],hiddenGems:[],momentumShift:[],oiDeltaLeaders:[],retailTrapList:[],retailSqueezeList:[],dailyOpportunityScore:{score:50,label:'NORMAL',action:'-'},marketRegime:{regime:'NORMAL',regimeColor:'gray',regimeDesc:'-',sizingGuidance:'-'},todaysBestTrade:null};
+const SAFE={ok:false,version:'v15.9',ts:0,elapsed:0,dataQuality:{coins:0,realRSI:0},fg:50,fgLabel:'Neutral',marketCharacter:{type:'TRANSITIONAL',color:'amber',description:'Data tidak tersedia',tradeStyle:'Cautious',riskLevel:'REDUCED',positionSize:'Minimal (25%)',marketPct:'50% bullish',stats:{oversold:0,overbought:0,bullish:0,bearish:0,coiling:0}},btcSnapshot:{price:0,ch24:0,rsi:null,rsiSlope:'-',rsiDir:'flat',rsi1h:null,rsi1d:null,volTrend:'-',atrPct:0,atr:0,fg:50,fgLabel:'Neutral',macd:null,resistance:null,support:null,current:0,aboveEma200:false,btcLS:false,btcLongPct:null,btcShortPct:null,d1rsi:null,d1trend:'-'},convergence:{leaders:[],longSetups:[],shortSetups:[],flySetups:[],accumSetups:[],summary:'-',eliteCount:0,primeCount:0,validCount:0,shortCount:0},gamePlan:{btcLevels:{},scenarios:{bull:{condition:'-',action:'-',setups:[]},sideways:{condition:'-',action:'-'},bear:{condition:'-',action:'-'}},scalpSetups:[],swingSetups:[],activeShorts:[],spotAccum:[],avoidList:[]},sectorFlow:{sectors:[],sectorData:{}},tradingSchedule:{wibHour:0,dayName:'-',sessions:[],currentSession:'-',currentSessionObj:{id:'dead',name:'Dead Zone',time:'02:00-06:00',q:'POOR',activity:'-'},focusToday:'-',nextPrimeSession:null},checklist:{marketChecks:[],coinChecks:[],marketPassCount:0,marketTotal:8,overallGreenLight:false,verdict:'Data tidak tersedia'},whaleFingerprint:[],squeezeRadar:[],stealthVolume:[],hiddenGems:[],momentumShift:[],oiDeltaLeaders:[],retailTrapList:[],retailSqueezeList:[],dailyOpportunityScore:{score:50,label:'NORMAL',action:'-'},marketRegime:{regime:'NORMAL',regimeColor:'gray',regimeDesc:'-',sizingGuidance:'-'},todaysBestTrade:null};
 const CACHE={d:null,t:0};
 
 export default async function handler(req,res){
@@ -30,22 +30,22 @@ export default async function handler(req,res){
     const [R0,R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,R13,R14,R15,R16,R17]=await Promise.allSettled([
       get('https://api.bybit.com/v5/market/tickers?category=linear',2500),          // R0: Bybit all futures
       get('https://api.mexc.com/api/v3/ticker/24hr',2200),                          // R1: MEXC all spot
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=240&limit=52',2500),  // R2: BTC 4H Bybit
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=ETHUSDT&interval=240&limit=52',2500),  // R3: ETH 4H Bybit
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=SOLUSDT&interval=240&limit=52',2500),  // R4: SOL 4H Bybit
+      get('https://api.mexc.com/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=52',2500),  // R2: BTC 4H
+      get('https://api.mexc.com/api/v3/klines?symbol=ETHUSDT&interval=4h&limit=52',2500),  // R3: ETH 4H
+      get('https://api.mexc.com/api/v3/klines?symbol=SOLUSDT&interval=4h&limit=52',2500),  // R4: SOL 4H
       get('https://api.bybit.com/v5/market/account-ratio?category=linear&symbol=BTCUSDT&period=1h&limit=1',4500), // R5: BTC L/S
       get('https://alternative.me/crypto/fear-and-greed-index/?format=json&limit=1',2000),  // R6: F&G
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=BNBUSDT&interval=240&limit=52',2500),  // R7: BNB 4H Bybit
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=XRPUSDT&interval=240&limit=52',2500),  // R8: XRP 4H Bybit
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=LINKUSDT&interval=240&limit=52',2500), // R9: LINK 4H Bybit
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=AVAXUSDT&interval=240&limit=52',2500), // R10: AVAX 4H Bybit
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=SOLUSDT&interval=D&limit=20',2000),  // R11: SOL 1D Bybit
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=D&limit=20',2000),  // R12: BTC 1D Bybit
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=60&limit=20',2000),  // R13: BTC 1H Bybit
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=ETHUSDT&interval=60&limit=20',2000),  // R14: ETH 1H Bybit
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=SOLUSDT&interval=60&limit=20',2000),  // R15: SOL 1H Bybit
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=BNBUSDT&interval=60&limit=20',2000),  // R16: BNB 1H Bybit
-      get('https://api.bybit.com/v5/market/kline?category=linear&symbol=XRPUSDT&interval=60&limit=20',2000),  // R17: XRP 1H Bybit
+      get('https://api.mexc.com/api/v3/klines?symbol=BNBUSDT&interval=4h&limit=52',2500),  // R7: BNB 4H Bybit
+      get('https://api.mexc.com/api/v3/klines?symbol=XRPUSDT&interval=4h&limit=52',2500),  // R8: XRP 4H Bybit
+      get('https://api.mexc.com/api/v3/klines?symbol=LINKUSDT&interval=4h&limit=52',2500), // R9: LINK 4H Bybit
+      get('https://api.mexc.com/api/v3/klines?symbol=AVAXUSDT&interval=4h&limit=52',2500), // R10: AVAX 4H Bybit
+      get('https://api.mexc.com/api/v3/klines?symbol=SOLUSDT&interval=1d&limit=20',2000),   // R11: SOL 1D
+      get('https://api.mexc.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=20',2000),   // R12: BTC 1D
+      get('https://api.mexc.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=20',2000),  // R13: BTC 1H Bybit
+      get('https://api.mexc.com/api/v3/klines?symbol=ETHUSDT&interval=1h&limit=20',2000),  // R14: ETH 1H Bybit
+      get('https://api.mexc.com/api/v3/klines?symbol=SOLUSDT&interval=1h&limit=20',2000),  // R15: SOL 1H Bybit
+      get('https://api.mexc.com/api/v3/klines?symbol=BNBUSDT&interval=1h&limit=20',2000),  // R16: BNB 1H Bybit
+      get('https://api.mexc.com/api/v3/klines?symbol=XRPUSDT&interval=1h&limit=20',2000),  // R17: XRP 1H Bybit
     ]);
 
     // Build coin map from Bybit
@@ -198,7 +198,7 @@ export default async function handler(req,res){
     if(phase2Coins.length>0){
       try{
         const p2Results=await Promise.allSettled(
-          phase2Coins.map(c=>get('https://api.bybit.com/v5/market/kline?category=linear&symbol='+c.sym+'USDT&interval=240&limit=52',3000))
+          phase2Coins.map(c=>get('https://api.mexc.com/api/v3/klines?symbol='+c.sym+'USDT&interval=4h&limit=52',2800))
         );
         p2Results.forEach((res,i)=>{
           try{
@@ -768,168 +768,136 @@ export default async function handler(req,res){
     }catch(e){return[]}})();
 
 
-    // ALTCOIN SMART MONEY RADAR
-    // 3-Layer: Bybit OI/FR + MEXC Volume + Cross-confirm
-    const TOP7S=new Set(['BTC','ETH','SOL','BNB','XRP','LINK','AVAX','BTCUSDC','ETHUSDC']);
+    // ALTCOIN SM LOADING RADAR v2
+    // FOCUS: coins in LOADING phase (not yet moved)
+    // Key insight: high volume + flat price = SM absorbing supply quietly
+    const TOP7S=new Set(['BTC','ETH','SOL','BNB','XRP','LINK','AVAX','BTCUSDC','ETHUSDC','BTCUSDC']);
     const smRadar=(()=>{try{
       const candidates=[];
       const bybitSet=new Set();
-      // LAYER 1: Bybit futures - OI/FR based SM
+
+      // LAYER 1: Bybit futures - LOADING PHASE detection
+      // Key: price FLAT + OI rising + FR negative = SM loading
       Object.entries(cm).forEach(([s,by])=>{
         if(TOP7S.has(s)||by.src!=='by')return;
         if(/^[0-9]/.test(s)||s.endsWith('USDC')||s.length>10)return;
         const oi=by.oi||0,vol=by.v||0,fp=by.fr||0;
         const p=by.p||0,h=by.h||p,l=by.l||p,c24=by.c24||0;
-        if(oi<5e6||vol<500000||p<=0)return;
+        if(oi<5e6||vol<300000||p<=0)return;
         const range24=p>0&&h>l?(h-l)/p*100:10;
         const volOIr=oi>0?vol/oi:0;
+        // PRE-PUMP FILTER: price must NOT have moved yet
+        if(Math.abs(c24)>4)return;// exclude already moved
+        if(range24>7)return;// exclude wide range = already active
+        if(range24<1.2)return;// exclude stablecoins/pegged (too stable)
+        const rsiV=by.rsi||50;
+        if(rsiV>68||rsiV<28)return;// exclude overbought or extreme oversold
+        // Exclude stablecoin-like symbols
+        if(s==='EUR'||s==='USD1'||s==='USDC'||s==='USDT'||s==='DAI'||s==='BUSD')return;
         let smS=0,smR=[];
-        // FR: negative = shorts paying = SM long
-        if(fp<-0.0003){smS+=30;smR.push('FR '+(fp*100).toFixed(3)+'%');}
-        else if(fp<-0.0001){smS+=20;smR.push('FR '+(fp*100).toFixed(3)+'%');}
-        else if(fp<0){smS+=10;}else if(fp===0){smS+=5;}
-        // OI delta: rising = fresh money
+        // CORE: FR negative = retail wrong side = SM contrarian
+        if(fp<-0.0003){smS+=35;smR.push('FR '+(fp*100).toFixed(3)+'% (shorts bayar ke SM)');}
+        else if(fp<-0.0001){smS+=25;smR.push('FR '+(fp*100).toFixed(3)+'% negatif');}
+        else if(fp<0){smS+=15;smR.push('FR sedikit negatif');}
+        else if(fp===0){smS+=5;}
+        // CORE: OI rising while price flat = new money entering quietly
         const prevO=OI_CACHE.prev[s]||oi;
         const oiD=prevO>0?(oi-prevO)/prevO*100:0;
-        if(oiD>3){smS+=25;smR.push('OI +'+oiD.toFixed(1)+'%');}
-        else if(oiD>1){smS+=15;smR.push('OI +'+oiD.toFixed(1)+'%');}
-        else if(oiD>0){smS+=8;}
-        // Price stability: tight range = SM absorb supply
-        if(range24<2){smS+=25;smR.push('Range '+range24.toFixed(1)+'% tight');}
-        else if(range24<4){smS+=15;smR.push('Konsolidasi '+range24.toFixed(1)+'%');}
-        else if(range24<6){smS+=8;}
-        // Vol/OI activity ratio
-        if(volOIr>0.3){smS+=20;smR.push('Vol/OI '+volOIr.toFixed(2)+'x');}
-        else if(volOIr>0.15){smS+=12;}else if(volOIr>0.05){smS+=6;}
-        if(vol>10e6)smS+=5;
-        if(smS>=35){
+        if(oiD>3&&Math.abs(c24)<2){smS+=30;smR.push('OI +'+(oiD).toFixed(1)+'% + harga flat = whale masuk');}
+        else if(oiD>1&&Math.abs(c24)<3){smS+=20;smR.push('OI +'+(oiD).toFixed(1)+'% akumulasi');}
+        else if(oiD>0){smS+=10;}
+        // SUPPORTING: tight range = coiling
+        if(range24<2){smS+=20;smR.push('Range '+range24.toFixed(1)+'% sangat ketat (coiling)');}
+        else if(range24<4){smS+=12;smR.push('Range '+range24.toFixed(1)+'% konsolidasi');}
+        else{smS+=5;}
+        // SUPPORTING: Vol/OI = fresh activity
+        if(volOIr>0.25){smS+=15;smR.push('Vol/OI '+volOIr.toFixed(2)+'x aktif');}
+        else if(volOIr>0.1){smS+=8;}
+        // RSI sweet spot bonus
+        if(rsiV>=40&&rsiV<=55){smS+=10;smR.push('RSI '+rsiV.toFixed(0)+' sweet spot (energi tersimpan)');}
+        else if(rsiV>=35&&rsiV<40){smS+=6;}
+        if(smS>=40){
           bybitSet.add(s);
-          const slPct=Math.max(range24*0.6,2);
-          candidates.push({sym:s,price:p,c24:+c24.toFixed(2),vol:vol,oi:+oi,fr:+(fp*100).toFixed(4),oiDelta:+oiD.toFixed(2),range24:+range24.toFixed(2),smScore:Math.min(100,smS),reasons:smR,layer:'bybit',rsi:by.rsi||50,sl:+(p*(1-slPct/100)).toFixed(p>1?2:8),tp1:+(p*(1+range24*0.8/100)).toFixed(p>1?2:8),tp2:+(p*(1+range24*1.5/100)).toFixed(p>1?2:8),slPct:+slPct.toFixed(2),tp2Pct:+(range24*1.5).toFixed(2),sector:by.sec||'ALT',confirmed:false});
+          const slPct=Math.max(range24*1.5,2.5);
+          const tpPct=range24*3;
+          candidates.push({
+            sym:s,price:p,c24:+c24.toFixed(2),vol:vol,oi:oi,fr:+(fp*100).toFixed(4),
+            oiDelta:+oiD.toFixed(2),range24:+range24.toFixed(2),volOIr:+volOIr.toFixed(3),
+            smScore:Math.min(100,smS),reasons:smR,layer:'bybit',rsi:rsiV,
+            sl:+(p*(1-slPct/100)).toFixed(p>1?2:8),
+            tp1:+(p*(1+Math.max(range24,2)/100)).toFixed(p>1?2:8),
+            tp2:+(p*(1+Math.max(tpPct,4)/100)).toFixed(p>1?2:8),
+            slPct:+slPct.toFixed(2),tp2Pct:+tpPct.toFixed(2),
+            sector:by.sec||'ALT',confirmed:false,
+            label:oiD>2&&Math.abs(c24)<2?'LOADING PHASE':range24<3?'PRE-BREAKOUT':'WATCH'
+          });
         }
       });
-      // LAYER 2: MEXC spot - volume-based
-      const bybitSyms=new Set(Object.entries(cm).filter(([,v])=>v.src==='by').map(([k])=>k));
+
+      // LAYER 2: MEXC spot - unusual volume + flat price
       Object.entries(cm).forEach(([s,mx])=>{
         if(TOP7S.has(s)||mx.src!=='mx')return;
         if(/^[0-9]/.test(s)||s.length>12)return;
         const vol=mx.v||0,p=mx.p||0,c24=mx.c24||0;
         const h=mx.h||p,l=mx.l||p;
-        if(vol<1e6||p<=0)return;
+        if(vol<500000||p<=0)return;
         const range24=p>0&&h>l?(h-l)/p*100:10;
+        // PRE-PUMP FILTER: must not have moved yet
+        if(Math.abs(c24)>4)return;// already moved = exclude
+        if(range24>7)return;
+        if(range24<1.2)return;// exclude stablecoins
+        // Exclude stable-like symbols
+        if(/USD|EUR|DAI|BUSD|USDC|USDT/.test(s))return;
+        const rsiV=mx.rsi||50;
+        if(rsiV>68||rsiV<28)return;
         const volMC=mx.mc>0?vol/mx.mc*100:0;
         let mxS=0,mxR=[];
-        if(vol>20e6){mxS+=35;mxR.push('Vol $'+(vol/1e6).toFixed(0)+'M institusional');}
-        else if(vol>5e6){mxS+=25;mxR.push('Vol $'+(vol/1e6).toFixed(0)+'M');}
-        else if(vol>2e6){mxS+=15;}
-        if(volMC>30){mxS+=35;mxR.push('V/MC '+volMC.toFixed(0)+'% EXTREME');}
-        else if(volMC>15){mxS+=25;mxR.push('V/MC '+volMC.toFixed(0)+'% tinggi');}
-        else if(volMC>5){mxS+=15;mxR.push('V/MC '+volMC.toFixed(0)+'%');}
-        if(range24<2&&vol>2e6){mxS+=30;mxR.push('Vol+harga stabil=akumulasi');}
-        else if(range24<4){mxS+=15;}
-        if(Math.abs(c24)>15)mxS=Math.max(0,mxS-20);
-        if(mxS>=40){
+        // Unusual volume for coin size = key signal
+        if(vol>10e6&&volMC>20){mxS+=40;mxR.push('Vol $'+(vol/1e6).toFixed(0)+'M ('+volMC.toFixed(0)+'% MCap) unusual');}
+        else if(vol>5e6&&volMC>10){mxS+=28;mxR.push('Vol $'+(vol/1e6).toFixed(0)+'M ('+volMC.toFixed(0)+'% MCap)');}
+        else if(vol>2e6&&volMC>5){mxS+=18;mxR.push('Vol $'+(vol/1e6).toFixed(0)+'M elevated');}
+        else if(vol>1e6){mxS+=10;}
+        // Price flat + volume = accumulation
+        if(range24<2&&vol>1e6){mxS+=35;mxR.push('Harga flat '+range24.toFixed(1)+'% + vol aktif = akumulasi');}
+        else if(range24<4){mxS+=20;mxR.push('Konsolidasi ketat');}
+        // RSI sweet spot
+        if(rsiV>=40&&rsiV<=55){mxS+=15;mxR.push('RSI '+rsiV.toFixed(0)+' sweet spot');}
+        else if(rsiV>=35){mxS+=8;}
+        if(mxS>=45){
           const ex=candidates.find(c2=>c2.sym===s);
-          if(ex){ex.smScore=Math.min(100,ex.smScore+15);ex.confirmed=true;ex.reasons=[...ex.reasons,...mxR.slice(0,2)];}
+          if(ex){ex.smScore=Math.min(100,ex.smScore+12);ex.confirmed=true;ex.reasons=[...ex.reasons,...mxR.slice(0,2)];}
           else{
-            const slPct2=Math.max(range24*0.6,2.5);
-            candidates.push({sym:s,price:p,c24:+c24.toFixed(2),vol:vol,oi:0,fr:null,oiDelta:0,range24:+range24.toFixed(2),smScore:Math.min(100,mxS),reasons:mxR,layer:'mexc',rsi:mx.rsi||50,sl:+(p*(1-slPct2/100)).toFixed(p>1?2:8),tp1:+(p*(1+range24*0.8/100)).toFixed(p>1?2:8),tp2:+(p*(1+range24*2/100)).toFixed(p>1?2:8),slPct:+slPct2.toFixed(2),tp2Pct:+(range24*2).toFixed(2),sector:mx.sec||'ALT',volMCpct:+volMC.toFixed(1),confirmed:false});
+            const slPct2=Math.max(range24*1.5,2.5);
+            candidates.push({
+              sym:s,price:p,c24:+c24.toFixed(2),vol:vol,oi:0,fr:null,oiDelta:0,
+              range24:+range24.toFixed(2),volOIr:0,smScore:Math.min(100,mxS),
+              reasons:mxR,layer:'mexc',rsi:rsiV,
+              sl:+(p*(1-slPct2/100)).toFixed(p>1?2:8),
+              tp1:+(p*(1+range24/100)).toFixed(p>1?2:8),
+              tp2:+(p*(1+range24*3/100)).toFixed(p>1?2:8),
+              slPct:+slPct2.toFixed(2),tp2Pct:+(range24*3).toFixed(2),
+              sector:mx.sec||'ALT',volMCpct:+volMC.toFixed(1),confirmed:false,
+              label:range24<2?'PRE-BREAKOUT':range24<4?'LOADING PHASE':'WATCH'
+            });
           }
         }
       });
-      return candidates.filter(c=>c.smScore>=40).sort((a,b)=>{if(a.confirmed&&!b.confirmed)return -1;if(!a.confirmed&&b.confirmed)return 1;return b.smScore-a.smScore;}).slice(0,20);
+
+      return candidates.filter(c=>c.smScore>=45)
+        .sort((a,b)=>{
+          // CONFIRMED first, then by score
+          if(a.confirmed&&!b.confirmed)return -1;
+          if(!a.confirmed&&b.confirmed)return 1;
+          // PRE-BREAKOUT > LOADING PHASE > WATCH
+          const rank={PRE:3,'LOADING':2,WATCH:1};
+          const ra=rank[a.label&&a.label.split(' ')[0]]||1;
+          const rb=rank[b.label&&b.label.split(' ')[0]]||1;
+          if(ra!==rb)return rb-ra;
+          return b.smScore-a.smScore;
+        }).slice(0,20);
     }catch(e){return[]}})();
 
-            // WHALE LOADING RADAR - dedicated section
-    const whaleLoadingRadar=(()=>{try{
-      return coins
-        .filter(c=>c.src==='by'&&c.isWhaleLoading&&(c.oi||0)>100e6)
-        .sort((a,b)=>(b.whaleLoadScore||0)-(a.whaleLoadScore||0))
-        .slice(0,12)
-        .map(c=>({
-          sym:c.sym,price:c.price,c24:c.c24,rsi:c.rsi,sector:c.sector,
-          oiDelta:c.oiDelta,oiPattern:c.oiPattern,
-          vol:c.vol,volOI:c.volOI||0,rangeWidth:c.rangeWidth||0,
-          fr:c.fr||null,oi:+((c.oi||0)/1e9).toFixed(2),
-          whaleLoadScore:c.whaleLoadScore||0,whaleLoadLabel:c.whaleLoadLabel||'',
-          signal:c.signal||null,
-          // Entry zone: current price to -1.5% (within loading range)
-          entryZone:'$'+c.price.toFixed(c.price>1?2:6)+' - $'+(c.price*0.985).toFixed(c.price>1?2:6),
-          // Invalidation: below range low
-          invalidation:'$'+(c.price*(1-Math.max(2.5,c.rangeWidth||3)/100)).toFixed(c.price>1?2:6),
-          reasoning:[
-            c.oiDelta>1.5?'OI naik +'+c.oiDelta.toFixed(1)+'% (fresh position)':'',
-            Math.abs(c.c24)<1.5?'Harga flat '+c.c24.toFixed(2)+'% (price contained)':'',
-            c.rsi>=33&&c.rsi<=57?'RSI '+c.rsi.toFixed(0)+' zona akumulasi':'',
-            (c.fr||0)<0?'FR '+((c.fr||0)*100).toFixed(3)+'% (shorts bayar)':'',
-            c.volOI>0.15?'Vol/OI ratio tinggi (whale turnover)':'',
-          ].filter(Boolean)
-        }));
-    }catch(e){return[]}})();
-
-        const whaleFingerprint=(()=>{try{return coins.filter(c=>c.oi>500e6&&(c.fr||0)<-0.0001&&Math.abs(c.c24)<2&&(c.vol||0)>1e6&&c.rsi>30&&c.rsi<65).sort((a,b)=>(a.fr||0)-(b.fr||0)).slice(0,8).map(c=>({sym:c.sym,price:c.price,c24:c.c24,rsi:c.rsi,fr:+((c.fr||0)*100).toFixed(4),oi:+((c.oi||0)/1e9).toFixed(2),oiDelta:c.oiDelta,vol:c.vol,rating:Math.abs(c.fr||0)>0.0005?'STRONG':'GOOD'}));}catch(e){return[]}})();
-    const squeezeRadar=(()=>{try{return coins.filter(c=>(c.fr||0)<-0.0003&&(c.vol||0)>500000&&c.rsi<55).sort((a,b)=>(a.fr||0)-(b.fr||0)).slice(0,10).map(c=>({sym:c.sym,price:c.price,c24:c.c24,rsi:c.rsi,fr:+((c.fr||0)*100).toFixed(4),retailLong:c.retailLong,retailShort:c.retailShort,oiPattern:c.oiPattern,strength:Math.abs(c.fr||0)>0.001?'EXTREME':Math.abs(c.fr||0)>0.0005?'STRONG':'HIGH'}));}catch(e){return[]}})();
-    const stealthVolume=(()=>{try{return coins.filter(c=>(c.vol||0)>10e6&&Math.abs(c.c24)<0.8&&c.rsi<65&&(c.oi||0)>500e6).sort((a,b)=>(b.vol||0)-(a.vol||0)).slice(0,8).map(c=>({sym:c.sym,price:c.price,c24:c.c24,vol:c.vol,rsi:c.rsi,oi:+((c.oi||0)/1e9).toFixed(2),oiDelta:c.oiDelta}));}catch(e){return[]}})();
-    const hiddenGems=(()=>{try{return coins.filter(c=>c.rsi<32&&(c.fr||0)<=-0.0001&&(c.vol||0)>300000&&(c.vol||0)<50e6&&!['BTC','ETH','BNB','SOL','XRP','ADA','DOGE'].includes(c.sym)&&((c.conv&&c.conv.score)||0)>=60).sort((a,b)=>a.rsi-b.rsi).slice(0,12).map(c=>({sym:c.sym,price:c.price,c24:c.c24,rsi:c.rsi,fr:+((c.fr||0)*100).toFixed(4),vol:c.vol,conv:(c.conv&&c.conv.score)||0,oiPattern:c.oiPattern}));}catch(e){return[]}})();
-    const momentumShift=(()=>{try{return coins.filter(c=>c.c24>2&&(c.c24-btcC)>3&&c.sym!=='BTC'&&(c.vol||0)>1e6&&c.rsi<75).sort((a,b)=>(b.c24-btcC)-(a.c24-btcC)).slice(0,8).map(c=>({sym:c.sym,price:c.price,c24:c.c24,rsi:c.rsi,vol:c.vol,outperformBTC:+(c.c24-btcC).toFixed(2),oiPattern:c.oiPattern}));}catch(e){return[]}})();
-    const retailTrapList=(()=>{try{return coins.filter(c=>c.retailLong>=63&&c.rsi>55&&(c.vol||0)>2e6).sort((a,b)=>b.retailLong-a.retailLong).slice(0,6).map(c=>({sym:c.sym,price:c.price,c24:c.c24,retailLong:c.retailLong,rsi:c.rsi}));}catch(e){return[]}})();
-    const retailSqueezeList=(()=>{try{return coins.filter(c=>c.retailLong<=40&&c.rsi<45&&(c.vol||0)>1e6).sort((a,b)=>a.retailLong-b.retailLong).slice(0,6).map(c=>({sym:c.sym,price:c.price,c24:c.c24,retailLong:c.retailLong,retailShort:c.retailShort,rsi:c.rsi}));}catch(e){return[]}})();
-
-    // Daily tools
-    const dailyOpportunityScore=(()=>{try{
-      let score=50;
-      if(fg<20)score+=20;else if(fg<35)score+=12;else if(fg>75)score-=15;
-      if(osCount>20)score+=18;else if(osCount>12)score+=12;else if(osCount>6)score+=6;
-      if(cso.q==='PRIME')score+=12;else if(cso.q==='GOOD')score+=6;
-      const sqC=coins.filter(x=>(x.fr||0)<-0.0005).length;score+=Math.min(10,sqC*2);
-      const mtfC=coins.filter(x=>x.mtfAligned==='BULL').length;score+=Math.min(8,mtfC);
-      const whaleLong=coins.filter(x=>x.oiPattern==='WHALE_LONG').length;score+=Math.min(8,whaleLong*2);
-      score=Math.max(5,Math.min(98,Math.round(score)));
-      const label=score>=80?'EXTREME OPPORTUNITY':score>=65?'HIGH OPPORTUNITY':score>=50?'NORMAL':score>=35?'LOW':'POOR DAY';
-      const action=score>=80?'Hari langka! Full sizing pada sinyal PRIME/ELITE.':score>=65?'Setup bagus. Sizing normal. Fokus conv 70+.':score>=50?'Selektif. Hanya setup 3+ konfluens.':'Hindari new entry hari ini.';
-      return{score,label,action,fg,session:cso.q,osCoins:osCount,squeezeCoins:sqC,mtfBullCoins:mtfC,whaleLongCoins:whaleLong};
-    }catch(e){return{score:50,label:'NORMAL',action:'-'}}})();
-
-    const marketRegime=(()=>{try{
-      const btcE2=btcK&&btcK.e200?btcK.e200:0,mvrvR=btcK&&btcK.price&&btcE2>0?+(btcK.price/btcE2).toFixed(2):1.3;
-      let regime,regimeColor,regimeDesc,sizingGuidance;
-      const btcRsiNow=btcK&&btcK.rsi?btcK.rsi:50;
-      const isExtremeBear=btcRsiNow<20||(btcRsiNow<30&&fg<30);
-      const isCapitulation=btcRsiNow<15&&fg<25;
-      if(isCapitulation){regime='ACCUMULATE';regimeColor='cyan';regimeDesc='CAPITULATION: RSI 4H '+btcRsiNow.toFixed(0)+' + F&G '+fg+'. Zona akumulasi historis terbaik. Beli spot bertahap.';sizingGuidance='Spot DCA 10-20% per entry. NO LEVERAGE.';}
-      else if(isExtremeBear){regime='ACCUMULATE';regimeColor='cyan';regimeDesc='Extreme oversold: RSI '+btcRsiNow.toFixed(0)+' + Fear '+fg+'. DCA spot, hindari futures leverage.';sizingGuidance='DCA bertahap 25-50%. Spot only.';}
-      else if(fg<35&&mvrvR<1.1&&osCount/totC>0.04){regime='ACCUMULATE';regimeColor='cyan';regimeDesc='Extreme Fear + MVRV rendah = zona akumulasi historis terbaik.';sizingGuidance='DCA bertahap 25-50%.';}
-      else if(fg>=35&&fg<=65&&btcRsiNow>40&&obCount/totC<0.15&&(cso.q==='PRIME'||cso.q==='GOOD')){regime='TRADE';regimeColor='green';regimeDesc='Market seimbang + session bagus = kondisi ideal trading.';sizingGuidance='Full sizing. Patuhi SL.';}
-      else if(fg>=35&&fg<=65&&btcRsiNow>40&&obCount/totC<0.15){regime='TRADE';regimeColor='green';regimeDesc='Market dalam range. Entry selektif, tunggu PRIME session.';sizingGuidance='50-75% sizing. Ketat SL.';}
-      else if(fg>65||mvrvR>1.8){regime='CAUTION';regimeColor='amber';regimeDesc='Market greedy atau MVRV tinggi.';sizingGuidance='Max 0.5-1% risk/trade.';}
-      else{regime='AVOID';regimeColor='red';regimeDesc='Kondisi tidak ideal untuk trading aktif.';sizingGuidance='Jangan entry baru.';}
-      return{regime,regimeColor,regimeDesc,sizingGuidance,fg,mvrv:mvrvR,osCoins:osCount};
-    }catch(e){return{regime:'NORMAL',regimeColor:'gray',regimeDesc:'-',sizingGuidance:'Sizing normal.'}}})();
-
-    const todaysBestTrade=(()=>{try{
-      const top=coins.filter(x=>x.direction==='LONG'&&((x.conv&&x.conv.score)||0)>=60).sort((a,b)=>{
-        const sA=((b.conv&&b.conv.score)||0)+(b.rsi<30?15:0)+((b.fr||0)<-0.0003?10:0)+(b.divergence==='BULLISH'?8:0)+((b.convStars||0)*2)+(b.mtfAligned==='BULL'?10:0)+(b.oiPattern==='WHALE_LONG'?8:0);
-        const sB=((a.conv&&a.conv.score)||0)+(a.rsi<30?15:0)+((a.fr||0)<-0.0003?10:0)+(a.divergence==='BULLISH'?8:0)+((a.convStars||0)*2)+(a.mtfAligned==='BULL'?10:0)+(a.oiPattern==='WHALE_LONG'?8:0);
-        return sA-sB;
-      })[0]||null;
-      if(!top)return null;
-      const reasons=[];
-      if(top.rsiReal&&top.rsi<35)reasons.push('RSI '+top.rsi.toFixed(1)+' REAL oversold (klines data)');
-      if(top.rsi1h&&top.rsi1h<40)reasons.push('RSI 1H: '+top.rsi1h+' oversold (multi-timeframe)');
-      if(top.rsi1d&&top.rsi1d<50)reasons.push('RSI 1D: '+top.rsi1d+' bearish zone');
-      if((top.fr||0)<-0.0003)reasons.push('FR '+((top.fr||0)*100).toFixed(3)+'% shorts bayar longs');
-      if(top.divergence==='BULLISH')reasons.push('Bullish Divergence terdeteksi dari klines');
-      if(top.retailLong<=42)reasons.push('Retail '+(100-top.retailLong)+'% short = squeeze potential');
-      if(top.isCoiling)reasons.push('ATR menyempit = energi terkumpul untuk breakout');
-      if(top.oiPattern==='WHALE_LONG')reasons.push('OI naik +'+top.oiDelta+'% + harga stabil = WHALE MASUK');
-      if(top.oiPattern==='SHORT_SQUEEZE')reasons.push('OI turun + harga naik = SHORT COVER sedang berlangsung');
-      if(((top.conv&&top.conv.score)||0)>=80)reasons.push('Convergence ELITE '+((top.conv&&top.conv.score)||0)+'/100 (9 faktor)');
-      return{sym:top.sym,price:top.price,signal:top.signal||'-',rsi:top.rsi,rsi1h:top.rsi1h,rsi1d:top.rsi1d,fr:top.fr,conv:(top.conv&&top.conv.score)||0,convLabel:(top.conv&&top.conv.label)||'',convStars:top.convStars||0,divergence:top.divergence||null,mtfConfirmed:!!(top.rsiReal&&top.rsi<35),mtfAligned:top.mtfAligned,oiPattern:top.oiPattern,oiDelta:top.oiDelta,retailLong:top.retailLong,retailShort:top.retailShort,retailBias:top.retailBias,futuresRisk:top.futuresRisk||null,reasoning:reasons,entry:top.price,sl:top.levels?top.levels.sl:0,tp1:top.levels?top.levels.tp1:0,tp2:top.levels?top.levels.tp2:0,tp3:top.levels?top.levels.tp3:0,slPct:top.levels?top.levels.slPct:0,tp1Pct:top.levels?top.levels.tp1Pct:0,tp2Pct:top.levels?top.levels.tp2Pct:0,tp3Pct:top.levels?top.levels.tp3Pct:0,rr:top.rr||2.3,probability:top.probability||70,kellySizing:{suggestedSizePct:top.kellySizing&&top.kellySizing.suggestedSizePct?top.kellySizing.suggestedSizePct:typeof top.kellySizing==='number'?top.kellySizing:2},
-        regimeWarning:bearEstimate?'BEAR MARKET: Sizing 25-50%. Konfirmasi candle dulu. Prioritas spot/DCA.':null};
-    }catch(e){return null}})();
-
-
-    // DECOUPLING LEADERS - coins moving opposite to BTC dump
+        // DECOUPLING LEADERS - coins moving opposite to BTC dump
     const decouplingLeaders=(()=>{try{
       return coins
         .filter(c=>(c.decouplingScore||0)>=65&&(c.rs||0)>5&&(c.c24||0)>3)
@@ -953,7 +921,7 @@ export default async function handler(req,res){
     }catch(e){return[]}})();
 
     const out={
-      ok:true,version:'v15.8',ts:Date.now(),elapsed:Date.now()-t0,
+      ok:true,version:'v15.9',ts:Date.now(),elapsed:Date.now()-t0,
       dataQuality:{coins:coins.length,realRSI,bybitCoins:Object.values(cm).filter(x=>x.src==='by').length,mexcCoins:Object.values(cm).filter(x=>x.src==='mx').length,btcLS:!!btcLS,btcRsi:!!(btcK&&btcK.rsi),src:'bybit+mexc+phase2',mtf1hCoins:Object.keys(km1h).length,oiDeltaTracked:Object.keys(OI_CACHE.prev).length,phase2Coins:phase2Coins.length,pumpCandidates:coins.filter(x=>x.isPumpCandidate).length},
       fg,fgLabel,
       marketCharacter:{type:mcType,color:mcColor,description:mcDesc,tradeStyle:mcStrat,riskLevel:mcRisk,positionSize:mcPos,marketPct:Math.round(bPct*100)+'% bullish',stats:{oversold:osCount,overbought:obCount,bullish:Math.round(bPct*100),bullPct:Math.round(bPct*100),bearish:Math.round((1-bPct)*100),coiling:coins.filter(x=>x.isCoiling).length,mtfBull:coins.filter(x=>x.mtfAligned==='BULL').length,whaleLong:coins.filter(x=>x.oiPattern==='WHALE_LONG').length}},
