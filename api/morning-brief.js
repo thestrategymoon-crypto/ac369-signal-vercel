@@ -939,6 +939,61 @@ export default async function handler(req,res){
           sector:c.sector,signal:c.signal}));
     }catch(e){return[]}})();
 
+    // Compute missing output variables
+    const fg=R6&&R6.value&&R6.value.data?+(R6.value.data[0]&&R6.value.data[0].value||50):50;
+    const fgLabel=fg<=25?'Extreme Fear':fg<=45?'Fear':fg<=55?'Neutral':fg<=75?'Greed':'Extreme Greed';
+
+    // Daily Opportunity Score
+    const dosBase=50;
+    const dosFg=fg<20?20:fg<30?15:fg<40?10:fg>75?-10:0;
+    const dosMc=mcType==='MASS OVERSOLD'?20:mcType==='BULLISH'?10:mcType==='BEARISH'?-5:0;
+    const dosSess=cso.q==='PRIME'?10:cso.q==='GOOD'?5:cso.q==='POOR'?-10:0;
+    const dosRsi=btcK&&btcK.rsi&&btcK.rsi<30?15:btcK&&btcK.rsi&&btcK.rsi<40?8:0;
+    const dosScore=Math.min(100,Math.max(0,dosBase+dosFg+dosMc+dosSess+dosRsi));
+    const dosLabel=dosScore>=80?'PRIME OPPORTUNITY':dosScore>=65?'GOOD':dosScore>=50?'NORMAL':dosScore>=35?'CAUTION':'POOR';
+    const dailyOpportunityScore={score:dosScore,label:dosLabel,action:dosScore>=65?'Setup berkualitas tersedia. Sizing normal.':dosScore>=50?'Selektif. Hanya setup 3+ konfluens.':'Hindari entry baru. Cash is king.'};
+
+    // Market Regime
+    const btcRsiNow2=btcK&&btcK.rsi?btcK.rsi:50;
+    const isCap2=btcRsiNow2<15&&fg<25;
+    const isAccum2=btcRsiNow2<25||(fg<35&&btcRsiNow2<40);
+    let regimeKey,regimeColor2,regimeDesc2,sizingG;
+    if(isCap2){regimeKey='CAPITULATION';regimeColor2='cyan';regimeDesc2='RSI '+btcRsiNow2.toFixed(0)+' + F&G '+fg+' = CAPITULATION historis. DCA spot.';sizingG='Spot DCA bertahap. NO leverage.';}
+    else if(isAccum2){regimeKey='ACCUMULATE';regimeColor2='cyan';regimeDesc2='Extreme oversold = zona akumulasi terbaik.';sizingG='DCA 25-50%. Spot only.';}
+    else if(fg>=35&&btcRsiNow2>40&&obCount/totC<0.15&&(cso.q==='PRIME'||cso.q==='GOOD')){regimeKey='TRADE';regimeColor2='green';regimeDesc2='Market seimbang + session bagus = kondisi ideal trading.';sizingG='Full sizing. Patuhi SL.';}
+    else if(fg>65||btcRsiNow2>70){regimeKey='CAUTION';regimeColor2='amber';regimeDesc2='Overbought atau euphoria.';sizingG='50% sizing. Ketat SL.';}
+    else{regimeKey='AVOID';regimeColor2='red';regimeDesc2='Kondisi tidak ideal untuk trading aktif.';sizingG='Jangan entry baru.';}
+    const marketRegime={regime:regimeKey,regimeColor:regimeColor2,regimeDesc:regimeDesc2,sizingGuidance:sizingG};
+
+    // Today's Best Trade
+    const todaysBestTrade=(()=>{try{
+      const pool=longs.filter(x=>x.levels&&x.levels.tp2>0);
+      if(!pool.length)return null;
+      const top=pool[0];
+      const reasoning=[];
+      if(top.rsiReal&&top.rsi<30)reasoning.push('RSI '+top.rsi.toFixed(0)+' REAL oversold (klines data)');
+      if(top.rsi1d&&top.rsi1d<35)reasoning.push('RSI 1D: '+top.rsi1d+' bearish zone');
+      if(top.mtfAligned==='BULL')reasoning.push('MTF confluence confirmed');
+      if(top.divergence==='BULLISH')reasoning.push('Bullish divergence aktif');
+      if((top.decouplingScore||0)>=70)reasoning.push('Decoupling +'+top.rs+'% vs BTC');
+      const cv2=(top.conv&&top.conv.score)||0;
+      return{
+        sym:top.sym,signal:top.signal,price:top.price,
+        sl:top.levels.sl,tp1:top.levels.tp1,tp2:top.levels.tp2,
+        slPct:top.levels.slPct,tp1Pct:top.levels.tp1Pct,tp2Pct:top.levels.tp2Pct,
+        rr:top.rr,probability:top.probability||76,
+        convStars:top.convStars,
+        mtfConfirmed:top.mtfAligned==='BULL',
+        reasoning:reasoning.slice(0,5),
+        divergence:top.divergence||null,
+        retailLong:top.retailLong||null,retailShort:top.retailShort||null,
+        retailBias:top.retailBias||null,
+        futuresRisk:top.futuresRisk||null,
+        kellySizing:{suggestedSizePct:top.kellySizing&&top.kellySizing.suggestedSizePct?top.kellySizing.suggestedSizePct:10},
+        regimeWarning:isAccum2?'BEAR MARKET: Sizing 25-50%. Konfirmasi candle dulu.':null
+      };
+    }catch(e){return null}})();
+
     const out={
       ok:true,version:'v15.9',ts:Date.now(),elapsed:Date.now()-t0,
       dataQuality:{coins:coins.length,realRSI,bybitCoins:Object.values(cm).filter(x=>x.src==='by').length,mexcCoins:Object.values(cm).filter(x=>x.src==='mx').length,btcLS:!!btcLS,btcRsi:!!(btcK&&btcK.rsi),src:'bybit+mexc+phase2',mtf1hCoins:Object.keys(km1h).length,oiDeltaTracked:Object.keys(OI_CACHE.prev).length,phase2Coins:phase2Coins.length,pumpCandidates:coins.filter(x=>x.isPumpCandidate).length},
@@ -982,7 +1037,7 @@ export default async function handler(req,res){
       sectorFlow:{sectors,sectorData},
       checklist:{marketChecks:mkChecks,coinChecks:['RSI koin < 72','Conv Score 60+','FR < +0.04%','RR min 1:2','No entry 30min sebelum news','Vol 5M+ USD','Size 2% equity max','SL ATR-based','Volume konfirmasi','Sesuai skenario Game Plan'],marketPassCount:pass,marketTotal:8,overallGreenLight:pass>=6,verdict:pass>=6?'KONDISI LAYAK TRADING':'HATI-HATI - '+(8-pass)+' kondisi belum terpenuhi'},
       tradingSchedule:{wibHour:wibH,dayName:days[now2.getUTCDay()],sessions:sess,currentSession:cs,currentSessionObj:cso,focusToday,nextPrimeSession:nxt,nextPrime:nxt},
-      decouplingLeaders,smRadar,pumpHunter,whaleLoadingRadar,whaleFingerprint,squeezeRadar:[],stealthVolume:[],hiddenGems:[],momentumShift:[],retailTrapList:coins.filter(x=>x.retailLong&&x.retailLong>=65&&(x.oi||0)>50e6).sort((a,b)=>(b.retailLong||0)-(a.retailLong||0)).slice(0,8).map(x=>({sym:x.sym,retailLong:x.retailLong,rsi:x.rsi,c24:x.c24})),retailSqueezeList:coins.filter(x=>x.retailLong&&x.retailLong<=38&&(x.oi||0)>50e6).sort((a,b)=>(a.retailLong||50)-(b.retailLong||50)).slice(0,8).map(x=>({sym:x.sym,retailShort:100-(x.retailLong||50),retailLong:x.retailLong,rsi:x.rsi,c24:x.c24})),squeezeRadar,stealthVolume,hiddenGems,momentumShift,oiDeltaLeaders,retailTrapList,retailSqueezeList,
+      decouplingLeaders,smRadar,pumpHunter,whaleLoadingRadar,whaleFingerprint,squeezeRadar:[],stealthVolume:[],hiddenGems:[],momentumShift:[],retailTrapList:coins.filter(x=>x.retailLong&&x.retailLong>=65&&(x.oi||0)>50e6).sort((a,b)=>(b.retailLong||0)-(a.retailLong||0)).slice(0,8).map(x=>({sym:x.sym,retailLong:x.retailLong,rsi:x.rsi,c24:x.c24})),retailSqueezeList:coins.filter(x=>x.retailLong&&x.retailLong<=38&&(x.oi||0)>50e6).sort((a,b)=>(a.retailLong||50)-(b.retailLong||50)).slice(0,8).map(x=>({sym:x.sym,retailShort:100-(x.retailLong||50),retailLong:x.retailLong,rsi:x.rsi,c24:x.c24})),
       dailyOpportunityScore,marketRegime,todaysBestTrade
     };
     const json=JSON.stringify(out);
