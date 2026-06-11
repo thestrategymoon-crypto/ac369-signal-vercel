@@ -920,6 +920,25 @@ export default async function handler(req,res){
         });
     }catch(e){return[]}})();
 
+    // WHALE LOADING RADAR - coins with high whale load score
+    // WHALE FINGERPRINT - quiet accumulation detection
+    const whaleFingerprint=(()=>{try{
+      return coins.filter(c=>c.oiPattern==='WHALE_LONG'&&(c.oi||0)>100e6)
+        .sort((a,b)=>(b.oiDelta||0)-(a.oiDelta||0)).slice(0,6)
+        .map(c=>({sym:c.sym,price:c.price,c24:c.c24,oi:c.oi,oiDelta:c.oiDelta,fr:c.fr,vol:c.vol,rsi:c.rsi,sector:c.sector}));
+    }catch(e){return[]}})();
+
+    const whaleLoadingRadar=(()=>{try{
+      return coins.filter(c=>c.isWhaleLoading&&c.whaleLoadScore>=65)
+        .sort((a,b)=>(b.whaleLoadScore||0)-(a.whaleLoadScore||0))
+        .slice(0,8)
+        .map(c=>({sym:c.sym,price:c.price,c24:c.c24,vol:c.vol,
+          oi:c.oi,fr:c.fr,rsi:c.rsi,rsiReal:c.rsiReal,
+          whaleLoadScore:c.whaleLoadScore,whaleLoadLabel:c.whaleLoadLabel,
+          oiDelta:c.oiDelta,oiPattern:c.oiPattern,
+          sector:c.sector,signal:c.signal}));
+    }catch(e){return[]}})();
+
     const out={
       ok:true,version:'v15.9',ts:Date.now(),elapsed:Date.now()-t0,
       dataQuality:{coins:coins.length,realRSI,bybitCoins:Object.values(cm).filter(x=>x.src==='by').length,mexcCoins:Object.values(cm).filter(x=>x.src==='mx').length,btcLS:!!btcLS,btcRsi:!!(btcK&&btcK.rsi),src:'bybit+mexc+phase2',mtf1hCoins:Object.keys(km1h).length,oiDeltaTracked:Object.keys(OI_CACHE.prev).length,phase2Coins:phase2Coins.length,pumpCandidates:coins.filter(x=>x.isPumpCandidate).length},
@@ -963,7 +982,7 @@ export default async function handler(req,res){
       sectorFlow:{sectors,sectorData},
       checklist:{marketChecks:mkChecks,coinChecks:['RSI koin < 72','Conv Score 60+','FR < +0.04%','RR min 1:2','No entry 30min sebelum news','Vol 5M+ USD','Size 2% equity max','SL ATR-based','Volume konfirmasi','Sesuai skenario Game Plan'],marketPassCount:pass,marketTotal:8,overallGreenLight:pass>=6,verdict:pass>=6?'KONDISI LAYAK TRADING':'HATI-HATI - '+(8-pass)+' kondisi belum terpenuhi'},
       tradingSchedule:{wibHour:wibH,dayName:days[now2.getUTCDay()],sessions:sess,currentSession:cs,currentSessionObj:cso,focusToday,nextPrimeSession:nxt,nextPrime:nxt},
-      decouplingLeaders,smRadar,pumpHunter,whaleLoadingRadar,whaleFingerprint,squeezeRadar,stealthVolume,hiddenGems,momentumShift,oiDeltaLeaders,retailTrapList,retailSqueezeList,
+      decouplingLeaders,smRadar,pumpHunter,whaleLoadingRadar,whaleFingerprint,squeezeRadar:[],stealthVolume:[],hiddenGems:[],momentumShift:[],retailTrapList:coins.filter(x=>x.retailLong&&x.retailLong>=65&&(x.oi||0)>50e6).sort((a,b)=>(b.retailLong||0)-(a.retailLong||0)).slice(0,8).map(x=>({sym:x.sym,retailLong:x.retailLong,rsi:x.rsi,c24:x.c24})),retailSqueezeList:coins.filter(x=>x.retailLong&&x.retailLong<=38&&(x.oi||0)>50e6).sort((a,b)=>(a.retailLong||50)-(b.retailLong||50)).slice(0,8).map(x=>({sym:x.sym,retailShort:100-(x.retailLong||50),retailLong:x.retailLong,rsi:x.rsi,c24:x.c24})),squeezeRadar,stealthVolume,hiddenGems,momentumShift,oiDeltaLeaders,retailTrapList,retailSqueezeList,
       dailyOpportunityScore,marketRegime,todaysBestTrade
     };
     const json=JSON.stringify(out);
