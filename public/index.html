@@ -931,7 +931,24 @@ async function runTIS(){
     apiFetch('/api/scanner-full',20000,0).then(function(sc){
       if(!sc||!sc.results)return;
       // Merge top 5 into TIS data
-      d._scanTop5=(sc.topSetups&&sc.topSetups.institutional||sc.results||[]).filter(function(x){return x.probability>=70;}).slice(0,5);
+      // Top 5: exclude overbought, prefer quality setups
+      var allRes=(sc.topSetups&&sc.topSetups.institutional||sc.results||[]);
+      // Prefer non-overbought, non-already-pumped setups
+      var filtered=allRes.filter(function(x){
+        if(x.probability<65)return false;
+        var sigs=(x.signals||[]).join(' ');
+        // Skip if already overbought or already pumped >15%
+        if(sigs.includes('overbought')&&x.probability<80)return false;
+        if((x.change24h||0)>15&&sigs.includes('overbought'))return false;
+        return true;
+      }).sort(function(a,b){
+        // Sort: non-overbought first, then by probability
+        var aOB=(a.signals||[]).join(' ').includes('overbought')?0:1;
+        var bOB=(b.signals||[]).join(' ').includes('overbought')?0:1;
+        if(aOB!==bOB)return bOB-aOB;
+        return(b.probability||0)-(a.probability||0);
+      });
+      d._scanTop5=filtered.slice(0,5);
       d._scanTotal=sc.totalScanned||sc.results.length||0;
       try{tisMod2DailyPower(d);}catch(e){}
     }).catch(function(){});
@@ -1587,8 +1604,9 @@ function tisMod8Golden(d){
   var smR=A(d.smRadar);
   if(smR.length>0){
     h+='<div style="background:rgba(0,200,255,.04);border:1px solid rgba(0,200,255,.25);border-radius:10px;padding:10px;margin-bottom:10px">';
-    h+='<div style="font-size:10px;font-weight:900;color:#00c8ff;letter-spacing:1px;margin-bottom:2px">🎯 ALTCOIN SM ACCUMULATION RADAR</div>';
-    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:8px">Real Volume + FR negatif + OI Delta + Harga stabil = SM loading diam-diam · '+smR.length+' kandidat</div>';
+    h+='<div style="font-size:10px;font-weight:900;color:#00c8ff;letter-spacing:1px;margin-bottom:2px">🔍 ALTCOIN LOADING RADAR — Belum Bergerak</div>';
+    h+='<div style="font-size:8px;color:var(--amber);margin-bottom:4px">⚠️ Ini BUKAN koin yang sudah pump. Ini koin yang SM sedang muat SEBELUM naik.</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:8px">Harga flat + OI naik + FR neg + Volume unusual = tanda akumulasi nyata · '+smR.length+' kandidat</div>';
     smR.slice(0,12).forEach(function(s){
       var sclr=s.confirmed?'#00ffd0':s.layer==='bybit'?'#4af0ff':'#a0e040';
       var rsiC=s.rsi<30?'var(--g)':s.rsi<45?'#4af0ff':s.rsi<60?'var(--amber)':'var(--red)';
@@ -1598,9 +1616,11 @@ function tisMod8Golden(d){
       h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">';
       h+='<div style="display:flex;align-items:center;gap:5px">';
       h+='<span style="font-family:var(--m);font-size:13px;font-weight:900">'+s.sym+'</span>';
-      if(s.confirmed)h+='<span style="font-size:7px;background:rgba(0,255,208,.2);color:#00ffd0;padding:1px 5px;border-radius:3px;font-weight:700">CONFIRMED</span>';
-      else if(s.layer==="bybit")h+='<span style="font-size:7px;background:rgba(74,240,255,.15);color:#4af0ff;padding:1px 5px;border-radius:3px">OI+FR</span>';
-      else h+='<span style="font-size:7px;background:rgba(160,224,64,.15);color:#a0e040;padding:1px 5px;border-radius:3px">VOL</span>';
+      var lbl=s.label||'WATCH';
+      var lblC=lbl==='PRE-BREAKOUT'?'#ffd700':lbl==='LOADING PHASE'?'#00c8ff':'var(--dim)';
+      var lblBg=lbl==='PRE-BREAKOUT'?'rgba(255,215,0,.2)':lbl==='LOADING PHASE'?'rgba(0,200,255,.15)':'rgba(255,255,255,.06)';
+      h+='<span style="font-size:7px;background:'+lblBg+';color:'+lblC+';padding:1px 5px;border-radius:3px;font-weight:700">'+lbl+'</span>';
+      if(s.confirmed)h+='<span style="font-size:7px;background:rgba(0,255,208,.15);color:#00ffd0;padding:1px 4px;border-radius:3px;margin-left:3px">2x CONFIRM</span>';
       h+='<span style="font-size:8px;color:var(--dim)">'+( s.sector||'')+'</span>';
       h+='</div>';
       h+='<div style="text-align:right">';
