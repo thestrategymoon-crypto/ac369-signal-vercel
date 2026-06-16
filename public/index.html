@@ -988,7 +988,7 @@ async function runTIS(){
       var dosStr=dos?(' · 🎯'+dos.score):'';
       var sessionQ=d.tradingSchedule&&d.tradingSchedule.position||'-';
       var refreshMin=sessionQ==='PRIME'?3:5;
-      var smStr=smRCount>0?' · 🎯'+smRCount+' SM':'';st.textContent='✅ v'+d.version+' · '+dq.coins+' koin · '+dq.realRSI+' real RSI · '+mcShort+' · '+deepOS+' OS'+dosStr+smStr+' · '+d.elapsed+'ms · auto '+refreshMin+'min';
+      var smStr=smRCount>0?' · 🎯'+smRCount+' SM':'';var wfCount=A(d.whaleFootprintLeaders).length;var wfStr=wfCount>0?' · 🐋'+wfCount+' WF':'';st.textContent='✅ v'+d.version+' · '+dq.coins+' koin · '+dq.realRSI+' real RSI · '+mcShort+' · '+deepOS+' OS'+dosStr+smStr+wfStr+' · '+d.elapsed+'ms · auto '+refreshMin+'min';
     }
     btn.textContent='🔄 Refresh';btn.disabled=false;
   }catch(e){
@@ -1643,6 +1643,46 @@ function tisMod8Golden(d){
       if(s.reasons&&s.reasons.length){
         h+='<div style="display:flex;flex-wrap:wrap;gap:3px">';
         s.reasons.slice(0,3).forEach(function(r){h+='<span style="font-size:7px;background:rgba(0,200,255,.1);color:#00c8ff;padding:1px 5px;border-radius:3px">'+r+'</span>';});
+        h+='</div>';
+      }
+      h+='</div>';
+    });
+    h+='</div>';
+  }
+
+  // WHALE FOOTPRINT LEADERS - OBV + BB Squeeze + Absorption (Wyckoff-style)
+  var wfl=A(d.whaleFootprintLeaders);
+  if(wfl.length>0){
+    h+='<div style="background:rgba(168,85,247,.04);border:1px solid rgba(168,85,247,.3);border-radius:10px;padding:10px;margin-bottom:10px">';
+    h+='<div style="font-size:10px;font-weight:900;color:#a855f7;letter-spacing:1px;margin-bottom:2px">🐋 WHALE FOOTPRINT — OBV + BB Squeeze + Absorption</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:8px">Analisis Wyckoff: volume terserap diam-diam tanpa gerakkan harga · '+wfl.length+' kandidat dari 50 koin dianalisa</div>';
+    wfl.slice(0,10).forEach(function(w){
+      var lblC=w.label==='STRONG ACCUM'?'#a855f7':w.label==='ACCUMULATING'?'#c084fc':'var(--dim)';
+      var lblBg=w.label==='STRONG ACCUM'?'rgba(168,85,247,.2)':w.label==='ACCUMULATING'?'rgba(192,132,252,.12)':'rgba(255,255,255,.05)';
+      var obvC=w.obvTrend==='strong_up'?'var(--g)':w.obvTrend==='up'?'#88ffcc':w.obvTrend==='mild_up'?'var(--amber)':'var(--dim)';
+      h+='<div onclick="clickCoin(\"'+w.sym+'\")" style="background:rgba(255,255,255,.02);border-radius:8px;padding:8px 9px;margin-bottom:6px;border-left:3px solid '+lblC+';cursor:pointer">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">';
+      h+='<div style="display:flex;align-items:center;gap:5px">';
+      h+='<span style="font-family:var(--m);font-size:13px;font-weight:900">'+w.sym+'</span>';
+      h+='<span style="font-size:7px;background:'+lblBg+';color:'+lblC+';padding:1px 5px;border-radius:3px;font-weight:700">'+w.label+'</span>';
+      h+='<span style="font-size:8px;color:var(--dim)">'+(w.sector||'')+'</span>';
+      h+='</div>';
+      h+='<span style="font-size:11px;font-weight:900;color:'+lblC+'">'+w.wfScore+'/100</span>';
+      h+='</div>';
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:3px;margin-bottom:5px;font-size:7.5px">';
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:4px;padding:3px;text-align:center"><div style="color:var(--dim)">Price</div><div style="font-family:var(--m);font-weight:700">$'+fP(w.price)+'</div><div style="color:'+(w.c24>=0?'var(--g)':'var(--red)')+'">'+(w.c24>=0?'+':'')+w.c24.toFixed(2)+'%</div></div>';
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:4px;padding:3px;text-align:center"><div style="color:var(--dim)">OBV</div><div style="font-weight:700;color:'+obvC+'">'+(w.obvTrend||'flat').replace('_',' ')+'</div></div>';
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:4px;padding:3px;text-align:center"><div style="color:var(--dim)">BB Squeeze</div><div style="font-weight:700;color:'+(w.bbSqueezePct!=null&&w.bbSqueezePct<=20?'var(--g)':'var(--amber)')+'">'+(w.bbSqueezePct!=null?w.bbSqueezePct+'%ile':'—')+'</div></div>';
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:4px;padding:3px;text-align:center"><div style="color:var(--dim)">Absorb</div><div style="font-weight:700;color:'+(w.absorptionCount>=3?'var(--g)':'var(--dim)')+'">'+w.absorptionCount+'/10</div></div>';
+      h+='</div>';
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-bottom:5px">';
+      h+='<div style="text-align:center;background:rgba(255,255,255,.03);border-radius:4px;padding:3px"><div style="font-size:7px;color:var(--dim)">Entry</div><div style="font-family:var(--m);font-size:8.5px;font-weight:700">$'+fP(w.price)+'</div></div>';
+      h+='<div style="text-align:center;background:rgba(255,68,100,.07);border-radius:4px;padding:3px"><div style="font-size:7px;color:var(--red)">SL -'+w.slPct+'%</div><div style="font-family:var(--m);font-size:8px;font-weight:700;color:var(--red)">$'+fP(w.sl)+'</div></div>';
+      h+='<div style="text-align:center;background:rgba(0,255,136,.05);border-radius:4px;padding:3px"><div style="font-size:7px;color:var(--g)">TP2 +'+w.tp2Pct+'%</div><div style="font-family:var(--m);font-size:8px;font-weight:700;color:var(--g)">$'+fP(w.tp2)+'</div></div>';
+      h+='</div>';
+      if(w.wfReasons&&w.wfReasons.length){
+        h+='<div style="display:flex;flex-wrap:wrap;gap:3px">';
+        w.wfReasons.slice(0,3).forEach(function(r){h+='<span style="font-size:7px;background:rgba(168,85,247,.1);color:#c084fc;padding:1px 5px;border-radius:3px">'+r+'</span>';});
         h+='</div>';
       }
       h+='</div>';
