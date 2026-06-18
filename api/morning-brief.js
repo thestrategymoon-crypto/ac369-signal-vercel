@@ -16,7 +16,7 @@ const macd14=a=>{try{if(!a||a.length<36)return null;const k12=2/13,k26=2/27;let 
 // OI Delta cache - persists between requests (module-level)
 const OI_CACHE={prev:{},prevTs:0};
 
-const SAFE={ok:false,version:'v16.0',ts:0,elapsed:0,dataQuality:{coins:0,realRSI:0},fg:50,fgLabel:'Neutral',marketCharacter:{type:'TRANSITIONAL',color:'amber',description:'Data tidak tersedia',tradeStyle:'Cautious',riskLevel:'REDUCED',positionSize:'Minimal (25%)',marketPct:'50% bullish',stats:{oversold:0,overbought:0,bullish:0,bearish:0,coiling:0}},btcSnapshot:{price:0,ch24:0,rsi:null,rsiSlope:'-',rsiDir:'flat',rsi1h:null,rsi1d:null,volTrend:'-',atrPct:0,atr:0,fg:50,fgLabel:'Neutral',macd:null,resistance:null,support:null,current:0,aboveEma200:false,btcLS:false,btcLongPct:null,btcShortPct:null,d1rsi:null,d1trend:'-'},convergence:{leaders:[],longSetups:[],shortSetups:[],flySetups:[],accumSetups:[],summary:'-',eliteCount:0,primeCount:0,validCount:0,shortCount:0},gamePlan:{btcLevels:{},scenarios:{bull:{condition:'-',action:'-',setups:[]},sideways:{condition:'-',action:'-'},bear:{condition:'-',action:'-'}},scalpSetups:[],swingSetups:[],activeShorts:[],spotAccum:[],avoidList:[]},sectorFlow:{sectors:[],sectorData:{}},tradingSchedule:{wibHour:0,dayName:'-',sessions:[],currentSession:'-',currentSessionObj:{id:'dead',name:'Dead Zone',time:'02:00-06:00',q:'POOR',activity:'-'},focusToday:'-',nextPrimeSession:null},checklist:{marketChecks:[],coinChecks:[],marketPassCount:0,marketTotal:8,overallGreenLight:false,verdict:'Data tidak tersedia'},whaleFingerprint:[],squeezeRadar:[],stealthVolume:[],hiddenGems:[],momentumShift:[],oiDeltaLeaders:[],retailTrapList:[],retailSqueezeList:[],dailyOpportunityScore:{score:50,label:'NORMAL',action:'-'},marketRegime:{regime:'NORMAL',regimeColor:'gray',regimeDesc:'-',sizingGuidance:'-'},todaysBestTrade:null};
+const SAFE={ok:false,version:'v16.1',ts:0,elapsed:0,dataQuality:{coins:0,realRSI:0},fg:50,fgLabel:'Neutral',marketCharacter:{type:'TRANSITIONAL',color:'amber',description:'Data tidak tersedia',tradeStyle:'Cautious',riskLevel:'REDUCED',positionSize:'Minimal (25%)',marketPct:'50% bullish',stats:{oversold:0,overbought:0,bullish:0,bearish:0,coiling:0}},btcSnapshot:{price:0,ch24:0,rsi:null,rsiSlope:'-',rsiDir:'flat',rsi1h:null,rsi1d:null,volTrend:'-',atrPct:0,atr:0,fg:50,fgLabel:'Neutral',macd:null,resistance:null,support:null,current:0,aboveEma200:false,btcLS:false,btcLongPct:null,btcShortPct:null,d1rsi:null,d1trend:'-'},convergence:{leaders:[],longSetups:[],shortSetups:[],flySetups:[],accumSetups:[],summary:'-',eliteCount:0,primeCount:0,validCount:0,shortCount:0},gamePlan:{btcLevels:{},scenarios:{bull:{condition:'-',action:'-',setups:[]},sideways:{condition:'-',action:'-'},bear:{condition:'-',action:'-'}},scalpSetups:[],swingSetups:[],activeShorts:[],spotAccum:[],avoidList:[]},sectorFlow:{sectors:[],sectorData:{}},tradingSchedule:{wibHour:0,dayName:'-',sessions:[],currentSession:'-',currentSessionObj:{id:'dead',name:'Dead Zone',time:'02:00-06:00',q:'POOR',activity:'-'},focusToday:'-',nextPrimeSession:null},checklist:{marketChecks:[],coinChecks:[],marketPassCount:0,marketTotal:8,overallGreenLight:false,verdict:'Data tidak tersedia'},whaleFingerprint:[],squeezeRadar:[],stealthVolume:[],hiddenGems:[],momentumShift:[],oiDeltaLeaders:[],retailTrapList:[],retailSqueezeList:[],dailyOpportunityScore:{score:50,label:'NORMAL',action:'-'},marketRegime:{regime:'NORMAL',regimeColor:'gray',regimeDesc:'-',sizingGuidance:'-'},todaysBestTrade:null};
 const CACHE={d:null,t:0};
 
 export default async function handler(req,res){
@@ -176,9 +176,24 @@ export default async function handler(req,res){
 
     if(phase2Coins.length>0){
       try{
-        const p2Results=await Promise.allSettled(
-          phase2Coins.map(c=>get('https://api.mexc.com/api/v3/klines?symbol='+c.sym+'USDT&interval=4h&limit=52',2800))
-        );
+        // Run klines AND funding history CONCURRENTLY (not sequential)
+        // Funding history = NEW: check persistence across 6 periods, not just snapshot
+        const [p2Results,fundResults]=await Promise.all([
+          Promise.allSettled(phase2Coins.map(c=>get('https://api.mexc.com/api/v3/klines?symbol='+c.sym+'USDT&interval=4h&limit=52',2000))),
+          Promise.allSettled(phase2Coins.map(c=>get('https://api.bybit.com/v5/market/funding/history?category=linear&symbol='+c.sym+'USDT&limit=6',2000)))
+        ]);
+        // Parse funding persistence: how many of last 6 periods had negative FR
+        const fundPersist={};
+        fundResults.forEach((res,i)=>{
+          try{
+            const sym=phase2Coins[i].sym;
+            const list=res&&res.value&&res.value.result&&res.value.result.list;
+            if(!list||!list.length)return;
+            const negCount=list.filter(x=>+(x.fundingRate||0)<0).length;
+            const avgFr=list.reduce((s,x)=>s+(+x.fundingRate||0),0)/list.length;
+            fundPersist[sym]={negCount,total:list.length,avgFr:+avgFr.toFixed(6)};
+          }catch(e2){}
+        });
         p2Results.forEach((res,i)=>{
           try{
             const sym=phase2Coins[i].sym;
@@ -298,7 +313,14 @@ export default async function handler(req,res){
               wfScore=Math.min(100,wfScore);
             }catch(e3){}
 
-            km[sym]={rsi:+rsiV.toFixed(2),slopeDir:sDir,slopeTxt:sTxt,macd:{bull:macdLine>sigLine,xUp:macdLine>sigLine&&macdLine<0,xDown:macdLine<sigLine&&macdLine>0,val:+macdLine.toFixed(6)},e9,e21,e200,atr:+atrV.toFixed(8),price:lp,aboveE200:lp>e200,isCoiling:rangeW5<8,vB:vBull>vBear*1.2,volTrend:volTr,div,divStr,rsi1h:null,rsi1d:null,rangeW5:+rangeW5.toFixed(2),src:'p2',wfScore,wfReasons,obvTrend,bbSqueezePct,absorptionCount,volAccelRatio};
+            // Multi-day range for Persistent Accumulation Score
+            const cls18=cls.slice(-18);// ~3 days of 4H candles
+            const hi3d=Math.max(...cls18),lo3d=Math.min(...cls18);
+            const range3d=lp>0?(hi3d-lo3d)/lp*100:10;
+            const hi9d=Math.max(...cls),lo9d=Math.min(...cls);
+            const range9d=lp>0?(hi9d-lo9d)/lp*100:10;
+            const fp2=fundPersist[sym]||null;
+            km[sym]={rsi:+rsiV.toFixed(2),slopeDir:sDir,slopeTxt:sTxt,macd:{bull:macdLine>sigLine,xUp:macdLine>sigLine&&macdLine<0,xDown:macdLine<sigLine&&macdLine>0,val:+macdLine.toFixed(6)},e9,e21,e200,atr:+atrV.toFixed(8),price:lp,aboveE200:lp>e200,isCoiling:rangeW5<8,vB:vBull>vBear*1.2,volTrend:volTr,div,divStr,rsi1h:null,rsi1d:null,rangeW5:+rangeW5.toFixed(2),src:'p2',wfScore,wfReasons,obvTrend,bbSqueezePct,absorptionCount,volAccelRatio,range3d:+range3d.toFixed(2),range9d:+range9d.toFixed(2),fundNegCount:fp2?fp2.negCount:null,fundTotal:fp2?fp2.total:null,fundAvgFr:fp2?fp2.avgFr:null};
             realRSI++;
           }catch(e2){}
         });
@@ -989,6 +1011,55 @@ export default async function handler(req,res){
 
     // WHALE LOADING RADAR - coins with high whale load score
     // WHALE FINGERPRINT - quiet accumulation detection
+    // PERSISTENT ACCUMULATION SCORE - 3 INDEPENDENT confirmations across TIME
+    // Not a snapshot - requires patterns sustained over 2-9 days
+    // Honest limitation: cannot detect wash trading (no trade-count data available)
+    const persistentAccumulation=(()=>{try{
+      return coins.filter(c=>c.src==='by'&&(c.oi||0)>30e6).map(c=>{
+        const km3=km[c.sym]||null;
+        let score=0,reasons=[];
+        // 1. FUNDING PERSISTENCE (35pt) - sustained across multiple periods, not snapshot
+        if(km3&&km3.fundTotal){
+          const ratio=km3.fundNegCount/km3.fundTotal;
+          if(ratio>=0.67){score+=35;reasons.push('FR negatif '+km3.fundNegCount+'/'+km3.fundTotal+' periode terakhir (persisten)');}
+          else if(ratio>=0.5){score+=22;reasons.push('FR negatif '+km3.fundNegCount+'/'+km3.fundTotal+' periode');}
+          else if(ratio>=0.33){score+=10;}
+        }
+        // 2. OI/VOLUME DIVERGENCE (30pt) - OI growing faster than volume churn
+        const oiD=c.oiDelta||0;
+        const volOIr=c.oi>0?c.vol/c.oi:0;
+        if(oiD>2&&volOIr<0.2){score+=30;reasons.push('OI +'+oiD.toFixed(1)+'% tapi Vol/OI rendah ('+volOIr.toFixed(2)+'x) = limit order pasif');}
+        else if(oiD>1&&volOIr<0.3){score+=18;reasons.push('OI naik, churn rendah');}
+        else if(oiD>0){score+=8;}
+        // 3. MULTI-DAY COMPRESSION (35pt) - BOTH 3-day AND 9-day must be tight
+        if(km3&&km3.range3d!=null&&km3.range9d!=null){
+          const tight3=km3.range3d<5,tight9=km3.range9d<12;
+          if(tight3&&tight9){score+=35;reasons.push('Flat 3 hari ('+km3.range3d+'%) DAN 9 hari ('+km3.range9d+'%) - jarang kebetulan');}
+          else if(tight3||tight9){score+=18;reasons.push((tight3?'Flat 3 hari':'Flat 9 hari')+' terdeteksi');}
+        }
+        return Object.assign({},c,{pasScore:Math.min(100,score),pasReasons:reasons,range3d:km3?km3.range3d:null,range9d:km3?km3.range9d:null,fundNegCount:km3?km3.fundNegCount:null,fundTotal:km3?km3.fundTotal:null});
+      }).filter(c=>c.pasScore>=35)
+        .sort((a,b)=>b.pasScore-a.pasScore)
+        .slice(0,15)
+        .map(c=>{
+          const atrP=c.atrPct||Math.max(c.range3d||3,2.5);
+          const slPct=+(Math.max(atrP*2.2,3.5)).toFixed(2);
+          const tpPct=+(atrP*5).toFixed(2);
+          return{
+            sym:c.sym,sector:c.sector,price:c.price,c24:c.c24,
+            pasScore:c.pasScore,pasReasons:c.pasReasons,
+            range3d:c.range3d,range9d:c.range9d,
+            fundNegCount:c.fundNegCount,fundTotal:c.fundTotal,
+            oiDelta:c.oiDelta,vol:c.vol,oi:c.oi,rsi:c.rsi,rsiReal:c.rsiReal,
+            label:c.pasScore>=70?'CONFIRMED ACCUM':c.pasScore>=50?'PROBABLE':'WATCH',
+            sl:+(c.price*(1-slPct/100)).toFixed(c.price>1?2:8),
+            tp1:+(c.price*(1+atrP*2.5/100)).toFixed(c.price>1?2:8),
+            tp2:+(c.price*(1+tpPct/100)).toFixed(c.price>1?2:8),
+            slPct,tp2Pct:tpPct
+          };
+        });
+    }catch(e){return[]}})();
+
     // WHALE FOOTPRINT LEADERS - OBV + BB Squeeze + Absorption Wyckoff-style detection
     const whaleFootprintLeaders=(()=>{try{
       return coins
@@ -1084,7 +1155,7 @@ export default async function handler(req,res){
     }catch(e){return null}})();
 
     const out={
-      ok:true,version:'v16.0',ts:Date.now(),elapsed:Date.now()-t0,
+      ok:true,version:'v16.1',ts:Date.now(),elapsed:Date.now()-t0,
       dataQuality:{coins:coins.length,realRSI,bybitCoins:Object.values(cm).filter(x=>x.src==='by').length,mexcCoins:Object.values(cm).filter(x=>x.src==='mx').length,btcLS:!!btcLS,btcRsi:!!(btcK&&btcK.rsi),src:'bybit+mexc+phase2',mtf1hCoins:Object.keys(km1h).length,oiDeltaTracked:Object.keys(OI_CACHE.prev).length,phase2Coins:phase2Coins.length,pumpCandidates:coins.filter(x=>x.isPumpCandidate).length},
       fg,fgLabel,
       marketCharacter:{type:mcType,color:mcColor,description:mcDesc,tradeStyle:mcStrat,riskLevel:mcRisk,positionSize:mcPos,marketPct:Math.round(bPct*100)+'% bullish',stats:{oversold:osCount,overbought:obCount,bullish:Math.round(bPct*100),bullPct:Math.round(bPct*100),bearish:Math.round((1-bPct)*100),coiling:coins.filter(x=>x.isCoiling).length,mtfBull:coins.filter(x=>x.mtfAligned==='BULL').length,whaleLong:coins.filter(x=>x.oiPattern==='WHALE_LONG').length}},
@@ -1126,7 +1197,7 @@ export default async function handler(req,res){
       sectorFlow:{sectors,sectorData},
       checklist:{marketChecks:mkChecks,coinChecks:['RSI koin < 72','Conv Score 60+','FR < +0.04%','RR min 1:2','No entry 30min sebelum news','Vol 5M+ USD','Size 2% equity max','SL ATR-based','Volume konfirmasi','Sesuai skenario Game Plan'],marketPassCount:pass,marketTotal:8,overallGreenLight:pass>=6,verdict:pass>=6?'KONDISI LAYAK TRADING':'HATI-HATI - '+(8-pass)+' kondisi belum terpenuhi'},
       tradingSchedule:{wibHour:wibH,dayName:days[now2.getUTCDay()],sessions:sess,currentSession:cs,currentSessionObj:cso,focusToday,nextPrimeSession:nxt,nextPrime:nxt},
-      decouplingLeaders,whaleFootprintLeaders,smRadar,pumpHunter,whaleLoadingRadar,whaleFingerprint,squeezeRadar:[],stealthVolume:[],hiddenGems:[],momentumShift:[],retailTrapList:coins.filter(x=>x.retailLong&&x.retailLong>=65&&(x.oi||0)>50e6).sort((a,b)=>(b.retailLong||0)-(a.retailLong||0)).slice(0,8).map(x=>({sym:x.sym,retailLong:x.retailLong,rsi:x.rsi,c24:x.c24})),retailSqueezeList:coins.filter(x=>x.retailLong&&x.retailLong<=38&&(x.oi||0)>50e6).sort((a,b)=>(a.retailLong||50)-(b.retailLong||50)).slice(0,8).map(x=>({sym:x.sym,retailShort:100-(x.retailLong||50),retailLong:x.retailLong,rsi:x.rsi,c24:x.c24})),
+      decouplingLeaders,whaleFootprintLeaders,persistentAccumulation,smRadar,pumpHunter,whaleLoadingRadar,whaleFingerprint,squeezeRadar:[],stealthVolume:[],hiddenGems:[],momentumShift:[],retailTrapList:coins.filter(x=>x.retailLong&&x.retailLong>=65&&(x.oi||0)>50e6).sort((a,b)=>(b.retailLong||0)-(a.retailLong||0)).slice(0,8).map(x=>({sym:x.sym,retailLong:x.retailLong,rsi:x.rsi,c24:x.c24})),retailSqueezeList:coins.filter(x=>x.retailLong&&x.retailLong<=38&&(x.oi||0)>50e6).sort((a,b)=>(a.retailLong||50)-(b.retailLong||50)).slice(0,8).map(x=>({sym:x.sym,retailShort:100-(x.retailLong||50),retailLong:x.retailLong,rsi:x.rsi,c24:x.c24})),
       dailyOpportunityScore,marketRegime,todaysBestTrade
     };
     const json=JSON.stringify(out);
