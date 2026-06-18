@@ -240,6 +240,13 @@ h2{font-size:13px;font-weight:700;color:#b0b0ff;margin:14px 0 8px;padding-bottom
       <div style="display:flex;gap:8px;align-items:center"><button id="tis-btn" onclick="runTIS()" style="background:linear-gradient(135deg,#00d4aa,#4af0ff);color:#0a0e1a;border:none;padding:10px 22px;border-radius:10px;font-family:var(--m);font-size:13px;font-weight:900;cursor:pointer;letter-spacing:.5px">⚡ Run Analysis</button><button onclick="showSignalHistory()" style="background:rgba(255,179,0,.1);border:1px solid rgba(255,179,0,.3);color:var(--amber);padding:8px 14px;border-radius:9px;font-size:11px;cursor:pointer;font-weight:700">📊 History</button></div>
     </div>
     <div id="tis-status" style="font-size:10px;color:var(--dim);margin-top:8px">⏳ Auto-loading dalam 8 detik setelah data utama siap...</div>
+    <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,.08);padding-top:10px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button id="bt-btn" onclick="runBacktest()" style="background:rgba(168,85,247,.15);border:1px solid rgba(168,85,247,.4);color:#c084fc;padding:7px 14px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">🔬 Validasi Whale Footprint Score (Backtest 60 Hari)</button>
+        <span style="font-size:8px;color:var(--dim)">Cek apakah skor ini benar2 berkorelasi dengan pump, atau cuma teori</span>
+      </div>
+      <div id="bt-result" style="margin-top:8px"></div>
+    </div>
   </div>
   <div id="tis-content" style="display:none">
     <div class="tis-grid-2">
@@ -1650,6 +1657,46 @@ function tisMod8Golden(d){
     h+='</div>';
   }
 
+  // PERSISTENT ACCUMULATION SCORE - multi-day confirmed, not snapshot
+  var pas=A(d.persistentAccumulation);
+  if(pas.length>0){
+    h+='<div style="background:rgba(0,255,170,.04);border:1.5px solid rgba(0,255,170,.35);border-radius:10px;padding:10px;margin-bottom:10px">';
+    h+='<div style="font-size:10px;font-weight:900;color:#00ffaa;letter-spacing:1px;margin-bottom:2px">🎯 PERSISTENT ACCUMULATION — Konfirmasi Multi-Hari</div>';
+    h+='<div style="font-size:8px;color:var(--amber);margin-bottom:4px">⚠️ Tidak bisa deteksi wash trading (data trade individual tidak tersedia gratis). Ini 3 sinyal independen lintas waktu, bukan snapshot.</div>';
+    h+='<div style="font-size:8px;color:var(--dim);margin-bottom:8px">FR persisten 6 periode + OI/Vol divergence + Flat 3&9 hari · '+pas.length+' kandidat</div>';
+    pas.slice(0,10).forEach(function(p){
+      var lblC=p.label==='CONFIRMED ACCUM'?'#00ffaa':p.label==='PROBABLE'?'#4af0ff':'var(--dim)';
+      var lblBg=p.label==='CONFIRMED ACCUM'?'rgba(0,255,170,.18)':p.label==='PROBABLE'?'rgba(74,240,255,.12)':'rgba(255,255,255,.05)';
+      h+='<div onclick="clickCoin(\"'+p.sym+'\")" style="background:rgba(255,255,255,.02);border-radius:8px;padding:8px 9px;margin-bottom:6px;border-left:3px solid '+lblC+';cursor:pointer">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">';
+      h+='<div style="display:flex;align-items:center;gap:5px">';
+      h+='<span style="font-family:var(--m);font-size:13px;font-weight:900">'+p.sym+'</span>';
+      h+='<span style="font-size:7px;background:'+lblBg+';color:'+lblC+';padding:1px 5px;border-radius:3px;font-weight:700">'+p.label+'</span>';
+      h+='<span style="font-size:8px;color:var(--dim)">'+(p.sector||'')+'</span>';
+      h+='</div>';
+      h+='<span style="font-size:11px;font-weight:900;color:'+lblC+'">'+p.pasScore+'/100</span>';
+      h+='</div>';
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:3px;margin-bottom:5px;font-size:7.5px">';
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:4px;padding:3px;text-align:center"><div style="color:var(--dim)">Price</div><div style="font-family:var(--m);font-weight:700">$'+fP(p.price)+'</div><div style="color:'+(p.c24>=0?'var(--g)':'var(--red)')+'">'+(p.c24>=0?'+':'')+p.c24.toFixed(2)+'%</div></div>';
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:4px;padding:3px;text-align:center"><div style="color:var(--dim)">FR Persist</div><div style="font-weight:700;color:'+(p.fundNegCount!=null&&p.fundTotal&&(p.fundNegCount/p.fundTotal)>=0.6?'var(--g)':'var(--dim)')+'">'+(p.fundNegCount!=null?p.fundNegCount+'/'+p.fundTotal:'—')+'</div></div>';
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:4px;padding:3px;text-align:center"><div style="color:var(--dim)">3d Range</div><div style="font-weight:700;color:'+(p.range3d!=null&&p.range3d<5?'var(--g)':'var(--amber)')+'">'+(p.range3d!=null?p.range3d+'%':'—')+'</div></div>';
+      h+='<div style="background:rgba(255,255,255,.02);border-radius:4px;padding:3px;text-align:center"><div style="color:var(--dim)">9d Range</div><div style="font-weight:700;color:'+(p.range9d!=null&&p.range9d<12?'var(--g)':'var(--amber)')+'">'+(p.range9d!=null?p.range9d+'%':'—')+'</div></div>';
+      h+='</div>';
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-bottom:5px">';
+      h+='<div style="text-align:center;background:rgba(255,255,255,.03);border-radius:4px;padding:3px"><div style="font-size:7px;color:var(--dim)">Entry</div><div style="font-family:var(--m);font-size:8.5px;font-weight:700">$'+fP(p.price)+'</div></div>';
+      h+='<div style="text-align:center;background:rgba(255,68,100,.07);border-radius:4px;padding:3px"><div style="font-size:7px;color:var(--red)">SL -'+p.slPct+'%</div><div style="font-family:var(--m);font-size:8px;font-weight:700;color:var(--red)">$'+fP(p.sl)+'</div></div>';
+      h+='<div style="text-align:center;background:rgba(0,255,136,.05);border-radius:4px;padding:3px"><div style="font-size:7px;color:var(--g)">TP2 +'+p.tp2Pct+'%</div><div style="font-family:var(--m);font-size:8px;font-weight:700;color:var(--g)">$'+fP(p.tp2)+'</div></div>';
+      h+='</div>';
+      if(p.pasReasons&&p.pasReasons.length){
+        h+='<div style="display:flex;flex-wrap:wrap;gap:3px">';
+        p.pasReasons.slice(0,3).forEach(function(r){h+='<span style="font-size:7px;background:rgba(0,255,170,.1);color:#00ffaa;padding:1px 5px;border-radius:3px">'+r+'</span>';});
+        h+='</div>';
+      }
+      h+='</div>';
+    });
+    h+='</div>';
+  }
+
   // WHALE FOOTPRINT LEADERS - OBV + BB Squeeze + Absorption (Wyckoff-style)
   var wfl=A(d.whaleFootprintLeaders);
   if(wfl.length>0){
@@ -1987,6 +2034,58 @@ function tisMod2DailyPower(d){
     h+='</div>';
   }
   el.innerHTML=h;
+}
+
+// ══════════════════════════════════════
+// BACKTEST RUNNER - validates Whale Footprint Score
+// against real historical data, no lookahead bias
+// ══════════════════════════════════════
+async function runBacktest(){
+  var btn=$('bt-btn'),out=$('bt-result');
+  if(!btn||btn.disabled)return;
+  btn.disabled=true;btn.textContent='⏳ Menganalisis 60 hari data historis 25 koin...';
+  out.innerHTML='<div style="color:var(--muted);font-size:10px;padding:10px;text-align:center"><span class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>Fetching kline historis + menghitung skor di setiap titik waktu (tanpa lookahead)...</div>';
+  try{
+    const d=await apiFetch('/api/backtest',25000,0);
+    if(!d.ok){out.innerHTML='<div style="color:var(--red);font-size:11px;padding:10px">❌ '+(d.error||'Backtest gagal')+'</div>';btn.disabled=false;btn.textContent='🔬 Validasi Whale Footprint Score (Backtest 60 Hari)';return;}
+    var h='<div style="background:rgba(168,85,247,.04);border:1px solid rgba(168,85,247,.25);border-radius:10px;padding:11px">';
+    h+='<div style="font-size:10px;font-weight:800;color:#c084fc;margin-bottom:4px">📊 HASIL BACKTEST</div>';
+    h+='<div style="font-size:8.5px;color:var(--dim);margin-bottom:8px">'+d.coinsWithData+' koin · '+d.approxDaysCovered+' hari · '+d.totalEvaluationPoints+' titik evaluasi · '+d.elapsed+'ms</div>';
+    // Correlation headline
+    var corr=d.correlation.wfScore_vs_fwd48hReturn;
+    var corrC=Math.abs(corr)>=0.2?'var(--g)':Math.abs(corr)>=0.1?'var(--amber)':'var(--red)';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.2);border-radius:7px;padding:8px 10px;margin-bottom:8px">';
+    h+='<span style="font-size:9px;color:var(--muted)">Korelasi Skor vs Return 48h</span>';
+    h+='<span style="font-family:var(--m);font-size:16px;font-weight:900;color:'+corrC+'">'+corr+'</span>';
+    h+='</div>';
+    // Bucket table
+    h+='<div style="font-size:8.5px;color:var(--dim);margin-bottom:5px">RETURN RATA-RATA PER BUCKET SKOR (48 jam ke depan):</div>';
+    h+='<div style="overflow-x:auto"><table style="width:100%;font-size:8.5px;border-collapse:collapse">';
+    h+='<tr style="border-bottom:1px solid rgba(255,255,255,.1)"><th style="text-align:left;padding:4px;color:var(--dim)">Skor</th><th style="text-align:right;padding:4px;color:var(--dim)">N</th><th style="text-align:right;padding:4px;color:var(--dim)">Avg 48h</th><th style="text-align:right;padding:4px;color:var(--dim)">Max Up</th><th style="text-align:right;padding:4px;color:var(--dim)">Win%</th></tr>';
+    d.buckets.forEach(function(b){
+      if(!b.count){h+='<tr><td colspan="5" style="padding:3px;color:var(--dim);font-size:8px">'+b.range+': tidak ada data</td></tr>';return;}
+      var rc=b.avgFwd48>=3?'var(--g)':b.avgFwd48>=0?'var(--amber)':'var(--red)';
+      h+='<tr style="border-bottom:1px solid rgba(255,255,255,.04)">';
+      h+='<td style="padding:4px;color:var(--txt)">'+b.range+'</td>';
+      h+='<td style="text-align:right;padding:4px;color:var(--dim)">'+b.count+'</td>';
+      h+='<td style="text-align:right;padding:4px;font-weight:700;color:'+rc+'">'+(b.avgFwd48>=0?'+':'')+b.avgFwd48+'%</td>';
+      h+='<td style="text-align:right;padding:4px;color:var(--g2)">+'+b.avgMaxUp48+'%</td>';
+      h+='<td style="text-align:right;padding:4px;color:var(--muted)">'+b.winRate48+'%</td>';
+      h+='</tr>';
+    });
+    h+='</table></div>';
+    // Honest interpretation
+    h+='<div style="margin-top:10px;padding:9px 10px;background:rgba(255,179,0,.06);border-left:3px solid var(--amber);border-radius:0 6px 6px 0">';
+    h+='<div style="font-size:8.5px;font-weight:700;color:var(--amber);margin-bottom:3px">📝 INTERPRETASI JUJUR</div>';
+    h+='<div style="font-size:9px;color:var(--txt);line-height:1.6">'+d.interpretation+'</div>';
+    h+='</div>';
+    h+='<div style="margin-top:6px;font-size:7.5px;color:var(--dim);line-height:1.5">⚠️ '+d.caveat+'</div>';
+    h+='</div>';
+    out.innerHTML=h;
+  }catch(e){
+    out.innerHTML='<div style="color:var(--red);font-size:11px;padding:10px">❌ '+e.message+'</div>';
+  }
+  btn.disabled=false;btn.textContent='🔬 Validasi Whale Footprint Score (Backtest 60 Hari)';
 }
 
 // ══════════════════════════════════════
