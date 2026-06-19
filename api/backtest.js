@@ -113,8 +113,9 @@ export default async function handler(req,res){
     const limit=Math.min(500,Math.max(200,N(req.query?.candles)||360));// ~60 days of 4H candles
     const sampleEvery=Math.max(1,N(req.query?.sample)||6);// daily sampling default
 
+    // Use MEXC klines (Bybit kline endpoint unreliable from Vercel serverless - confirmed issue)
     const klineResults=await Promise.allSettled(
-      TEST_COINS.map(sym=>get('https://api.bybit.com/v5/market/kline?category=linear&symbol='+sym+'USDT&interval=240&limit='+limit,4000))
+      TEST_COINS.map(sym=>get('https://api.mexc.com/api/v3/klines?symbol='+sym+'USDT&interval=4h&limit='+limit,5000))
     );
 
     const records=[];// {sym, idx, wfScore, fwd24, fwd48}
@@ -126,7 +127,8 @@ export default async function handler(req,res){
         const sym=TEST_COINS[i];
         const v=res2.value;
         let raw=[];
-        if(v&&v.result&&Array.isArray(v.result.list))raw=[...v.result.list].reverse();
+        if(Array.isArray(v))raw=v;// MEXC: direct array, oldest first
+        else if(v&&v.result&&Array.isArray(v.result.list))raw=[...v.result.list].reverse();// Bybit fallback format
         if(raw.length<60)return;
         const K=raw.map(d=>({o:N(d[1]),h:N(d[2]),l:N(d[3]),c:N(d[4]),v:N(d[5])})).filter(k=>k.c>0);
         if(K.length<60)return;
@@ -145,7 +147,16 @@ export default async function handler(req,res){
     });
 
     if(records.length<20){
-      return res.status(200).json({ok:false,error:'Data tidak cukup untuk backtest valid',recordCount:records.length,testedSyms});
+      return res.status(200).json({
+        ok:false,
+        error:'Data tidak cukup untuk backtest valid',
+        recordCount:records.length,
+        coinsRequested:TEST_COINS.length,
+        coinsWithData:testedSyms.length,
+        testedSyms,
+        diagnostic:'Coins yang gagal fetch: '+TEST_COINS.filter(s=>!testedSyms.includes(s)).join(', ')||'tidak ada (semua coin fetch sukses tapi data kurang dari minimum)',
+        elapsed:Date.now()-t0
+      });
     }
 
     // Bucket by score range
